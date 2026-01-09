@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useState, Suspense, useMemo, useRef, useEffect } from 'react';
-import { Handle, Position, useReactFlow, useNodeId } from '@xyflow/react';
+import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { Check, Trash2, Sparkles, Loader2, Fullscreen } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { flatRegistry, ComponentSize } from '../registry';

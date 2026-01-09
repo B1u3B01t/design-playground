@@ -341,6 +341,7 @@ export default function PlaygroundCanvas() {
   // Initial scan on mount (once)
   useEffect(() => {
     scanForIterations(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps = run once on mount
 
   // Handle fullscreen node events
