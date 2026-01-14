@@ -87,7 +87,6 @@ import { cn } from "@/lib/utils";
 /**
  * @iteration 1
  * @parent ArticleCard
- * @mode Layout
  * @description Horizontal card layout with image on left
  */
 
@@ -114,12 +113,11 @@ Always include the metadata comment block:
 /**
  * @iteration {number}      - Which iteration this is (1, 2, 3, 4)
  * @parent {ComponentName}  - Original component name
- * @mode {Layout|Vibe}      - Iteration type
  * @description {text}      - Brief description of what changed
  */
 ```
 
-## Layout Mode Guidelines
+## Layout Guidelines
 
 Focus on structural changes:
 
@@ -140,19 +138,6 @@ Focus on structural changes:
 - **Iteration 2**: Horizontal card, image right  
 - **Iteration 3**: Overlay layout, text on image
 - **Iteration 4**: Minimal list item style
-
-## Vibe Mode Guidelines
-
-Focus on visual style changes (keeping structure identical):
-
-| Change Type | Examples |
-|-------------|----------|
-| Colors | Different color schemes |
-| Typography | Font weights, sizes |
-| Borders | Rounded, sharp, none |
-| Shadows | Flat, subtle, dramatic |
-| Spacing | Compact, comfortable, spacious |
-| States | Hover effects, transitions |
 
 ## Tailwind Constraints
 
@@ -190,7 +175,7 @@ Preserve exact styling including inline styles:
 ```
 
 ### Why This Matters
-- Iterations should be **layout variations**, not **theme variations** (unless in Vibe mode)
+- Iterations should be **layout variations**, not theme variations
 - Users expect iterations to match their app's existing visual identity
 - White-on-white or dark-on-dark text makes iterations unusable
 - The playground renders iterations in the same context as the original component
@@ -249,7 +234,7 @@ export function getIterationComponent(filename: string): ComponentType<Record<st
 
 ### Why This Is Required
 
-1. The API at `/api/playground/iterations` scans the filesystem and detects iteration files
+1. The API at `/playground/api/iterations` scans the filesystem and detects iteration files
 2. The `IterationNode` component needs to render the actual iteration component
 3. Dynamic imports with template literals (`import(\`./\${filename}\`)`) don't work in Next.js
 4. Static imports in the index file solve this by pre-registering all iterations

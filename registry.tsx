@@ -1,5 +1,5 @@
 import { ComponentType } from 'react';
-
+import { SubscriptionExpiringBannerPreview } from './previews/SubscriptionExpiringBanner.preview';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,6 +46,51 @@ export function isLeaf(item: RegistryItem): item is RegistryLeafItem {
 // ---------------------------------------------------------------------------
 
 export const registry: RegistryItem[] = [
+  {
+    id: 'banners',
+    label: 'Banners',
+    children: [
+      {
+        id: 'subscription-expiring-banner',
+        label: 'Subscription Expiring Banner',
+        Component: SubscriptionExpiringBannerPreview as unknown as ComponentType<Record<string, unknown>>,
+        props: { daysRemaining: 3, isExpired: false },
+        sourcePath: 'src/components/SubscriptionExpiringBanner.preview.tsx',
+        propsInterface: `interface SubscriptionExpiringBannerPreviewProps {
+  /** Number of days remaining until subscription ends */
+  daysRemaining: number;
+  /** Whether the subscription has already expired */
+  isExpired?: boolean;
+}`,
+      },
+      {
+        id: 'subscription-expiring-banner-lastday',
+        label: 'Subscription Expiring Banner (Last Day)',
+        Component: SubscriptionExpiringBannerPreview as unknown as ComponentType<Record<string, unknown>>,
+        props: { daysRemaining: 1, isExpired: false },
+        sourcePath: 'src/components/SubscriptionExpiringBanner.preview.tsx',
+        propsInterface: `interface SubscriptionExpiringBannerPreviewProps {
+  /** Number of days remaining until subscription ends */
+  daysRemaining: number;
+  /** Whether the subscription has already expired */
+  isExpired?: boolean;
+}`,
+      },
+      {
+        id: 'subscription-expiring-banner-expired',
+        label: 'Subscription Expiring Banner (Expired)',
+        Component: SubscriptionExpiringBannerPreview as unknown as ComponentType<Record<string, unknown>>,
+        props: { daysRemaining: 0, isExpired: true },
+        sourcePath: 'src/components/SubscriptionExpiringBanner.preview.tsx',
+        propsInterface: `interface SubscriptionExpiringBannerPreviewProps {
+  /** Number of days remaining until subscription ends */
+  daysRemaining: number;
+  /** Whether the subscription has already expired */
+  isExpired?: boolean;
+}`,
+      },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -131,3 +176,63 @@ CONSTRAINTS
 Generate the iterations now.`;
 }
 
+// ---------------------------------------------------------------------------
+// Adopt prompt generator
+// ---------------------------------------------------------------------------
+
+export function generateAdoptPrompt(
+  componentId: string,
+  iterationFilename: string
+): string {
+  const item = flatRegistry[componentId];
+  const originalPath = item?.sourcePath || `src/components/${iterationFilename.split('.iteration')[0]}.tsx`;
+  const iterationPath = `src/app/playground/iterations/${iterationFilename}`;
+
+  return `ADOPT ITERATION
+═══════════════
+
+Original Component: ${originalPath}
+Iteration to Adopt: ${iterationPath}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+TASK
+
+Replace the UI implementation of the original component with the layout/styling from the iteration, while ensuring ZERO breaking changes.
+
+INSTRUCTIONS
+
+1. Read both files:
+   - Original: ${originalPath}
+   - Iteration: ${iterationPath}
+
+2. In the ORIGINAL component file:
+   - Replace the JSX/render logic with the iteration's layout
+   - Keep ALL existing imports that are still needed
+   - Keep the EXACT same props interface and types
+   - Keep ALL existing function logic (handlers, effects, computed values)
+   - Keep the same export (default/named) as before
+
+3. Do NOT:
+   - Change the props interface in any way
+   - Remove any existing functionality
+   - Change the component's public API
+   - Rename the component
+   - Move the file
+
+VERIFICATION CHECKLIST
+
+Before saving, verify:
+- [ ] Props interface is IDENTICAL to before
+- [ ] All existing imports still resolve
+- [ ] No TypeScript errors
+- [ ] Component name unchanged
+- [ ] Export style unchanged (default/named)
+- [ ] All event handlers preserved
+- [ ] All hooks/effects preserved
+- [ ] File location unchanged
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Adopt the iteration now. Only modify the original component file.`;
+}

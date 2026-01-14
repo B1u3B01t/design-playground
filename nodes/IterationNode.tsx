@@ -4,7 +4,7 @@ import { memo, useState, Suspense, useMemo, useRef, useEffect } from 'react';
 import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { Check, Trash2, Sparkles, Loader2, Fullscreen } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { flatRegistry, ComponentSize } from '../registry';
+import { flatRegistry, ComponentSize, generateAdoptPrompt } from '../registry';
 import { getIterationComponent } from '../iterations';
 import { COMPONENT_SIZE_CHANGE_EVENT, sizeConfig, getDisplayDimensions } from './ComponentNode';
 import { usePlaygroundContext } from '../PlaygroundClient';
@@ -201,7 +201,17 @@ function IterationNode({ id, data }: IterationNodeProps) {
     if (isAdopting) return;
     setIsAdopting(true);
     
-    // Call the adopt callback
+    // Generate and copy the adopt prompt
+    const adoptPrompt = generateAdoptPrompt(registryId, data.filename);
+    
+    try {
+      await navigator.clipboard.writeText(adoptPrompt);
+      console.log('[IterationNode] Adopt prompt copied to clipboard');
+    } catch (err) {
+      console.error('[IterationNode] Failed to copy adopt prompt:', err);
+    }
+    
+    // Call the adopt callback if provided
     data.onAdopt?.(data.filename, data.componentName);
     
     // Reset after a moment
@@ -343,11 +353,11 @@ function IterationNode({ id, data }: IterationNodeProps) {
               className="flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded transition-colors disabled:opacity-50"
             >
               <Check className="w-2.5 h-2.5" />
-              {isAdopting ? 'Adopted!' : 'Adopt'}
+              {isAdopting ? 'Copied!' : 'Adopt'}
             </button>
           </TooltipTrigger>
           <TooltipContent>
-            <p>Adopt this iteration</p>
+            <p>Copy adopt prompt to clipboard</p>
           </TooltipContent>
         </Tooltip>
         <Tooltip>

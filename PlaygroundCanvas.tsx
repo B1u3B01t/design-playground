@@ -17,16 +17,25 @@ import {
   Panel,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { RefreshCw, LayoutGrid, Trash2 } from 'lucide-react';
+import { RefreshCw, LayoutGrid, Eraser, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
-import ComponentNode from './nodes/ComponentNode';
+import ComponentNode, { 
+  GENERATION_START_EVENT, 
+  GENERATION_COMPLETE_EVENT, 
+  GENERATION_ERROR_EVENT,
+  GenerationStartPayload,
+  GenerationCompletePayload,
+  GenerationErrorPayload,
+} from './nodes/ComponentNode';
 import IterationNode from './nodes/IterationNode';
+import SkeletonIterationNode from './nodes/SkeletonIterationNode';
 import { FULLSCREEN_NODE_EVENT, usePlaygroundContext } from './PlaygroundClient';
 
 const nodeTypes = {
   component: ComponentNode,
   iteration: IterationNode,
+  skeleton: SkeletonIterationNode,
 };
 
 const STORAGE_KEY = 'playground-canvas-state';
@@ -79,6 +88,16 @@ const getNodeId = () => `node_${++nodeIdCounter}`;
 export const ITERATION_PROMPT_COPIED_EVENT = 'iteration-prompt-copied';
 export const ITERATION_FETCH_EVENT = 'iteration-fetch-requested';
 
+// Track generation info for status display
+interface GenerationInfo {
+  componentId: string;
+  componentName: string;
+  parentNodeId: string;
+  iterationCount: number;
+  skeletonNodeIds: string[];
+  startTime: number; // Timestamp when generation started
+}
+
 export default function PlaygroundCanvas() {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
@@ -88,6 +107,42 @@ export default function PlaygroundCanvas() {
   const [isPolling, setIsPolling] = useState(false);
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Generation state
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationInfo, setGenerationInfo] = useState<GenerationInfo | null>(null);
+  const generationInfoRef = useRef<GenerationInfo | null>(null);
+  const [lastGenerationDuration, setLastGenerationDuration] = useState<string | null>(null);
+  const [elapsedTime, setElapsedTime] = useState<string>('0m:00s');
+  
+  // Keep ref in sync with state
+  useEffect(() => {
+    generationInfoRef.current = generationInfo;
+  }, [generationInfo]);
+  
+  // Running timer during generation
+  useEffect(() => {
+    if (!isGenerating || !generationInfo?.startTime) {
+      return;
+    }
+    
+    // Update elapsed time every second
+    const updateElapsed = () => {
+      const durationMs = Date.now() - generationInfo.startTime;
+      const totalSeconds = Math.floor(durationMs / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      setElapsedTime(`${minutes}m:${seconds.toString().padStart(2, '0')}s`);
+    };
+    
+    // Initial update
+    updateElapsed();
+    
+    // Update every second
+    const intervalId = setInterval(updateElapsed, 1000);
+    
+    return () => clearInterval(intervalId);
+  }, [isGenerating, generationInfo?.startTime]);
   
   // Fullscreen state from context
   const { fullscreenNodeId } = usePlaygroundContext();
@@ -344,6 +399,145 @@ export default function PlaygroundCanvas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps = run once on mount
 
+  // Handle generation lifecycle events
+  useEffect(() => {
+    const handleGenerationStart = (e: CustomEvent<GenerationStartPayload>) => {
+      const { componentId, componentName, parentNodeId, iterationCount } = e.detail;
+      
+      console.log('[Playground] Generation started:', { componentId, componentName, iterationCount });
+      
+      // Find the parent node
+      const parentNode = nodes.find(n => n.id === parentNodeId);
+      if (!parentNode) {
+        console.error('[Playground] Parent node not found:', parentNodeId);
+        return;
+      }
+
+      // Create skeleton nodes
+      const skeletonNodes: Node[] = [];
+      const skeletonEdges: Edge[] = [];
+      const skeletonNodeIds: string[] = [];
+
+      for (let i = 1; i <= iterationCount; i++) {
+        const position = calculateIterationPosition(parentNode, i, iterationCount);
+        const nodeId = getNodeId();
+        skeletonNodeIds.push(nodeId);
+
+        skeletonNodes.push({
+          id: nodeId,
+          type: 'skeleton',
+          position,
+          data: {
+            iterationNumber: i,
+            componentName,
+            parentNodeId, // Include parentNodeId for auto-arrange grouping
+            totalIterations: iterationCount,
+          },
+        });
+
+        skeletonEdges.push({
+          id: `edge_${parentNodeId}_${nodeId}`,
+          source: parentNodeId,
+          target: nodeId,
+          type: 'smoothstep',
+          animated: true, // Animated edges for skeleton nodes
+          style: { stroke: '#f59e0b', strokeWidth: 1.5, strokeDasharray: '5,5' },
+        });
+      }
+
+      // Add skeleton nodes to canvas
+      setNodes(nds => [...nds, ...skeletonNodes]);
+      setEdges(eds => [...eds, ...skeletonEdges]);
+
+      // Update generation state
+      setIsGenerating(true);
+      setLastGenerationDuration(null); // Clear previous duration
+      setGenerationInfo({
+        componentId,
+        componentName,
+        parentNodeId,
+        iterationCount,
+        skeletonNodeIds,
+        startTime: Date.now(),
+      });
+
+      // Auto-arrange nodes after skeleton nodes are added (with small delay for state update)
+      // We need to trigger this after React processes the state update
+      setTimeout(() => {
+        // Dispatch a custom event to trigger auto-arrange with fitView
+        window.dispatchEvent(new CustomEvent('PLAYGROUND_AUTO_ARRANGE', { detail: { fitView: true } }));
+      }, 100);
+    };
+
+    const handleGenerationComplete = (e: CustomEvent<GenerationCompletePayload>) => {
+      console.log('[Playground] Generation completed:', e.detail);
+      
+      // Use ref to get latest generation info
+      const info = generationInfoRef.current;
+      
+      // Calculate and store duration
+      if (info?.startTime) {
+        const durationMs = Date.now() - info.startTime;
+        const totalSeconds = Math.floor(durationMs / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        const formatted = `${minutes}m:${seconds.toString().padStart(2, '0')}s`;
+        setLastGenerationDuration(formatted);
+        console.log('[Playground] Generation took:', formatted);
+      }
+      
+      // Remove skeleton nodes
+      if (info) {
+        console.log('[Playground] Removing skeleton nodes:', info.skeletonNodeIds);
+        setNodes(nds => nds.filter(n => !info.skeletonNodeIds.includes(n.id)));
+        setEdges(eds => eds.filter(e => !info.skeletonNodeIds.some(id => e.target === id)));
+      }
+
+      // Reset generation state
+      setIsGenerating(false);
+      setGenerationInfo(null);
+
+      // Trigger iteration scan to fetch newly created iterations
+      // Small delay to allow filesystem to sync
+      setTimeout(() => {
+        scanForIterations(false);
+        // Auto-arrange after new iterations are added
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('PLAYGROUND_AUTO_ARRANGE', { detail: { fitView: true } }));
+        }, 200);
+      }, 1000);
+    };
+
+    const handleGenerationError = (e: CustomEvent<GenerationErrorPayload>) => {
+      console.error('[Playground] Generation error:', e.detail);
+      
+      // Use ref to get latest generation info
+      const info = generationInfoRef.current;
+      
+      // Remove skeleton nodes
+      if (info) {
+        console.log('[Playground] Removing skeleton nodes (error):', info.skeletonNodeIds);
+        setNodes(nds => nds.filter(n => !info.skeletonNodeIds.includes(n.id)));
+        setEdges(eds => eds.filter(e => !info.skeletonNodeIds.some(id => e.target === id)));
+      }
+
+      // Reset generation state
+      setIsGenerating(false);
+      setGenerationInfo(null);
+    };
+
+    window.addEventListener(GENERATION_START_EVENT, handleGenerationStart as EventListener);
+    window.addEventListener(GENERATION_COMPLETE_EVENT, handleGenerationComplete as EventListener);
+    window.addEventListener(GENERATION_ERROR_EVENT, handleGenerationError as EventListener);
+
+    return () => {
+      window.removeEventListener(GENERATION_START_EVENT, handleGenerationStart as EventListener);
+      window.removeEventListener(GENERATION_COMPLETE_EVENT, handleGenerationComplete as EventListener);
+      window.removeEventListener(GENERATION_ERROR_EVENT, handleGenerationError as EventListener);
+    };
+    // Using ref for generationInfo so we don't need it in deps
+  }, [nodes, calculateIterationPosition, setNodes, setEdges, scanForIterations]);
+
   // Handle fullscreen node events
   const { fitView } = useReactFlow();
   
@@ -416,7 +610,7 @@ export default function PlaygroundCanvas() {
     for (const node of deletedNodes) {
       if (node.type === 'iteration' && node.data.filename) {
         try {
-          await fetch('/api/playground/iterations', {
+          await fetch('/playground/api/iterations', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ filename: node.data.filename }),
@@ -431,9 +625,11 @@ export default function PlaygroundCanvas() {
 
   // Auto-arrange nodes: components on left, iterations on right
   // Groups component + its iterations together, then stacks groups vertically
-  const autoArrangeNodes = useCallback(() => {
+  // Also handles skeleton nodes (treats them as iterations)
+  const autoArrangeNodes = useCallback((andFitView: boolean = false) => {
     const componentNodes = nodes.filter(n => n.type === 'component');
-    const iterationNodes = nodes.filter(n => n.type === 'iteration');
+    // Include both iteration and skeleton nodes as "iteration-like" nodes
+    const iterationLikeNodes = nodes.filter(n => n.type === 'iteration' || n.type === 'skeleton');
     
     if (componentNodes.length === 0) return;
 
@@ -449,16 +645,16 @@ export default function PlaygroundCanvas() {
       if (measured?.width && measured?.height) {
         return { width: measured.width, height: measured.height };
       }
-      if (node.type === 'iteration') {
+      if (node.type === 'iteration' || node.type === 'skeleton') {
         return { width: 400, height: 300 };
       }
       return { width: 650, height: 450 };
     };
 
-    // Find iterations for a component
+    // Find iterations (and skeletons) for a component
     const findIterationsForComponent = (componentNode: Node): Node[] => {
       const componentId = componentNode.data.componentId as string;
-      return iterationNodes.filter(iterNode => {
+      return iterationLikeNodes.filter(iterNode => {
         const parentNodeId = iterNode.data.parentNodeId as string | undefined;
         if (parentNodeId === componentNode.id) return true;
         
@@ -529,9 +725,9 @@ export default function PlaygroundCanvas() {
       currentGroupY += groupHeight + GROUP_GAP;
     });
 
-    // Position any orphan iteration nodes
+    // Position any orphan iteration nodes (including skeletons)
     const positionedIds = new Set(positionMap.keys());
-    const orphanIterations = iterationNodes.filter(n => !positionedIds.has(n.id));
+    const orphanIterations = iterationLikeNodes.filter(n => !positionedIds.has(n.id));
     
     if (orphanIterations.length > 0) {
       let orphanY = currentGroupY;
@@ -555,16 +751,48 @@ export default function PlaygroundCanvas() {
         return node;
       })
     );
-  }, [nodes, setNodes]);
+
+    // Fit view to show all nodes if requested
+    if (andFitView) {
+      setTimeout(() => {
+        fitView({
+          padding: 0.15,
+          duration: 400,
+          maxZoom: 1,
+        });
+      }, 50); // Small delay to let node positions update
+    }
+  }, [nodes, setNodes, fitView]);
+
+  // Handle auto-arrange event (triggered after skeleton nodes are added)
+  useEffect(() => {
+    const handleAutoArrange = (e: CustomEvent<{ fitView: boolean }>) => {
+      autoArrangeNodes(e.detail.fitView);
+    };
+
+    window.addEventListener('PLAYGROUND_AUTO_ARRANGE', handleAutoArrange as EventListener);
+    return () => {
+      window.removeEventListener('PLAYGROUND_AUTO_ARRANGE', handleAutoArrange as EventListener);
+    };
+  }, [autoArrangeNodes]);
 
   // Clear all nodes and edges
   const clearAllNodes = useCallback(() => {
-    if (window.confirm('Are you sure you want to delete all nodes? This cannot be undone.')) {
+    if (window.confirm('Clear the canvas? This will remove all nodes.')) {
+      // Stop polling first to prevent re-adding iterations
+      stopPolling();
+      
       setNodes([]);
       setEdges([]);
+      
+      // Also clear knownIterations so they can be re-fetched
+      // when user drags the component back and scans
       setKnownIterations([]);
+      
+      // Also clear localStorage to prevent stale state on refresh
+      localStorage.removeItem(STORAGE_KEY);
     }
-  }, [setNodes, setEdges]);
+  }, [setNodes, setEdges, stopPolling]);
 
   return (
     <TooltipProvider>
@@ -593,6 +821,24 @@ export default function PlaygroundCanvas() {
           {/* Hide controls in fullscreen mode */}
           {!isFullscreen && (
             <Panel position="top-right" className="flex items-center gap-2">
+              {/* Generation status indicator with running timer */}
+              {isGenerating && generationInfo && (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-700">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-xs font-medium">
+                    Generating {generationInfo.iterationCount} iterations for {generationInfo.componentName}...
+                  </span>
+                  <span className="text-xs text-amber-500 font-mono">
+                    {elapsedTime}
+                  </span>
+                </div>
+              )}
+              {/* Last generation duration */}
+              {!isGenerating && lastGenerationDuration && (
+                <span className="text-xs text-gray-400 font-mono">
+                  {lastGenerationDuration}
+                </span>
+              )}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
@@ -628,14 +874,13 @@ export default function PlaygroundCanvas() {
                 <TooltipTrigger asChild>
                   <button
                     onClick={clearAllNodes}
-                    disabled={nodes.length === 0}
-                    className="p-2 rounded-lg border bg-white border-red-200 text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="p-2 rounded-lg border bg-white border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Eraser className="w-4 h-4" />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Delete all nodes from canvas</p>
+                  <p>Clear canvas</p>
                 </TooltipContent>
               </Tooltip>
             </Panel>
@@ -648,7 +893,11 @@ export default function PlaygroundCanvas() {
           {!isFullscreen && (
             <MiniMap
               className="!bg-white !border-gray-200 !rounded-lg !shadow-sm"
-              nodeColor={(node) => node.type === 'iteration' ? '#6b7280' : '#3b82f6'}
+              nodeColor={(node) => {
+                if (node.type === 'skeleton') return '#f59e0b'; // Amber for skeletons
+                if (node.type === 'iteration') return '#6b7280'; // Gray for iterations
+                return '#3b82f6'; // Blue for components
+              }}
               maskColor="rgba(0, 0, 0, 0.08)"
             />
           )}

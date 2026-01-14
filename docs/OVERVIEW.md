@@ -28,13 +28,14 @@ The Playground allows developers to visually iterate on React components. Users 
 
 1. **Drag Component** → User drags a component from sidebar to canvas
 2. **Click Iterate** → User clicks "Iterate" button on the component node
-3. **Select Mode** → Choose "Layout" or "Vibe" iteration type
-4. **Prompt Copied** → System generates and copies prompt to clipboard
-5. **Paste in Cursor** → User pastes prompt in Cursor AI chat
-6. **AI Generates** → Cursor AI creates iteration files in `/iterations` folder
-7. **Auto-Detection** → File watcher detects new files
-8. **Display on Canvas** → Iterations appear connected to original component
-9. **Adopt or Delete** → User can adopt an iteration or delete it
+3. **Configure** → Set iteration count, depth, and custom instructions
+4. **Generate** → Either:
+   - **Copy Prompt** → Paste manually in Cursor chat
+   - **Run with Cursor** → Automated via CLI (see CURSOR-INTEGRATION.md)
+5. **AI Generates** → Cursor creates iteration files in `/iterations` folder
+6. **Auto-Detection** → New files detected via API scan
+7. **Display on Canvas** → Iterations appear connected to original component
+8. **Adopt or Delete** → User can adopt an iteration or delete it
 
 ## Key Folders
 
@@ -42,8 +43,11 @@ The Playground allows developers to visually iterate on React components. Users 
 |--------|---------|
 | `src/app/playground/` | Main playground code |
 | `src/app/playground/docs/` | Documentation for AI agents |
+| `src/app/playground/previews/` | Preview components for canvas (explicit props, no store deps) |
 | `src/app/playground/iterations/` | Generated iteration files (temporary) |
 | `src/app/playground/nodes/` | React Flow node components |
+
+> **Note**: Preview files belong in `/playground/previews/`, NOT in `/src/components/`. See FILE-CONVENTIONS.md for details.
 
 ## State Management
 
@@ -51,22 +55,13 @@ The Playground allows developers to visually iterate on React components. Users 
 - **Iteration Files**: Physical `.tsx` files in `/iterations` folder
 - **Registry**: Maps component IDs to their React components
 
-## Iteration Types
+## Iteration Focus
 
-### Layout Iteration
-Changes spatial arrangement, structure, and positioning:
+Layout iterations change spatial arrangement, structure, and positioning:
 - Grid vs Flex layouts
 - Spacing and alignment
 - Component ordering
 - Responsive breakpoints
-
-### Vibe Iteration
-Changes visual style while keeping structure:
-- Colors and gradients
-- Typography weights
-- Border styles
-- Shadow and depth
-- Animation/transitions
 
 ## Component Scope
 

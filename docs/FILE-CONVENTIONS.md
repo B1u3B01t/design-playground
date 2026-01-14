@@ -1,5 +1,55 @@
 # File Conventions
 
+## Playground File Locations
+
+All playground-related files stay within the playground folder:
+
+```
+src/app/playground/
+├── previews/          ← Preview components for the canvas
+├── iterations/        ← Generated iteration files
+├── docs/              ← Documentation
+├── nodes/             ← React Flow node components
+└── registry.tsx       ← Component registry
+```
+
+## Preview File Location
+
+> ⚠️ **IMPORTANT**: Preview files must be in the playground folder, NOT in `/src/components/`.
+
+Preview files are playground-specific versions of components that take explicit props instead of reading from app stores/context. They belong in:
+
+```
+src/app/playground/previews/
+```
+
+Naming convention:
+```
+{ComponentName}.preview.tsx
+```
+
+Example:
+```
+src/app/playground/previews/SubscriptionExpiringBanner.preview.tsx
+```
+
+### Why separate preview files?
+
+Production components often use hooks like `useUserStore()` or `useAuth()` which require app context. Preview files accept explicit props so they can render in isolation on the playground canvas.
+
+```tsx
+// ❌ Production component - won't work in playground
+export function Banner() {
+  const { isPro } = useUserStore();  // No store in playground!
+  ...
+}
+
+// ✅ Preview component - works in playground
+export function BannerPreview({ isPro }: { isPro: boolean }) {
+  ...  // Explicit props, no store dependency
+}
+```
+
 ## Iteration File Location
 
 All iteration files go in:
