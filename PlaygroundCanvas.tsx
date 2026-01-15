@@ -852,7 +852,7 @@ export default function PlaygroundCanvas() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
-                    onClick={autoArrangeNodes}
+                    onClick={() => autoArrangeNodes()}
                     className="p-2 rounded-lg border bg-white border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
                   >
                     <LayoutGrid className="w-4 h-4" />
