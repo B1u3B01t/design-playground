@@ -351,7 +351,7 @@ function CancelGenerationButton() {
       if (response.ok) {
         console.log('Generation cancelled:', data.message);
         // Dispatch error event to clean up skeleton nodes
-        window.dispatchEvent(new CustomEvent(GENERATION_ERROR_EVENT, {
+        window.dispatchEvent(new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
           detail: { componentId: '', parentNodeId: '', error: 'Cancelled by user' }
         }));
       } else {
@@ -593,16 +593,32 @@ function IterateDialog({ componentId, parentNodeId, isGlobalGenerating }: {
         }),
       });
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        // If JSON parsing fails, create error detail
+        const errorMessage = `Failed to parse response: ${jsonError instanceof Error ? jsonError.message : 'Unknown JSON error'}`;
+        console.error('[IterateDialog] JSON parse error:', errorMessage);
+        window.dispatchEvent(new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+          detail: {
+            componentId: componentId || '',
+            parentNodeId: parentNodeId || '',
+            error: errorMessage,
+          }
+        }));
+        return;
+      }
 
       if (!response.ok || !data.success) {
-        console.error('[IterateDialog] Generation failed:', data.error);
+        const errorMessage = data?.error || data?.message || 'Generation failed';
+        console.error('[IterateDialog] Generation failed:', errorMessage);
         // Dispatch error event to remove skeleton nodes
         window.dispatchEvent(new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
           detail: {
-            componentId,
-            parentNodeId,
-            error: data.error || 'Generation failed',
+            componentId: componentId || '',
+            parentNodeId: parentNodeId || '',
+            error: errorMessage,
           }
         }));
       } else {
@@ -610,19 +626,20 @@ function IterateDialog({ componentId, parentNodeId, isGlobalGenerating }: {
         // Dispatch complete event to remove skeletons and scan for iterations
         window.dispatchEvent(new CustomEvent<GenerationCompletePayload>(GENERATION_COMPLETE_EVENT, {
           detail: {
-            componentId,
-            parentNodeId,
+            componentId: componentId || '',
+            parentNodeId: parentNodeId || '',
             output: '',
           }
         }));
       }
     } catch (error) {
-      console.error('[IterateDialog] Generation error:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error) || 'Unknown error';
+      console.error('[IterateDialog] Generation error:', errorMessage, error);
       window.dispatchEvent(new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
         detail: {
-          componentId,
-          parentNodeId,
-          error: error instanceof Error ? error.message : 'Unknown error',
+          componentId: componentId || '',
+          parentNodeId: parentNodeId || '',
+          error: errorMessage,
         }
       }));
     }

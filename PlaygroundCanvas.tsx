@@ -509,7 +509,17 @@ export default function PlaygroundCanvas() {
     };
 
     const handleGenerationError = (e: CustomEvent<GenerationErrorPayload>) => {
-      console.error('[Playground] Generation error:', e.detail);
+      const detail = e.detail || {};
+      const errorMessage = detail.error || 'Unknown error occurred';
+      const componentId = detail.componentId || 'unknown';
+      const parentNodeId = detail.parentNodeId || 'unknown';
+      
+      console.error('[Playground] Generation error:', {
+        error: errorMessage,
+        componentId,
+        parentNodeId,
+        fullDetail: detail,
+      });
       
       // Use ref to get latest generation info
       const info = generationInfoRef.current;

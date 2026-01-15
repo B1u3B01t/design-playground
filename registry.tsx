@@ -1,5 +1,6 @@
 import { ComponentType } from 'react';
-import { SubscriptionExpiringBannerPreview } from './previews/SubscriptionExpiringBanner.preview';
+import SubscriptionExpiringBannerPreview from './previews/SubscriptionExpiringBanner.preview';
+
 
 // ---------------------------------------------------------------------------
 // Types
@@ -47,49 +48,20 @@ export function isLeaf(item: RegistryItem): item is RegistryLeafItem {
 
 export const registry: RegistryItem[] = [
   {
-    id: 'banners',
-    label: 'Banners',
-    children: [
-      {
-        id: 'subscription-expiring-banner',
-        label: 'Subscription Expiring Banner',
-        Component: SubscriptionExpiringBannerPreview as unknown as ComponentType<Record<string, unknown>>,
-        props: { daysRemaining: 3, isExpired: false },
-        sourcePath: 'src/components/SubscriptionExpiringBanner.preview.tsx',
-        propsInterface: `interface SubscriptionExpiringBannerPreviewProps {
-  /** Number of days remaining until subscription ends */
-  daysRemaining: number;
-  /** Whether the subscription has already expired */
-  isExpired?: boolean;
+    id: 'subscription-expiring-banner',
+    label: 'Subscription Expiring Banner',
+    Component: SubscriptionExpiringBannerPreview,
+    props: {
+      isPro: true,
+      subscriptionEndsAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days from now
+      subscriptionStatus: 'active',
+    },
+    sourcePath: 'src/components/SubscriptionExpiringBanner.tsx',
+    propsInterface: `{
+  isPro?: boolean;
+  subscriptionEndsAt?: string | null;
+  subscriptionStatus?: string | null;
 }`,
-      },
-      {
-        id: 'subscription-expiring-banner-lastday',
-        label: 'Subscription Expiring Banner (Last Day)',
-        Component: SubscriptionExpiringBannerPreview as unknown as ComponentType<Record<string, unknown>>,
-        props: { daysRemaining: 1, isExpired: false },
-        sourcePath: 'src/components/SubscriptionExpiringBanner.preview.tsx',
-        propsInterface: `interface SubscriptionExpiringBannerPreviewProps {
-  /** Number of days remaining until subscription ends */
-  daysRemaining: number;
-  /** Whether the subscription has already expired */
-  isExpired?: boolean;
-}`,
-      },
-      {
-        id: 'subscription-expiring-banner-expired',
-        label: 'Subscription Expiring Banner (Expired)',
-        Component: SubscriptionExpiringBannerPreview as unknown as ComponentType<Record<string, unknown>>,
-        props: { daysRemaining: 0, isExpired: true },
-        sourcePath: 'src/components/SubscriptionExpiringBanner.preview.tsx',
-        propsInterface: `interface SubscriptionExpiringBannerPreviewProps {
-  /** Number of days remaining until subscription ends */
-  daysRemaining: number;
-  /** Whether the subscription has already expired */
-  isExpired?: boolean;
-}`,
-      },
-    ],
   },
 ];
 
