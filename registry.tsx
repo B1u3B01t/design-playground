@@ -1,5 +1,4 @@
 import { ComponentType } from 'react';
-import SubscriptionExpiringBannerPreview from './previews/SubscriptionExpiringBanner.preview';
 
 
 // ---------------------------------------------------------------------------
@@ -47,22 +46,6 @@ export function isLeaf(item: RegistryItem): item is RegistryLeafItem {
 // ---------------------------------------------------------------------------
 
 export const registry: RegistryItem[] = [
-  {
-    id: 'subscription-expiring-banner',
-    label: 'Subscription Expiring Banner',
-    Component: SubscriptionExpiringBannerPreview,
-    props: {
-      isPro: true,
-      subscriptionEndsAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days from now
-      subscriptionStatus: 'active',
-    },
-    sourcePath: 'src/components/SubscriptionExpiringBanner.tsx',
-    propsInterface: `{
-  isPro?: boolean;
-  subscriptionEndsAt?: string | null;
-  subscriptionStatus?: string | null;
-}`,
-  },
 ];
 
 // ---------------------------------------------------------------------------
