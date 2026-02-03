@@ -411,12 +411,9 @@ const SELECTED_MODEL_STORAGE_KEY = 'playground-selected-model';
 // Fallback models (used if API fetch fails and localStorage is empty)
 const FALLBACK_MODELS: ModelOption[] = [
   { value: '', label: 'Default' },
-  { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
-  { value: 'claude-3.5-sonnet', label: 'Claude 3.5 Sonnet' },
-  { value: 'gpt-4o', label: 'GPT-4o' },
-  { value: 'gpt-4.1', label: 'GPT-4.1' },
-  { value: 'o3', label: 'o3' },
   { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+  { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+  { value: 'auto', label: 'Auto' },
 ];
 
 interface ModelOption {
