@@ -1,11 +1,16 @@
 {
   "models": [
-    { "value": "", "label": "Default" },
-    { "value": "claude-3.5-sonnet", "label": "Claude 3.5 Sonnet" },
-    { "value": "claude-3-opus", "label": "Claude 3 Opus" },
-    { "value": "gemini-2.5-pro", "label": "Gemini 2.5 Pro" },
-    { "value": "gemini-2.0-flash", "label": "Gemini 2.0 Flash" },
-    { "value": "auto", "label": "Auto" }
+    { "value": "", "label": "Auto (Default)" },
+    { "value": "opus-4.6-thinking", "label": "Claude 4.6 Opus (Thinking)" },
+    { "value": "opus-4.6", "label": "Claude 4.6 Opus" },
+    { "value": "opus-4.5", "label": "Claude 4.5 Opus" },
+    { "value": "sonnet-4.5", "label": "Claude 4.5 Sonnet" },
+    { "value": "gpt-5.2", "label": "GPT-5.2" },
+    { "value": "gpt-5.2-codex", "label": "GPT-5.2 Codex" },
+    { "value": "gpt-5.1-codex-max", "label": "GPT-5.1 Codex Max" },
+    { "value": "gemini-3-pro", "label": "Gemini 3 Pro" },
+    { "value": "gemini-3-flash", "label": "Gemini 3 Flash" },
+    { "value": "grok", "label": "Grok" }
   ],
-  "description": "Fallback model list used when dynamic fetching fails"
+  "description": "Fallback model list used when `cursor agent models` CLI is unavailable"
 }

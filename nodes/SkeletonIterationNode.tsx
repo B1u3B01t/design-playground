@@ -60,10 +60,16 @@ function SkeletonIterationNode({ data }: SkeletonIterationNodeProps) {
         <div className="h-5 w-14 bg-gray-200 rounded animate-pulse" style={{ animationDelay: '150ms' }} />
       </div>
 
-      {/* Handles for connections - on the left side (same as IterationNode) */}
+      {/* Target handle - incoming edge from parent (left side) */}
       <Handle
         type="target"
         position={Position.Left}
+        className="!w-3 !h-3 !bg-amber-500 !border-2 !border-white"
+      />
+      {/* Source handle - for consistency with IterationNode tree structure (right side) */}
+      <Handle
+        type="source"
+        position={Position.Right}
         className="!w-3 !h-3 !bg-amber-500 !border-2 !border-white"
       />
     </div>

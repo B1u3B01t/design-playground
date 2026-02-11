@@ -87,6 +87,7 @@ import { cn } from "@/lib/utils";
 /**
  * @iteration 1
  * @parent ArticleCard
+ * @sourceIteration ArticleCard.iteration-2.tsx  (only if derived from another iteration)
  * @description Horizontal card layout with image on left
  */
 
@@ -111,11 +112,34 @@ Always include the metadata comment block:
 
 ```tsx
 /**
- * @iteration {number}      - Which iteration this is (1, 2, 3, 4)
- * @parent {ComponentName}  - Original component name
- * @description {text}      - Brief description of what changed
+ * @iteration {number}            - Which iteration this is (1, 2, 3, 4)
+ * @parent {ComponentName}        - Original component name
+ * @sourceIteration {filename}    - (Optional) The iteration file this was derived from
+ * @description {text}            - Brief description of what changed
  */
 ```
+
+- `@sourceIteration` is **required** when the iteration was generated from another iteration (not directly from the original component). Use the full filename including `.tsx`, e.g. `PricingCard.iteration-1.tsx`.
+- `@sourceIteration` should be **omitted** when the iteration was generated directly from the original component.
+
+### 6. Tree Manifest (`tree.json`)
+
+After creating iterations, you **must** update `src/app/playground/iterations/tree.json`. This file tracks the parent-child relationships between iterations.
+
+```json
+{
+  "version": 1,
+  "entries": {
+    "PricingCard.iteration-1.tsx": { "parent": "pricing-card" },
+    "PricingCard.iteration-2.tsx": { "parent": "pricing-card" },
+    "PricingCard.iteration-3.tsx": { "parent": "PricingCard.iteration-1.tsx" }
+  }
+}
+```
+
+- `parent` is either a **registry component ID** (e.g. `"pricing-card"`) for iterations created from the original component, or an **iteration filename** (e.g. `"PricingCard.iteration-1.tsx"`) for iterations created from another iteration.
+- If the file doesn't exist yet, create it with `{ "version": 1, "entries": {} }` and add your entries.
+- Always **merge** new entries into the existing file — do not overwrite existing entries.
 
 ## Layout Guidelines
 
@@ -350,4 +374,6 @@ Before saving each iteration:
 - [ ] Each iteration is distinct from others
 - [ ] **Iterations registered in `iterations/index.ts`**
 - [ ] **Map keys include `.tsx` extension** (e.g., `'Component.iteration-1.tsx'`)
+- [ ] **`iterations/tree.json` updated** with correct parent for each new iteration
+- [ ] **`@sourceIteration` included** in metadata if derived from another iteration
 

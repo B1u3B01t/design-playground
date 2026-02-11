@@ -3,6 +3,7 @@
 import { useState, DragEvent } from 'react';
 import { ChevronRight, ChevronDown, GripVertical } from 'lucide-react';
 import { registry, RegistryItem, isGroup, isLeaf } from './registry';
+import { DND_DATA_KEY } from './lib/constants';
 
 interface TreeNodeProps {
   item: RegistryItem;
@@ -13,7 +14,7 @@ function TreeNode({ item, depth = 0 }: TreeNodeProps) {
   const [expanded, setExpanded] = useState(true);
 
   const handleDragStart = (e: DragEvent<HTMLDivElement>, componentId: string) => {
-    e.dataTransfer.setData('application/x-playground-component', componentId);
+    e.dataTransfer.setData(DND_DATA_KEY, componentId);
     e.dataTransfer.effectAllowed = 'move';
   };
 

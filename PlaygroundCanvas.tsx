@@ -19,18 +19,66 @@ import {
 import '@xyflow/react/dist/style.css';
 import { RefreshCw, LayoutGrid, Eraser, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './ui/alert-dialog';
 
-import ComponentNode, { 
-  GENERATION_START_EVENT, 
-  GENERATION_COMPLETE_EVENT, 
-  GENERATION_ERROR_EVENT,
-  GenerationStartPayload,
-  GenerationCompletePayload,
-  GenerationErrorPayload,
-} from './nodes/ComponentNode';
+import ComponentNode from './nodes/ComponentNode';
 import IterationNode from './nodes/IterationNode';
 import SkeletonIterationNode from './nodes/SkeletonIterationNode';
-import { FULLSCREEN_NODE_EVENT, usePlaygroundContext } from './PlaygroundClient';
+import {
+  GENERATION_START_EVENT,
+  GENERATION_COMPLETE_EVENT,
+  GENERATION_ERROR_EVENT,
+  FULLSCREEN_NODE_EVENT,
+  PLAYGROUND_AUTO_ARRANGE_EVENT,
+  STORAGE_KEY,
+  POLL_INTERVAL,
+  POLL_DURATION,
+  ITERATION_HORIZONTAL_SPACING,
+  ITERATION_VERTICAL_OFFSET,
+  ARRANGE_START_X,
+  ARRANGE_START_Y,
+  ARRANGE_VERTICAL_GAP,
+  ARRANGE_GROUP_GAP,
+  DEFAULT_ITERATION_NODE_WIDTH,
+  DEFAULT_ITERATION_NODE_HEIGHT,
+  DEFAULT_COMPONENT_NODE_WIDTH,
+  DEFAULT_COMPONENT_NODE_HEIGHT,
+  ITERATION_EDGE_STYLE,
+  SKELETON_EDGE_STYLE,
+  FITVIEW_FULLSCREEN_ENTER,
+  FITVIEW_FULLSCREEN_EXIT,
+  FITVIEW_AFTER_ARRANGE,
+  FULLSCREEN_ENTER_DELAY,
+  FULLSCREEN_EXIT_DELAY,
+  ARRANGE_FITVIEW_DELAY,
+  POST_GENERATION_SCAN_DELAY,
+  POST_GENERATION_ARRANGE_DELAY,
+  SKELETON_ARRANGE_DELAY,
+  MINIMAP_SKELETON_COLOR,
+  MINIMAP_ITERATION_COLOR,
+  MINIMAP_COMPONENT_COLOR,
+  MINIMAP_MASK_COLOR,
+  BACKGROUND_GAP,
+  BACKGROUND_DOT_SIZE,
+  BACKGROUND_COLOR,
+  DND_DATA_KEY,
+  CANVAS_MAX_ZOOM,
+  CANVAS_MIN_ZOOM,
+  ITERATION_COLLAPSE_TOGGLE_EVENT,
+  TREE_COLUMN_WIDTH,
+  type GenerationStartPayload,
+  type GenerationCompletePayload,
+  type GenerationErrorPayload,
+} from './lib/constants';
 
 const nodeTypes = {
   component: ComponentNode,
@@ -38,24 +86,21 @@ const nodeTypes = {
   skeleton: SkeletonIterationNode,
 };
 
-const STORAGE_KEY = 'playground-canvas-state';
-const POLL_INTERVAL = 10000; // Poll every 10 seconds when active
-const POLL_DURATION = 120000; // Poll for 120 seconds after prompt copy (resets on each find)
-
 interface IterationFile {
   filename: string;
   componentName: string;
   iterationNumber: number;
   parentId: string;
-  mode: 'layout' | 'vibe' | 'unknown';
   description: string;
+  sourceIteration: string | null;
 }
 
 interface CanvasState {
   nodes: Node[];
   edges: Edge[];
   nodeIdCounter: number;
-  knownIterations: string[]; // Track which iteration files we've seen
+  knownIterations: string[];
+  collapsedNodeIds?: string[];
 }
 
 function loadCanvasState(): CanvasState | null {
@@ -71,22 +116,19 @@ function loadCanvasState(): CanvasState | null {
   return null;
 }
 
-function saveCanvasState(nodes: Node[], edges: Edge[], counter: number, knownIterations: string[]) {
+function saveCanvasState(nodes: Node[], edges: Edge[], counter: number, knownIterations: string[], collapsedNodeIds: string[]) {
   if (typeof window === 'undefined') return;
   try {
-    const state: CanvasState = { nodes, edges, nodeIdCounter: counter, knownIterations };
+    const state: CanvasState = { nodes, edges, nodeIdCounter: counter, knownIterations, collapsedNodeIds };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (e) {
     console.error('Failed to save canvas state:', e);
   }
 }
 
-let nodeIdCounter = 0;
-const getNodeId = () => `node_${++nodeIdCounter}`;
-
-// Custom events for triggering iteration scan
-export const ITERATION_PROMPT_COPIED_EVENT = 'iteration-prompt-copied';
-export const ITERATION_FETCH_EVENT = 'iteration-fetch-requested';
+// Re-export event names so existing imports keep working
+export { ITERATION_PROMPT_COPIED_EVENT, ITERATION_FETCH_EVENT } from './lib/constants';
+import { ITERATION_PROMPT_COPIED_EVENT, ITERATION_FETCH_EVENT } from './lib/constants';
 
 // Track generation info for status display
 interface GenerationInfo {
@@ -103,10 +145,33 @@ export default function PlaygroundCanvas() {
   const initialized = useRef(false);
   const initialState = loadCanvasState();
   const [knownIterations, setKnownIterations] = useState<string[]>(initialState?.knownIterations || []);
+  const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(
+    new Set(initialState?.collapsedNodeIds || []),
+  );
+  const collapsedNodeIdsRef = useRef<Set<string>>(new Set(initialState?.collapsedNodeIds || []));
   const [isScanning, setIsScanning] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Node ID counter as a ref (survives re-renders, initialized from localStorage)
+  const nodeIdCounterRef = useRef<number>(initialState?.nodeIdCounter || 0);
+  const getNodeId = useCallback(() => `node_${++nodeIdCounterRef.current}`, []);
+  
+  // Refs to always have current values inside polling callbacks (avoids stale closures)
+  const nodesRef = useRef<Node[]>(initialState?.nodes || []);
+  const knownIterationsRef = useRef<string[]>(initialState?.knownIterations || []);
+  
+  // Keep collapsed ref in sync
+  useEffect(() => {
+    collapsedNodeIdsRef.current = collapsedNodeIds;
+  }, [collapsedNodeIds]);
+  
+  // Delete cascade/reparent dialog
+  const [deleteDialogNode, setDeleteDialogNode] = useState<Node | null>(null);
+  
+  // Clear canvas confirmation dialog
+  const [showClearDialog, setShowClearDialog] = useState(false);
   
   // Generation state
   const [isGenerating, setIsGenerating] = useState(false);
@@ -115,7 +180,7 @@ export default function PlaygroundCanvas() {
   const [lastGenerationDuration, setLastGenerationDuration] = useState<string | null>(null);
   const [elapsedTime, setElapsedTime] = useState<string>('0m:00s');
   
-  // Keep ref in sync with state
+  // Keep refs in sync with state
   useEffect(() => {
     generationInfoRef.current = generationInfo;
   }, [generationInfo]);
@@ -144,25 +209,32 @@ export default function PlaygroundCanvas() {
     return () => clearInterval(intervalId);
   }, [isGenerating, generationInfo?.startTime]);
   
-  // Fullscreen state from context
-  const { fullscreenNodeId } = usePlaygroundContext();
-  const isFullscreen = fullscreenNodeId !== null;
-  
+  // Fullscreen is now handled via a separate route in a new tab
+  const isFullscreen = false;
   if (initialState && !initialized.current) {
-    nodeIdCounter = initialState.nodeIdCounter;
+    nodeIdCounterRef.current = initialState.nodeIdCounter;
     initialized.current = true;
   }
   
   const [nodes, setNodes, onNodesChange] = useNodesState(initialState?.nodes || []);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialState?.edges || []);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
+
+  // Keep refs in sync with state (for use inside polling/interval callbacks)
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
+  
+  useEffect(() => {
+    knownIterationsRef.current = knownIterations;
+  }, [knownIterations]);
 
   // Save to localStorage whenever nodes or edges change
   useEffect(() => {
-    saveCanvasState(nodes, edges, nodeIdCounter, knownIterations);
-  }, [nodes, edges, knownIterations]);
+    saveCanvasState(nodes, edges, nodeIdCounterRef.current, knownIterations, Array.from(collapsedNodeIds));
+  }, [nodes, edges, knownIterations, collapsedNodeIds]);
 
-  // Find parent node for a given component
+  // Find parent node for a given component (reads from ref to avoid stale closure)
   const findParentNode = useCallback((componentName: string, parentId?: string): Node | undefined => {
     // Convert component name to possible registry IDs
     const possibleIds = [
@@ -177,21 +249,28 @@ export default function PlaygroundCanvas() {
       possibleIds.push(parentId);
     }
 
-    return nodes.find(node => {
+    return nodesRef.current.find(node => {
       if (node.type !== 'component') return false;
       const componentId = node.data.componentId as string | undefined;
       if (!componentId) return false;
       // Check exact match first, then includes
       return possibleIds.some(id => componentId === id || componentId.includes(id));
     });
-  }, [nodes]);
+  }, []);
+
+  // Find an iteration node by its filename (for tree-aware connections)
+  const findIterationNodeByFilename = useCallback((filename: string): Node | undefined => {
+    return nodesRef.current.find(
+      (n) => (n.type === 'iteration') && (n.data.filename as string) === filename,
+    );
+  }, []);
 
   // Calculate position for iteration node
   const calculateIterationPosition = useCallback((parentNode: Node, iterationNumber: number, totalIterations: number): { x: number; y: number } => {
     const parentX = parentNode.position.x;
     const parentY = parentNode.position.y;
-    const spacing = 420; // Horizontal spacing between iterations
-    const verticalOffset = 350; // Distance below parent
+    const spacing = ITERATION_HORIZONTAL_SPACING;
+    const verticalOffset = ITERATION_VERTICAL_OFFSET;
     
     // Center the iterations below the parent
     const totalWidth = (totalIterations - 1) * spacing;
@@ -238,7 +317,7 @@ export default function PlaygroundCanvas() {
     }, POLL_DURATION);
   }, [stopPolling]);
 
-  // Scan for iterations (single check)
+  // Scan for iterations (single check) -- tree-aware: connects to parent iteration or component
   const scanForIterations = useCallback(async (resetTimeoutOnFind = false) => {
     setIsScanning(true);
     try {
@@ -252,58 +331,70 @@ export default function PlaygroundCanvas() {
       const { iterations } = await response.json() as { iterations: IterationFile[] };
       console.log('[Playground] Found iterations from API:', iterations);
       
-      // Find new iterations we haven't seen
-      // Check both knownIterations and existing nodes to avoid duplicates
+      const currentNodes = nodesRef.current;
+      const currentKnownIterations = knownIterationsRef.current;
+      
+      // Build set of known filenames (from state + existing nodes)
       const existingFilenames = new Set([
-        ...knownIterations,
-        ...nodes
+        ...currentKnownIterations,
+        ...currentNodes
           .filter(n => n.type === 'iteration' && n.data.filename)
           .map(n => n.data.filename as string)
       ]);
       
-      console.log('[Playground] Known iterations:', Array.from(existingFilenames));
-      
       const newIterations = iterations.filter(
         (iter: IterationFile) => !existingFilenames.has(iter.filename)
       );
-      
-      console.log('[Playground] New iterations to add:', newIterations);
       
       if (newIterations.length === 0) {
         console.log('[Playground] No new iterations to add');
         return;
       }
       
-      // Group iterations by component name
-      const iterationsByComponent = new Map<string, IterationFile[]>();
-      for (const iter of iterations) {
-        const existing = iterationsByComponent.get(iter.componentName) || [];
-        existing.push(iter);
-        iterationsByComponent.set(iter.componentName, existing);
-      }
-      
-      // Create nodes and edges for new iterations
+      // Create nodes and edges for new iterations (tree-aware)
       const newNodes: Node[] = [];
       const newEdges: Edge[] = [];
       const newKnownFilenames: string[] = [];
       
+      // We may need to look up newly added nodes too (for chaining within one scan)
+      const pendingNodesByFilename = new Map<string, string>(); // filename -> nodeId
+      
       for (const iter of newIterations) {
-        const parentNode = findParentNode(iter.componentName, iter.parentId);
+        let sourceNodeId: string | undefined;
         
-        if (!parentNode) {
-          console.log(`No parent node found for ${iter.componentName} (parentId: ${iter.parentId}). Available component nodes:`, 
-            nodes.filter(n => n.type === 'component').map(n => n.data.componentId));
+        // Tree-aware: if sourceIteration exists, connect to the parent iteration node
+        if (iter.sourceIteration) {
+          // First check existing nodes
+          const sourceIterNode = findIterationNodeByFilename(iter.sourceIteration);
+          if (sourceIterNode) {
+            sourceNodeId = sourceIterNode.id;
+          } else {
+            // Check if it was just added in this batch
+            sourceNodeId = pendingNodesByFilename.get(iter.sourceIteration);
+          }
+        }
+        
+        // Fallback: connect to the component node
+        if (!sourceNodeId) {
+          const parentNode = findParentNode(iter.componentName, iter.parentId);
+          if (parentNode) {
+            sourceNodeId = parentNode.id;
+          }
+        }
+        
+        if (!sourceNodeId) {
+          console.log(`[Playground] No parent found for ${iter.filename} (source: ${iter.sourceIteration}, parentId: ${iter.parentId})`);
           continue;
         }
         
-        const componentIterations = iterationsByComponent.get(iter.componentName) || [];
-        const position = calculateIterationPosition(
-          parentNode,
-          iter.iterationNumber,
-          componentIterations.length
-        );
+        // Position temporarily -- auto-arrange will fix positions
+        const sourceNode = nodesRef.current.find(n => n.id === sourceNodeId) || newNodes.find(n => n.id === sourceNodeId);
+        const position = sourceNode
+          ? { x: sourceNode.position.x + ITERATION_HORIZONTAL_SPACING, y: sourceNode.position.y }
+          : { x: 400, y: 200 };
         
         const nodeId = getNodeId();
+        pendingNodesByFilename.set(iter.filename, nodeId);
         
         newNodes.push({
           id: nodeId,
@@ -313,45 +404,41 @@ export default function PlaygroundCanvas() {
             componentName: iter.componentName,
             iterationNumber: iter.iterationNumber,
             filename: iter.filename,
-            mode: iter.mode,
             description: iter.description,
-            parentNodeId: parentNode.id,
+            parentNodeId: sourceNodeId,
             onDelete: handleIterationDelete,
             onAdopt: handleIterationAdopt,
           },
         });
         
         newEdges.push({
-          id: `edge_${parentNode.id}_${nodeId}`,
-          source: parentNode.id,
+          id: `edge_${sourceNodeId}_${nodeId}`,
+          source: sourceNodeId,
           target: nodeId,
           type: 'smoothstep',
           animated: false,
-          style: { stroke: '#9ca3af', strokeWidth: 1.5 },
+          style: ITERATION_EDGE_STYLE,
         });
         
         newKnownFilenames.push(iter.filename);
       }
       
       if (newNodes.length > 0) {
-        console.log(`[Playground] ✓ Adding ${newNodes.length} new iteration nodes to canvas`);
+        console.log(`[Playground] Adding ${newNodes.length} new iteration nodes to canvas`);
         setNodes(nds => [...nds, ...newNodes]);
         setEdges(eds => [...eds, ...newEdges]);
         setKnownIterations(prev => [...prev, ...newKnownFilenames]);
         
-        // Reset timeout when iterations are found - gives more time for remaining ones
         if (resetTimeoutOnFind) {
           resetPollTimeout();
         }
-      } else {
-        console.log('[Playground] No new nodes to add (all filtered out)');
       }
     } catch (error) {
       console.error('Error scanning iterations:', error);
     } finally {
       setIsScanning(false);
     }
-  }, [nodes, knownIterations, findParentNode, calculateIterationPosition, handleIterationDelete, handleIterationAdopt, setNodes, setEdges, resetPollTimeout]);
+  }, [findParentNode, findIterationNodeByFilename, getNodeId, handleIterationDelete, handleIterationAdopt, setNodes, setEdges, resetPollTimeout]);
 
   // Start temporary polling (after prompt copy)
   const startPolling = useCallback(() => {
@@ -406,8 +493,8 @@ export default function PlaygroundCanvas() {
       
       console.log('[Playground] Generation started:', { componentId, componentName, iterationCount });
       
-      // Find the parent node
-      const parentNode = nodes.find(n => n.id === parentNodeId);
+      // Find the parent node (use ref for current nodes)
+      const parentNode = nodesRef.current.find(n => n.id === parentNodeId);
       if (!parentNode) {
         console.error('[Playground] Parent node not found:', parentNodeId);
         return;
@@ -441,7 +528,7 @@ export default function PlaygroundCanvas() {
           target: nodeId,
           type: 'smoothstep',
           animated: true, // Animated edges for skeleton nodes
-          style: { stroke: '#f59e0b', strokeWidth: 1.5, strokeDasharray: '5,5' },
+          style: SKELETON_EDGE_STYLE,
         });
       }
 
@@ -465,8 +552,8 @@ export default function PlaygroundCanvas() {
       // We need to trigger this after React processes the state update
       setTimeout(() => {
         // Dispatch a custom event to trigger auto-arrange with fitView
-        window.dispatchEvent(new CustomEvent('PLAYGROUND_AUTO_ARRANGE', { detail: { fitView: true } }));
-      }, 100);
+        window.dispatchEvent(new CustomEvent(PLAYGROUND_AUTO_ARRANGE_EVENT, { detail: { fitView: true } }));
+      }, SKELETON_ARRANGE_DELAY);
     };
 
     const handleGenerationComplete = (e: CustomEvent<GenerationCompletePayload>) => {
@@ -503,9 +590,9 @@ export default function PlaygroundCanvas() {
         scanForIterations(false);
         // Auto-arrange after new iterations are added
         setTimeout(() => {
-          window.dispatchEvent(new CustomEvent('PLAYGROUND_AUTO_ARRANGE', { detail: { fitView: true } }));
-        }, 200);
-      }, 1000);
+          window.dispatchEvent(new CustomEvent(PLAYGROUND_AUTO_ARRANGE_EVENT, { detail: { fitView: true } }));
+        }, POST_GENERATION_ARRANGE_DELAY);
+      }, POST_GENERATION_SCAN_DELAY);
     };
 
     const handleGenerationError = (e: CustomEvent<GenerationErrorPayload>) => {
@@ -545,41 +632,10 @@ export default function PlaygroundCanvas() {
       window.removeEventListener(GENERATION_COMPLETE_EVENT, handleGenerationComplete as EventListener);
       window.removeEventListener(GENERATION_ERROR_EVENT, handleGenerationError as EventListener);
     };
-    // Using ref for generationInfo so we don't need it in deps
-  }, [nodes, calculateIterationPosition, setNodes, setEdges, scanForIterations]);
+    // Using refs for nodes and generationInfo so we don't need them in deps
+  }, [calculateIterationPosition, getNodeId, setNodes, setEdges, scanForIterations]);
 
-  // Handle fullscreen node events
-  const { fitView } = useReactFlow();
-  
-  useEffect(() => {
-    const handleFullscreen = (e: CustomEvent<{ nodeId: string | null; action: 'enter' | 'exit' }>) => {
-      if (e.detail.action === 'enter' && e.detail.nodeId) {
-        // Fit view to the specific node - fill as much screen as possible
-        setTimeout(() => {
-          fitView({
-            nodes: [{ id: e.detail.nodeId! }],
-            padding: 0.02, // Minimal padding for maximum size
-            duration: 400,
-            maxZoom: 2, // Allow zooming in more for better fit
-            minZoom: 0.1,
-          });
-        }, 350); // Wait for sidebar animation to complete
-      } else if (e.detail.action === 'exit') {
-        // Fit view to all nodes when exiting
-        setTimeout(() => {
-          fitView({
-            padding: 0.2,
-            duration: 300,
-          });
-        }, 100);
-      }
-    };
-
-    window.addEventListener(FULLSCREEN_NODE_EVENT, handleFullscreen as EventListener);
-    return () => {
-      window.removeEventListener(FULLSCREEN_NODE_EVENT, handleFullscreen as EventListener);
-    };
-  }, [fitView]);
+  // Fullscreen fitView behavior is no longer used; nodes open in a new tab instead
 
   const onConnect = useCallback(
     (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
@@ -595,7 +651,7 @@ export default function PlaygroundCanvas() {
     (event: DragEvent<HTMLDivElement>) => {
       event.preventDefault();
 
-      const componentId = event.dataTransfer.getData('application/x-playground-component');
+      const componentId = event.dataTransfer.getData(DND_DATA_KEY);
       if (!componentId) return;
 
       const position = screenToFlowPosition({
@@ -615,10 +671,23 @@ export default function PlaygroundCanvas() {
     [screenToFlowPosition, setNodes]
   );
 
-  // Handle node deletion - also delete iteration file
+  const handlePaneClick = useCallback(() => {
+    // No-op: clicking the pane does not change fullscreen state
+  }, []);
+
+  // Handle node deletion - check for children first
   const onNodesDelete = useCallback(async (deletedNodes: Node[]) => {
     for (const node of deletedNodes) {
       if (node.type === 'iteration' && node.data.filename) {
+        // Check if this node has children
+        const childEdges = edges.filter(e => e.source === node.id);
+        if (childEdges.length > 0) {
+          // Has children -- show cascade/reparent dialog instead of deleting immediately
+          setDeleteDialogNode(node);
+          return; // Don't delete yet, wait for dialog action
+        }
+
+        // No children -- simple delete
         try {
           await fetch('/playground/api/iterations', {
             method: 'DELETE',
@@ -631,148 +700,251 @@ export default function PlaygroundCanvas() {
         }
       }
     }
-  }, []);
+  }, [edges]);
 
-  // Auto-arrange nodes: components on left, iterations on right
-  // Groups component + its iterations together, then stacks groups vertically
-  // Also handles skeleton nodes (treats them as iterations)
+  // Handle cascade or reparent deletion
+  const handleDeleteWithMode = useCallback(async (mode: 'cascade' | 'reparent') => {
+    const node = deleteDialogNode;
+    if (!node || !node.data.filename) return;
+
+    try {
+      const resp = await fetch('/playground/api/iterations', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: node.data.filename, mode }),
+      });
+
+      if (!resp.ok) {
+        console.error('[Playground] Delete failed:', resp.status);
+        setDeleteDialogNode(null);
+        return;
+      }
+
+      const { deletedFiles } = (await resp.json()) as { deletedFiles: string[] };
+
+      if (mode === 'cascade') {
+        // Remove the node and all descendants from canvas
+        const deletedSet = new Set(deletedFiles);
+
+        // Find all node IDs to remove (match by filename)
+        const nodeIdsToRemove = new Set<string>();
+        nodes.forEach(n => {
+          if (n.id === node.id) nodeIdsToRemove.add(n.id);
+          if (n.data.filename && deletedSet.has(n.data.filename as string)) {
+            nodeIdsToRemove.add(n.id);
+          }
+        });
+
+        setNodes(nds => nds.filter(n => !nodeIdsToRemove.has(n.id)));
+        setEdges(eds => eds.filter(e => !nodeIdsToRemove.has(e.source) && !nodeIdsToRemove.has(e.target)));
+        setKnownIterations(prev => prev.filter(f => !deletedSet.has(f)));
+        
+        // Clean up collapsed state
+        setCollapsedNodeIds(prev => {
+          const next = new Set(prev);
+          nodeIdsToRemove.forEach(id => next.delete(id));
+          return next;
+        });
+      } else {
+        // Reparent: reconnect children to the deleted node's parent
+        const parentEdge = edges.find(e => e.target === node.id);
+        const parentId = parentEdge?.source;
+
+        // Get child node IDs
+        const childEdges = edges.filter(e => e.source === node.id);
+        const childNodeIds = childEdges.map(e => e.target);
+
+        // Remove the deleted node
+        setNodes(nds => nds.filter(n => n.id !== node.id));
+
+        // Remove all edges to/from deleted node, and add new edges from parent to children
+        setEdges(eds => {
+          const filtered = eds.filter(e => e.source !== node.id && e.target !== node.id);
+          if (parentId) {
+            const newEdges = childNodeIds.map(childId => ({
+              id: `edge_${parentId}_${childId}`,
+              source: parentId,
+              target: childId,
+              type: 'smoothstep',
+              animated: false,
+              style: ITERATION_EDGE_STYLE,
+            }));
+            return [...filtered, ...newEdges];
+          }
+          return filtered;
+        });
+
+        setKnownIterations(prev => prev.filter(f => f !== node.data.filename));
+        
+        // Clean up collapsed state for deleted node
+        setCollapsedNodeIds(prev => {
+          const next = new Set(prev);
+          next.delete(node.id);
+          return next;
+        });
+      }
+    } catch (error) {
+      console.error('[Playground] Delete error:', error);
+    } finally {
+      setDeleteDialogNode(null);
+    }
+  }, [deleteDialogNode, nodes, edges, setNodes, setEdges]);
+
+  // ---------------------------------------------------------------------------
+  // Auto-arrange: tree-expanding-rightward layout
+  // Each component is a root. Its iterations (and their sub-iterations) expand rightward.
+  // ---------------------------------------------------------------------------
   const autoArrangeNodes = useCallback((andFitView: boolean = false) => {
     const componentNodes = nodes.filter(n => n.type === 'component');
-    // Include both iteration and skeleton nodes as "iteration-like" nodes
-    const iterationLikeNodes = nodes.filter(n => n.type === 'iteration' || n.type === 'skeleton');
-    
     if (componentNodes.length === 0) return;
 
-    const START_X = 50;
-    const START_Y = 50;
-    const VERTICAL_GAP = 60; // Gap between nodes within a group
-    const GROUP_GAP = 100; // Extra gap between component groups
-    const HORIZONTAL_GAP = 80; // Gap between component and iterations
+    const START_X = ARRANGE_START_X;
+    const START_Y = ARRANGE_START_Y;
+    const VERTICAL_GAP = ARRANGE_VERTICAL_GAP;
+    const GROUP_GAP = ARRANGE_GROUP_GAP;
+    const COL_WIDTH = TREE_COLUMN_WIDTH;
 
-    // Helper to get node dimensions (uses measured if available, else estimates)
+    // Helper to get node dimensions
     const getNodeSize = (node: Node): { width: number; height: number } => {
       const measured = node.measured;
       if (measured?.width && measured?.height) {
         return { width: measured.width, height: measured.height };
       }
       if (node.type === 'iteration' || node.type === 'skeleton') {
-        return { width: 400, height: 300 };
+        return { width: DEFAULT_ITERATION_NODE_WIDTH, height: DEFAULT_ITERATION_NODE_HEIGHT };
       }
-      return { width: 650, height: 450 };
+      return { width: DEFAULT_COMPONENT_NODE_WIDTH, height: DEFAULT_COMPONENT_NODE_HEIGHT };
     };
 
-    // Find iterations (and skeletons) for a component
-    const findIterationsForComponent = (componentNode: Node): Node[] => {
-      const componentId = componentNode.data.componentId as string;
-      return iterationLikeNodes.filter(iterNode => {
-        const parentNodeId = iterNode.data.parentNodeId as string | undefined;
-        if (parentNodeId === componentNode.id) return true;
-        
-        const iterComponentName = iterNode.data.componentName as string;
-        const possibleIds = [
-          iterComponentName.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, ''),
-          iterComponentName.toLowerCase(),
-        ];
-        return possibleIds.some(id => componentId?.includes(id));
-      }).sort((a, b) => {
-        const numA = (a.data.iterationNumber as number) || 0;
-        const numB = (b.data.iterationNumber as number) || 0;
-        return numA - numB;
-      });
-    };
-
-    // First pass: calculate max component width for consistent iteration column
-    let maxComponentWidth = 0;
-    componentNodes.forEach((node) => {
-      const size = getNodeSize(node);
-      maxComponentWidth = Math.max(maxComponentWidth, size.width);
+    // Build adjacency list from edges (parent -> children)
+    const childrenMap = new Map<string, string[]>();
+    edges.forEach(edge => {
+      const existing = childrenMap.get(edge.source) || [];
+      existing.push(edge.target);
+      childrenMap.set(edge.source, existing);
     });
-    const iterationX = START_X + maxComponentWidth + HORIZONTAL_GAP;
 
-    // Create position map
+    // Build a set of all visible node IDs (respect collapse state)
+    const collapsed = collapsedNodeIdsRef.current;
+    const hiddenNodeIds = new Set<string>();
+    const markDescendantsHidden = (parentId: string) => {
+      const children = childrenMap.get(parentId) || [];
+      for (const childId of children) {
+        hiddenNodeIds.add(childId);
+        markDescendantsHidden(childId);
+      }
+    };
+    collapsed.forEach(nodeId => markDescendantsHidden(nodeId));
+
+    const nodeMap = new Map<string, Node>();
+    nodes.forEach(n => nodeMap.set(n.id, n));
+
+    // Compute subtree height recursively (only counting visible nodes)
+    const subtreeHeightCache = new Map<string, number>();
+    const computeSubtreeHeight = (nodeId: string): number => {
+      if (subtreeHeightCache.has(nodeId)) return subtreeHeightCache.get(nodeId)!;
+      
+      const node = nodeMap.get(nodeId);
+      if (!node) { subtreeHeightCache.set(nodeId, 0); return 0; }
+      
+      const nodeHeight = getNodeSize(node).height;
+      const children = (childrenMap.get(nodeId) || []).filter(id => !hiddenNodeIds.has(id));
+      
+      if (children.length === 0) {
+        subtreeHeightCache.set(nodeId, nodeHeight);
+        return nodeHeight;
+      }
+      
+      // Sum of children subtree heights + gaps
+      let totalChildrenHeight = 0;
+      children.forEach((childId, idx) => {
+        totalChildrenHeight += computeSubtreeHeight(childId);
+        if (idx < children.length - 1) totalChildrenHeight += VERTICAL_GAP;
+      });
+      
+      const height = Math.max(nodeHeight, totalChildrenHeight);
+      subtreeHeightCache.set(nodeId, height);
+      return height;
+    };
+
+    // Position map
     const positionMap = new Map<string, { x: number; y: number }>();
+
+    // Recursively position a subtree starting from nodeId at depth and yStart
+    const positionSubtree = (nodeId: string, depth: number, yStart: number) => {
+      const node = nodeMap.get(nodeId);
+      if (!node) return;
+      
+      const nodeHeight = getNodeSize(node).height;
+      const subtreeH = computeSubtreeHeight(nodeId);
+      const x = START_X + depth * COL_WIDTH;
+      
+      const children = (childrenMap.get(nodeId) || []).filter(id => !hiddenNodeIds.has(id));
+      
+      if (children.length === 0) {
+        // Leaf: center within its allocation
+        positionMap.set(nodeId, { x, y: yStart + (subtreeH - nodeHeight) / 2 });
+        return;
+      }
+      
+      // Position children first so we know their span
+      let childY = yStart;
+      children.forEach((childId, idx) => {
+        const childSubtreeH = computeSubtreeHeight(childId);
+        positionSubtree(childId, depth + 1, childY);
+        childY += childSubtreeH;
+        if (idx < children.length - 1) childY += VERTICAL_GAP;
+      });
+      
+      // Total children span (for centering parent)
+      let totalChildrenHeight = 0;
+      children.forEach((childId, idx) => {
+        totalChildrenHeight += computeSubtreeHeight(childId);
+        if (idx < children.length - 1) totalChildrenHeight += VERTICAL_GAP;
+      });
+      
+      // Center parent vertically relative to children span
+      const parentY = yStart + (totalChildrenHeight - nodeHeight) / 2;
+      positionMap.set(nodeId, { x, y: parentY });
+    };
+
+    // Process each component tree
     let currentGroupY = START_Y;
-
-    // Process each component with its iterations as a group
-    componentNodes.forEach((componentNode) => {
-      const componentSize = getNodeSize(componentNode);
-      const relatedIterations = findIterationsForComponent(componentNode);
-      
-      // Calculate total height needed for iterations
-      let totalIterationsHeight = 0;
-      relatedIterations.forEach((iterNode, idx) => {
-        const size = getNodeSize(iterNode);
-        totalIterationsHeight += size.height;
-        if (idx < relatedIterations.length - 1) {
-          totalIterationsHeight += VERTICAL_GAP;
-        }
-      });
-
-      // The group height is the max of component height vs total iterations height
-      const groupHeight = Math.max(componentSize.height, totalIterationsHeight);
-
-      // Position component - vertically centered within group height
-      const componentOffsetY = (groupHeight - componentSize.height) / 2;
-      positionMap.set(componentNode.id, {
-        x: START_X,
-        y: currentGroupY + componentOffsetY,
-      });
-
-      // Position iterations - vertically centered within group height
-      const iterationsOffsetY = (groupHeight - totalIterationsHeight) / 2;
-      let iterY = currentGroupY + iterationsOffsetY;
-      
-      relatedIterations.forEach((iterNode) => {
-        const size = getNodeSize(iterNode);
-        positionMap.set(iterNode.id, {
-          x: iterationX,
-          y: iterY,
-        });
-        iterY += size.height + VERTICAL_GAP;
-      });
-
-      // Move to next group position
-      currentGroupY += groupHeight + GROUP_GAP;
+    componentNodes.forEach(componentNode => {
+      const subtreeH = computeSubtreeHeight(componentNode.id);
+      positionSubtree(componentNode.id, 0, currentGroupY);
+      currentGroupY += subtreeH + GROUP_GAP;
     });
 
-    // Position any orphan iteration nodes (including skeletons)
+    // Position orphan nodes (not reachable from any component)
     const positionedIds = new Set(positionMap.keys());
-    const orphanIterations = iterationLikeNodes.filter(n => !positionedIds.has(n.id));
-    
-    if (orphanIterations.length > 0) {
+    const orphans = nodes.filter(n => !positionedIds.has(n.id) && !hiddenNodeIds.has(n.id));
+    if (orphans.length > 0) {
       let orphanY = currentGroupY;
-      orphanIterations.forEach((node) => {
+      orphans.forEach(node => {
         const size = getNodeSize(node);
-        positionMap.set(node.id, {
-          x: iterationX,
-          y: orphanY,
-        });
+        positionMap.set(node.id, { x: START_X + COL_WIDTH, y: orphanY });
         orphanY += size.height + VERTICAL_GAP;
       });
     }
 
-    // Update all nodes
-    setNodes((currentNodes) =>
-      currentNodes.map((node) => {
+    // Apply positions
+    setNodes(currentNodes =>
+      currentNodes.map(node => {
         const newPosition = positionMap.get(node.id);
         if (newPosition) {
           return { ...node, position: newPosition };
         }
         return node;
-      })
+      }),
     );
 
-    // Fit view to show all nodes if requested
     if (andFitView) {
       setTimeout(() => {
-        fitView({
-          padding: 0.15,
-          duration: 400,
-          maxZoom: 1,
-        });
-      }, 50); // Small delay to let node positions update
+        fitView(FITVIEW_AFTER_ARRANGE);
+      }, ARRANGE_FITVIEW_DELAY);
     }
-  }, [nodes, setNodes, fitView]);
+  }, [nodes, edges, setNodes, fitView]);
 
   // Handle auto-arrange event (triggered after skeleton nodes are added)
   useEffect(() => {
@@ -780,50 +952,116 @@ export default function PlaygroundCanvas() {
       autoArrangeNodes(e.detail.fitView);
     };
 
-    window.addEventListener('PLAYGROUND_AUTO_ARRANGE', handleAutoArrange as EventListener);
+    window.addEventListener(PLAYGROUND_AUTO_ARRANGE_EVENT, handleAutoArrange as EventListener);
     return () => {
-      window.removeEventListener('PLAYGROUND_AUTO_ARRANGE', handleAutoArrange as EventListener);
+      window.removeEventListener(PLAYGROUND_AUTO_ARRANGE_EVENT, handleAutoArrange as EventListener);
     };
   }, [autoArrangeNodes]);
 
-  // Clear all nodes and edges
-  const clearAllNodes = useCallback(() => {
-    if (window.confirm('Clear the canvas? This will remove all nodes.')) {
-      // Stop polling first to prevent re-adding iterations
-      stopPolling();
-      
-      setNodes([]);
-      setEdges([]);
-      
-      // Also clear knownIterations so they can be re-fetched
-      // when user drags the component back and scans
-      setKnownIterations([]);
-      
-      // Also clear localStorage to prevent stale state on refresh
-      localStorage.removeItem(STORAGE_KEY);
-    }
+  // ---------------------------------------------------------------------------
+  // Collapse/expand toggle event
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const handleCollapseToggle = (e: CustomEvent<{ nodeId: string }>) => {
+      const { nodeId } = e.detail;
+      setCollapsedNodeIds(prev => {
+        const next = new Set(prev);
+        if (next.has(nodeId)) {
+          next.delete(nodeId);
+        } else {
+          next.add(nodeId);
+        }
+        return next;
+      });
+    };
+
+    window.addEventListener(ITERATION_COLLAPSE_TOGGLE_EVENT, handleCollapseToggle as EventListener);
+    return () => {
+      window.removeEventListener(ITERATION_COLLAPSE_TOGGLE_EVENT, handleCollapseToggle as EventListener);
+    };
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Compute hasChildren + isCollapsed for iteration nodes and filter visible
+  // ---------------------------------------------------------------------------
+  const { visibleNodes, visibleEdges } = (() => {
+    // Build adjacency from current edges
+    const childrenMap = new Map<string, string[]>();
+    edges.forEach(edge => {
+      const existing = childrenMap.get(edge.source) || [];
+      existing.push(edge.target);
+      childrenMap.set(edge.source, existing);
+    });
+
+    // Determine hidden nodes (descendants of collapsed nodes)
+    const hiddenSet = new Set<string>();
+    const markDescendantsHidden = (parentId: string) => {
+      const children = childrenMap.get(parentId) || [];
+      for (const childId of children) {
+        hiddenSet.add(childId);
+        markDescendantsHidden(childId);
+      }
+    };
+    collapsedNodeIds.forEach(nodeId => markDescendantsHidden(nodeId));
+
+    // Annotate iteration nodes with hasChildren + isCollapsed
+    const annotatedNodes = nodes
+      .filter(n => !hiddenSet.has(n.id))
+      .map(n => {
+        if (n.type === 'iteration') {
+          const children = childrenMap.get(n.id) || [];
+          const hasChildren = children.length > 0;
+          const isCollapsed = collapsedNodeIds.has(n.id);
+          if (hasChildren !== n.data.hasChildren || isCollapsed !== n.data.isCollapsed) {
+            return { ...n, data: { ...n.data, hasChildren, isCollapsed } };
+          }
+        }
+        return n;
+      });
+
+    const vEdges = edges.filter(e => !hiddenSet.has(e.target) && !hiddenSet.has(e.source));
+    return { visibleNodes: annotatedNodes, visibleEdges: vEdges };
+  })();
+
+  // Clear all nodes and edges (called after AlertDialog confirmation)
+  const confirmClearAllNodes = useCallback(() => {
+    stopPolling();
+    
+    setNodes([]);
+    setEdges([]);
+    setKnownIterations([]);
+    setCollapsedNodeIds(new Set());
+    
+    localStorage.removeItem(STORAGE_KEY);
+    
+    setShowClearDialog(false);
   }, [setNodes, setEdges, stopPolling]);
 
   return (
     <TooltipProvider>
       <div ref={reactFlowWrapper} className="w-full h-full">
         <ReactFlow
-          nodes={nodes}
-          edges={edges}
+          nodes={visibleNodes}
+          edges={visibleEdges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodesDelete={onNodesDelete}
           onConnect={onConnect}
           onDragOver={onDragOver}
           onDrop={onDrop}
+          onPaneClick={handlePaneClick}
           nodeTypes={nodeTypes}
           fitView
           className="bg-gray-50"
           proOptions={{ hideAttribution: true }}
+          minZoom={CANVAS_MIN_ZOOM}
+          maxZoom={CANVAS_MAX_ZOOM}
           panOnScroll={!isFullscreen}
           zoomOnScroll={false}
           zoomOnPinch={!isFullscreen}
-          panOnDrag={!isFullscreen}
+          panOnDrag={false}
+          selectionOnDrag={!isFullscreen}
+          selectionMode="partial"
           nodesDraggable={!isFullscreen}
           nodesConnectable={!isFullscreen}
           elementsSelectable={!isFullscreen}
@@ -883,7 +1121,7 @@ export default function PlaygroundCanvas() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
-                    onClick={clearAllNodes}
+                    onClick={() => setShowClearDialog(true)}
                     className="p-2 rounded-lg border bg-white border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
                   >
                     <Eraser className="w-4 h-4" />
@@ -904,20 +1142,68 @@ export default function PlaygroundCanvas() {
             <MiniMap
               className="!bg-white !border-gray-200 !rounded-lg !shadow-sm"
               nodeColor={(node) => {
-                if (node.type === 'skeleton') return '#f59e0b'; // Amber for skeletons
-                if (node.type === 'iteration') return '#6b7280'; // Gray for iterations
-                return '#3b82f6'; // Blue for components
+                if (node.type === 'skeleton') return MINIMAP_SKELETON_COLOR;
+                if (node.type === 'iteration') return MINIMAP_ITERATION_COLOR;
+                return MINIMAP_COMPONENT_COLOR;
               }}
-              maskColor="rgba(0, 0, 0, 0.08)"
+              maskColor={MINIMAP_MASK_COLOR}
             />
           )}
         <Background
           variant={BackgroundVariant.Dots}
-          gap={20}
-          size={1}
-          color="#d1d5db"
+          gap={BACKGROUND_GAP}
+          size={BACKGROUND_DOT_SIZE}
+          color={BACKGROUND_COLOR}
         />
       </ReactFlow>
+
+      {/* Clear canvas confirmation dialog */}
+      <AlertDialog open={showClearDialog} onOpenChange={setShowClearDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear the canvas?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove all component and iteration nodes from the canvas. Iteration files on disk will not be deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmClearAllNodes}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              Clear canvas
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete iteration with children - cascade / reparent dialog */}
+      <AlertDialog open={!!deleteDialogNode} onOpenChange={(open) => { if (!open) setDeleteDialogNode(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete iteration with children?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong>{deleteDialogNode?.data.filename as string}</strong> has child iterations. Choose how to handle them:
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => handleDeleteWithMode('reparent')}
+              className="bg-blue-600 hover:bg-blue-700 focus:ring-blue-600"
+            >
+              Keep children (reparent)
+            </AlertDialogAction>
+            <AlertDialogAction
+              onClick={() => handleDeleteWithMode('cascade')}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              Delete all descendants
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
     </TooltipProvider>
   );

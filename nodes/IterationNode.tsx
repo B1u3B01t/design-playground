@@ -2,15 +2,24 @@
 
 import { memo, useState, Suspense, useMemo, useRef, useEffect } from 'react';
 import { Handle, Position, useReactFlow } from '@xyflow/react';
-import { Check, Trash2, Sparkles, Loader2, Fullscreen } from 'lucide-react';
+import { Check, Trash2, Sparkles, Loader2, Fullscreen, ChevronRight } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { flatRegistry, ComponentSize, generateAdoptPrompt } from '../registry';
+import { flatRegistry, generateAdoptPrompt } from '../registry';
 import { getIterationComponent } from '../iterations';
-import { COMPONENT_SIZE_CHANGE_EVENT, sizeConfig, getDisplayDimensions } from './ComponentNode';
-import { usePlaygroundContext } from '../PlaygroundClient';
-
-const PROPS_CACHE_TTL_MS = 60_000;
-const propsCache = new Map<string, { ts: number; props: Record<string, unknown> }>();
+import {
+  COMPONENT_SIZE_CHANGE_EVENT,
+  GENERATION_START_EVENT,
+  GENERATION_COMPLETE_EVENT,
+  GENERATION_ERROR_EVENT,
+  ITERATION_COLLAPSE_TOGGLE_EVENT,
+  SIZE_CONFIG,
+  getDisplayDimensions,
+  COPIED_FEEDBACK_DURATION,
+  type ComponentSize,
+} from '../lib/constants';
+import { useAsyncProps, useScrollCapture } from '../hooks/useNodeShared';
+import ComponentErrorBoundary from './ComponentErrorBoundary';
+import IterateDialog from './shared/IterateDialog';
 
 interface IterationNodeProps {
   id: string;
@@ -18,23 +27,29 @@ interface IterationNodeProps {
     componentName: string;
     iterationNumber: number;
     filename: string;
-    mode: 'layout' | 'vibe' | 'unknown';
     description: string;
     parentNodeId: string;
+    hasChildren?: boolean;
+    isCollapsed?: boolean;
     onDelete?: (filename: string) => void;
     onAdopt?: (filename: string, componentName: string) => void;
   };
+  selected?: boolean;
 }
 
-function IterationNode({ id, data }: IterationNodeProps) {
+// ---------------------------------------------------------------------------
+// IterationNode
+// ---------------------------------------------------------------------------
+
+function IterationNode({ id, data, selected = false }: IterationNodeProps) {
   const { deleteElements } = useReactFlow();
   const [isDeleting, setIsDeleting] = useState(false);
   const [isAdopting, setIsAdopting] = useState(false);
+  const [isGlobalGenerating, setIsGlobalGenerating] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
-  // Fullscreen support
-  const { fullscreenNodeId, enterFullscreen } = usePlaygroundContext();
-  const isFullscreen = fullscreenNodeId === id;
+  // Interactivity is driven purely by React Flow selection
+  const isInteractive = !!selected;
 
   // Get the iteration component from the static map
   const IterationComponent = useMemo(() => {
@@ -57,10 +72,8 @@ function IterationNode({ id, data }: IterationNodeProps) {
     return possibleIds[0];
   }, [data.componentName]);
 
-  // State for async props loading (same as ComponentNode)
-  const [resolvedProps, setResolvedProps] = useState<Record<string, unknown> | null>(null);
-  const [isLoadingProps, setIsLoadingProps] = useState(false);
-  const [propsError, setPropsError] = useState<string | null>(null);
+  // Shared async props loading
+  const { resolvedProps, isLoadingProps, propsError } = useAsyncProps(registryId);
 
   // Get static props from parent component in registry (fallback)
   const staticProps = useMemo(() => {
@@ -68,51 +81,6 @@ function IterationNode({ id, data }: IterationNodeProps) {
       return flatRegistry[registryId].props || {};
     }
     return {};
-  }, [registryId]);
-
-  // Async props loader: fetch props via registryItem.getProps
-  useEffect(() => {
-    let cancelled = false;
-    const registryItem = flatRegistry[registryId];
-
-    async function load() {
-      setPropsError(null);
-
-      if (!registryItem?.getProps) {
-        setResolvedProps(null);
-        setIsLoadingProps(false);
-        return;
-      }
-
-      const cacheKey = registryId;
-      const cached = propsCache.get(cacheKey);
-      const now = Date.now();
-      if (cached && now - cached.ts < PROPS_CACHE_TTL_MS) {
-        setResolvedProps(cached.props);
-        setIsLoadingProps(false);
-        return;
-      }
-
-      setIsLoadingProps(true);
-      try {
-        const next = await Promise.resolve(registryItem.getProps());
-        if (cancelled) return;
-        propsCache.set(cacheKey, { ts: Date.now(), props: next });
-        setResolvedProps(next);
-      } catch (err) {
-        if (cancelled) return;
-        const msg = err instanceof Error ? err.message : 'Failed to load props';
-        setPropsError(msg);
-        setResolvedProps(null);
-      } finally {
-        if (!cancelled) setIsLoadingProps(false);
-      }
-    }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
   }, [registryId]);
 
   // Use resolved props if available, otherwise fall back to static props
@@ -140,37 +108,28 @@ function IterationNode({ id, data }: IterationNodeProps) {
     };
   }, [registryId]);
 
-  const config = sizeConfig[size];
+  // Listen for global generation state changes
+  useEffect(() => {
+    const handleGenerationStart = () => setIsGlobalGenerating(true);
+    const handleGenerationEnd = () => setIsGlobalGenerating(false);
+
+    window.addEventListener(GENERATION_START_EVENT, handleGenerationStart);
+    window.addEventListener(GENERATION_COMPLETE_EVENT, handleGenerationEnd);
+    window.addEventListener(GENERATION_ERROR_EVENT, handleGenerationEnd);
+
+    return () => {
+      window.removeEventListener(GENERATION_START_EVENT, handleGenerationStart);
+      window.removeEventListener(GENERATION_COMPLETE_EVENT, handleGenerationEnd);
+      window.removeEventListener(GENERATION_ERROR_EVENT, handleGenerationEnd);
+    };
+  }, []);
+
+  const config = SIZE_CONFIG[size];
   const isLargeComponent = size !== 'default';
   const displayDims = getDisplayDimensions(size);
 
-  // Handle wheel events to allow scrolling inside the component
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    const { scrollTop, scrollHeight, clientHeight, scrollLeft, scrollWidth, clientWidth } = container;
-    const isScrollableY = scrollHeight > clientHeight;
-    const isScrollableX = scrollWidth > clientWidth;
-    
-    const canScrollUp = scrollTop > 0;
-    const canScrollDown = scrollTop < scrollHeight - clientHeight;
-    const canScrollLeft = scrollLeft > 0;
-    const canScrollRight = scrollLeft < scrollWidth - clientWidth;
-
-    const isScrollingDown = e.deltaY > 0;
-    const isScrollingUp = e.deltaY < 0;
-    const isScrollingRight = e.deltaX > 0;
-    const isScrollingLeft = e.deltaX < 0;
-
-    const shouldCapture = 
-      (isScrollableY && ((isScrollingDown && canScrollDown) || (isScrollingUp && canScrollUp))) ||
-      (isScrollableX && ((isScrollingRight && canScrollRight) || (isScrollingLeft && canScrollLeft)));
-
-    if (shouldCapture) {
-      e.stopPropagation();
-    }
-  };
+  // Shared scroll capture hook
+  const handleWheel = useScrollCapture(scrollContainerRef);
 
   const handleDelete = async () => {
     if (isDeleting) return;
@@ -215,43 +174,55 @@ function IterationNode({ id, data }: IterationNodeProps) {
     data.onAdopt?.(data.filename, data.componentName);
     
     // Reset after a moment
-    setTimeout(() => setIsAdopting(false), 2000);
+    setTimeout(() => setIsAdopting(false), COPIED_FEEDBACK_DURATION);
   };
-
-  const modeColor = data.mode === 'layout' 
-    ? 'bg-blue-50 border-blue-200 text-blue-700'
-    : data.mode === 'vibe'
-    ? 'bg-purple-50 border-purple-200 text-purple-700'
-    : 'bg-gray-50 border-gray-200 text-gray-700';
-
-  const modeIcon = data.mode === 'layout' ? '⊞' : data.mode === 'vibe' ? '✦' : '•';
 
   return (
     <div 
-      className={`bg-white border-2 border-dashed border-gray-300 rounded-lg shadow-sm overflow-hidden ${isLargeComponent ? '' : 'min-w-[280px] max-w-[400px]'}`}
+      className={`bg-white border-2 border-dashed rounded-lg shadow-sm overflow-hidden ${
+        isLargeComponent ? '' : 'min-w-[280px] max-w-[400px]'
+      } ${selected ? 'border-orange-400' : 'border-gray-300'}`}
       style={isLargeComponent ? { width: displayDims.width } : undefined}
     >
       {/* Node header - draggable area */}
       <div className="px-3 py-2 bg-gradient-to-r from-gray-50 to-white border-b border-gray-200 flex items-center justify-between gap-2 cursor-grab active:cursor-grabbing">
-        <div className="flex flex-col">
-          <div className="flex items-center gap-1.5">
-            <Sparkles className="w-3 h-3 text-amber-500" />
-            <span className="text-xs font-medium text-gray-700">
-              Iteration #{data.iterationNumber}
-            </span>
+        <div className="flex items-center gap-1">
+          {/* Collapse/expand toggle -- only shown when node has children */}
+          {data.hasChildren && (
+            <button
+              onClick={() => {
+                window.dispatchEvent(
+                  new CustomEvent(ITERATION_COLLAPSE_TOGGLE_EVENT, { detail: { nodeId: id } }),
+                );
+              }}
+              className="p-0.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors nodrag"
+              aria-label={data.isCollapsed ? 'Expand children' : 'Collapse children'}
+            >
+              <ChevronRight
+                className={`w-3 h-3 transition-transform ${data.isCollapsed ? '' : 'rotate-90'}`}
+              />
+            </button>
+          )}
+          <div className="flex flex-col">
+            <div className="flex items-center gap-1.5">
+              <Sparkles className="w-3 h-3 text-amber-500" />
+              <span className="text-xs font-medium text-gray-700">
+                Iteration #{data.iterationNumber}
+              </span>
+            </div>
+            <span className="text-[10px] text-gray-400 font-mono">{data.componentName}</span>
           </div>
-          <span className="text-[10px] text-gray-400 font-mono">{data.componentName}</span>
         </div>
         <div className="flex items-center gap-2 nodrag">
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={() => enterFullscreen(id)}
-                className={`p-1 rounded transition-colors ${
-                  isFullscreen 
-                    ? 'bg-blue-100 text-blue-700' 
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                }`}
+                onClick={() => {
+                  const slug = data.filename.replace(/\.tsx$/, '');
+                  const url = `/playground/iterations/${slug}`;
+                  window.open(url, '_blank', 'noopener,noreferrer');
+                }}
+                className="p-1 rounded transition-colors text-gray-500 hover:text-gray-700 hover:bg-gray-100"
                 aria-label="View fullscreen"
               >
                 <Fullscreen className="w-3.5 h-3.5" />
@@ -261,14 +232,18 @@ function IterationNode({ id, data }: IterationNodeProps) {
               <p>View fullscreen</p>
             </TooltipContent>
           </Tooltip>
+          <IterateDialog
+            componentId={registryId}
+            componentName={data.componentName}
+            parentNodeId={id}
+            sourceFilename={data.filename}
+            isGlobalGenerating={isGlobalGenerating}
+          />
           {isLargeComponent && (
             <span className="px-1.5 py-0.5 text-[10px] font-medium text-gray-500 bg-gray-100 rounded border border-gray-200">
               {config.label} ({Math.round(config.scale * 100)}%)
             </span>
           )}
-          <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded border ${modeColor}`}>
-            {modeIcon} {data.mode}
-          </span>
         </div>
       </div>
 
@@ -283,12 +258,12 @@ function IterationNode({ id, data }: IterationNodeProps) {
       {isLargeComponent ? (
         <div 
           ref={scrollContainerRef}
-          className="bg-gray-100 overflow-auto nodrag nowheel nopan"
+          className={`bg-gray-100 overflow-auto ${isInteractive ? 'nodrag nowheel nopan' : ''}`}
           style={{
             width: displayDims.width,
             height: displayDims.height,
           }}
-          onWheel={handleWheel}
+          onWheel={isInteractive ? handleWheel : undefined}
         >
           {IterationComponent ? (
             <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="w-5 h-5 animate-spin text-gray-400" /></div>}>
@@ -305,14 +280,15 @@ function IterationNode({ id, data }: IterationNodeProps) {
                 ) : propsError && !Object.keys(effectiveProps).length ? (
                   <div className="p-6 text-xs text-red-600">Failed to load data: {propsError}</div>
                 ) : (
-                  <IterationComponent {...effectiveProps} />
+                  <ComponentErrorBoundary componentName={`${data.componentName} #${data.iterationNumber}`}>
+                    <IterationComponent {...effectiveProps} />
+                  </ComponentErrorBoundary>
                 )}
               </div>
             </Suspense>
           ) : (
             <div className="flex items-center justify-center h-full text-center">
               <div>
-                <div className="text-2xl mb-1 text-gray-300">{modeIcon}</div>
                 <p className="text-[10px] text-gray-400">{data.filename}</p>
                 <p className="text-[9px] text-amber-500 mt-1">Not registered in index</p>
               </div>
@@ -320,7 +296,7 @@ function IterationNode({ id, data }: IterationNodeProps) {
           )}
         </div>
       ) : (
-        <div className="p-4 flex items-center justify-center min-h-[100px] bg-gradient-to-br from-gray-50 to-white overflow-hidden nodrag nowheel nopan">
+        <div className={`p-4 flex items-center justify-center min-h-[100px] bg-gradient-to-br from-gray-50 to-white overflow-hidden ${isInteractive ? 'nodrag nowheel nopan' : ''}`}>
           {IterationComponent ? (
             <Suspense fallback={<Loader2 className="w-5 h-5 animate-spin text-gray-400" />}>
               <div className="w-full">
@@ -329,13 +305,14 @@ function IterationNode({ id, data }: IterationNodeProps) {
                 ) : propsError && !Object.keys(effectiveProps).length ? (
                   <div className="text-xs text-red-600">Failed to load data: {propsError}</div>
                 ) : (
-                  <IterationComponent {...effectiveProps} />
+                  <ComponentErrorBoundary componentName={`${data.componentName} #${data.iterationNumber}`}>
+                    <IterationComponent {...effectiveProps} />
+                  </ComponentErrorBoundary>
                 )}
               </div>
             </Suspense>
           ) : (
             <div className="text-center">
-              <div className="text-2xl mb-1 text-gray-300">{modeIcon}</div>
               <p className="text-[10px] text-gray-400">{data.filename}</p>
               <p className="text-[9px] text-amber-500 mt-1">Not registered in index</p>
             </div>
@@ -377,10 +354,16 @@ function IterationNode({ id, data }: IterationNodeProps) {
         </Tooltip>
       </div>
 
-      {/* Handles for connections - on the left side */}
+      {/* Target handle - incoming edge from parent (left side) */}
       <Handle
         type="target"
         position={Position.Left}
+        className="!w-3 !h-3 !bg-amber-500 !border-2 !border-white"
+      />
+      {/* Source handle - outgoing edges to child iterations (right side) */}
+      <Handle
+        type="source"
+        position={Position.Right}
         className="!w-3 !h-3 !bg-amber-500 !border-2 !border-white"
       />
     </div>

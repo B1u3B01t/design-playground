@@ -10,8 +10,8 @@ iterations/*.iteration-*.tsx
 
 # Generated API routes for component-specific data fetching
 # AI creates these when a component needs live data (e.g., api/insights/route.ts)
-api/*/
-!api/iterations/
+
+previews/
 
 # ============================================================================
 # FRAMEWORK FILES (tracked in git)
