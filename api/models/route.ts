@@ -72,14 +72,6 @@ function fetchModelsFromCLI(): Promise<ModelOption[]> {
 }
 
 export async function GET() {
-  // Only allow in development
-  if (process.env.NODE_ENV !== 'development') {
-    return NextResponse.json(
-      { success: false, error: 'Not available in production' },
-      { status: 403 },
-    );
-  }
-
   // Return cached models if still fresh
   const now = Date.now();
   if (cachedModels && now - cacheTimestamp < CACHE_TTL_MS) {

@@ -286,14 +286,11 @@ export const BACKGROUND_COLOR = '#d1d5db';
 // Server-Side API Constants (used in route handlers)
 // ---------------------------------------------------------------------------
 
-/** Relative path to the iterations directory from project root */
-export const ITERATIONS_DIR_RELATIVE = 'src/app/playground/iterations';
-
 /** Name of the iterations index file */
 export const ITERATIONS_INDEX_FILENAME = 'index.ts';
 
 /** Relative path to the temporary directory for generation artifacts */
-export const TEMP_DIR_RELATIVE = '.cursor-temp';
+export const TEMP_DIR_RELATIVE = '.playground-temp';
 
 /** Filename for the generation lockfile */
 export const GENERATION_LOCKFILE_FILENAME = 'generation.lock';

@@ -3,7 +3,7 @@
 import { memo, useState, useRef, useEffect } from 'react';
 import { Handle, Position, useNodeId } from '@xyflow/react';
 import { ChevronDown, Check, Monitor, Tablet, Smartphone, Maximize2, Fullscreen } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { flatRegistry } from '../registry';
 import { CancelGenerationButton } from './shared/IterateDialogParts';
 import IterateDialog from './shared/IterateDialog';

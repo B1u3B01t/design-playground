@@ -97,8 +97,8 @@ export default function PlaygroundSidebar() {
     <aside className="w-56 h-full bg-white border-r border-gray-200 flex flex-col">
       {/* Header */}
       <div className="px-2.5 py-2 border-b border-gray-200">
-        <h1 className="text-sm font-semibold text-gray-900 tracking-tight font-mono">Playground</h1>
-        <p className="text-[10px] text-gray-500 font-mono">Drag to canvas</p>
+        <h1 className="text-sm font-semibold text-gray-900 tracking-tight font-mono">Components</h1>
+        <p className="text-[10px] text-gray-500 font-mono">Drag onto the canvas to start</p>
       </div>
 
       {/* Search */}
@@ -121,10 +121,6 @@ export default function PlaygroundSidebar() {
         )}
       </div>
 
-      {/* Footer */}
-      {/* <div className="px-2 py-1.5 border-t border-gray-200">
-        <p className="text-[9px] text-gray-400 text-center font-mono uppercase tracking-wide">Dev Mode</p>
-      </div> */}
     </aside>
   );
 }

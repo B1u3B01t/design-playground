@@ -2,14 +2,47 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import {
-  ITERATIONS_DIR_RELATIVE,
   ITERATIONS_INDEX_FILENAME,
   ITERATION_FILENAME_PATTERN,
   ITERATION_FILENAME_PARSE_PATTERN,
   TREE_MANIFEST_FILENAME,
 } from '../../lib/constants';
 
-const ITERATIONS_DIR = path.join(process.cwd(), ITERATIONS_DIR_RELATIVE);
+/**
+ * Auto-discover the playground iterations directory.
+ * Tries common Next.js App Router layouts so the path works
+ * regardless of where the user places the playground folder.
+ */
+function resolveIterationsDir(): string {
+  const root = process.cwd();
+
+  const candidates = [
+    path.join(root, 'src', 'app', 'playground', 'iterations'),
+    path.join(root, 'app', 'playground', 'iterations'),
+  ];
+
+  for (const dir of candidates) {
+    if (fs.existsSync(dir)) return dir;
+  }
+
+  // Fallback: scan for a playground/iterations with an index.ts
+  for (const base of [path.join(root, 'src'), root]) {
+    const appDir = path.join(base, 'app');
+    if (!fs.existsSync(appDir)) continue;
+    for (const entry of fs.readdirSync(appDir, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        const iterDir = path.join(appDir, entry.name, 'iterations');
+        if (fs.existsSync(path.join(iterDir, ITERATIONS_INDEX_FILENAME))) {
+          return iterDir;
+        }
+      }
+    }
+  }
+
+  return candidates[0];
+}
+
+const ITERATIONS_DIR = resolveIterationsDir();
 const INDEX_FILE = path.join(ITERATIONS_DIR, ITERATIONS_INDEX_FILENAME);
 const TREE_FILE = path.join(ITERATIONS_DIR, TREE_MANIFEST_FILENAME);
 
@@ -242,10 +275,6 @@ function regenerateIndex(): void {
 // ---------------------------------------------------------------------------
 
 export async function GET() {
-  if (process.env.NODE_ENV !== 'development') {
-    return NextResponse.json({ error: 'Not available in production' }, { status: 403 });
-  }
-
   try {
     if (!fs.existsSync(ITERATIONS_DIR)) {
       return NextResponse.json({ iterations: [] });
@@ -297,10 +326,6 @@ export async function GET() {
 // ---------------------------------------------------------------------------
 
 export async function DELETE(request: Request) {
-  if (process.env.NODE_ENV !== 'development') {
-    return NextResponse.json({ error: 'Not available in production' }, { status: 403 });
-  }
-
   try {
     const body = await request.json();
     const { filename, mode } = body as { filename: string; mode?: 'cascade' | 'reparent' };
@@ -365,10 +390,6 @@ export async function DELETE(request: Request) {
 // ---------------------------------------------------------------------------
 
 export async function POST(request: Request) {
-  if (process.env.NODE_ENV !== 'development') {
-    return NextResponse.json({ error: 'Not available in production' }, { status: 403 });
-  }
-
   try {
     let rebuildTree = false;
     try {

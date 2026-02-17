@@ -80,7 +80,7 @@ Each iteration file must:
 
 // Keep same imports as original
 import Image from "next/image";
-import { cn } from "@/lib/utils";
+import { cn } from "../lib/utils";
 // ... other imports
 
 // Add iteration metadata comment

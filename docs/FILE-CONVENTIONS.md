@@ -79,7 +79,7 @@ Examples:
 // ============================================
 import { useState } from "react";
 import Image from "next/image";
-import { cn } from "@/lib/utils";
+import { cn } from "../lib/utils";
 // ... other imports from original
 
 // ============================================
@@ -176,7 +176,7 @@ When importing from the main codebase, use aliases:
 
 ```tsx
 // Importing from main codebase
-import { cn } from "@/lib/utils";
+import { cn } from "../lib/utils";
 import type { InsightPost } from "@/components/ArticleCard";
 ```
 

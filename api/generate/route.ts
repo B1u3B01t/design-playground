@@ -104,14 +104,6 @@ function closeLogStream() {
 // ---------------------------------------------------------------------------
 
 export async function POST(req: Request) {
-  // Only allow in development
-  if (process.env.NODE_ENV !== 'development') {
-    return NextResponse.json(
-      { success: false, error: 'Generation only available in development mode' },
-      { status: 403 }
-    );
-  }
-
   // Check if already generating
   if (isGenerating) {
     return NextResponse.json(
@@ -135,7 +127,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const { prompt, componentId, model } = body;
+    const { prompt, model } = body;
+    // Sanitize componentId for use in file paths (prevent path traversal)
+    const componentId = String(body.componentId).replace(/[^A-Za-z0-9-_]/g, '_').slice(0, 200) || 'component';
     const timestamp = Date.now();
     const generationId = `${componentId}-${timestamp}`;
 
@@ -273,14 +267,6 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE() {
-  // Only allow in development
-  if (process.env.NODE_ENV !== 'development') {
-    return NextResponse.json(
-      { success: false, error: 'Not available in production' },
-      { status: 403 }
-    );
-  }
-
   if (!isGenerating || !currentProcess) {
     return NextResponse.json(
       { success: false, error: 'No generation currently running' },
@@ -315,14 +301,6 @@ export async function DELETE() {
 }
 
 export async function GET(req: Request) {
-  // Only allow in development
-  if (process.env.NODE_ENV !== 'development') {
-    return NextResponse.json(
-      { success: false, error: 'Not available in production' },
-      { status: 403 }
-    );
-  }
-
   const url = new URL(req.url);
   const action = url.searchParams.get('action');
 

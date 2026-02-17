@@ -15,10 +15,11 @@ import {
   Node,
   Edge,
   Panel,
+  SelectionMode,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { RefreshCw, LayoutGrid, Eraser, Loader2 } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,7 +38,6 @@ import {
   GENERATION_START_EVENT,
   GENERATION_COMPLETE_EVENT,
   GENERATION_ERROR_EVENT,
-  FULLSCREEN_NODE_EVENT,
   PLAYGROUND_AUTO_ARRANGE_EVENT,
   STORAGE_KEY,
   POLL_INTERVAL,
@@ -54,11 +54,7 @@ import {
   DEFAULT_COMPONENT_NODE_HEIGHT,
   ITERATION_EDGE_STYLE,
   SKELETON_EDGE_STYLE,
-  FITVIEW_FULLSCREEN_ENTER,
-  FITVIEW_FULLSCREEN_EXIT,
   FITVIEW_AFTER_ARRANGE,
-  FULLSCREEN_ENTER_DELAY,
-  FULLSCREEN_EXIT_DELAY,
   ARRANGE_FITVIEW_DELAY,
   POST_GENERATION_SCAN_DELAY,
   POST_GENERATION_ARRANGE_DELAY,
@@ -76,7 +72,6 @@ import {
   ITERATION_COLLAPSE_TOGGLE_EVENT,
   TREE_COLUMN_WIDTH,
   type GenerationStartPayload,
-  type GenerationCompletePayload,
   type GenerationErrorPayload,
 } from './lib/constants';
 
@@ -185,12 +180,21 @@ export default function PlaygroundCanvas() {
     generationInfoRef.current = generationInfo;
   }, [generationInfo]);
   
-  // Running timer during generation
+  if (initialState && !initialized.current) {
+    nodeIdCounterRef.current = initialState.nodeIdCounter;
+    initialized.current = true;
+  }
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialState?.nodes || []);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialState?.edges || []);
+  const { screenToFlowPosition, fitView } = useReactFlow();
+
+  // Running timer during generation + safety timeout for orphaned skeletons
   useEffect(() => {
     if (!isGenerating || !generationInfo?.startTime) {
       return;
     }
-    
+
     // Update elapsed time every second
     const updateElapsed = () => {
       const durationMs = Date.now() - generationInfo.startTime;
@@ -199,26 +203,29 @@ export default function PlaygroundCanvas() {
       const seconds = totalSeconds % 60;
       setElapsedTime(`${minutes}m:${seconds.toString().padStart(2, '0')}s`);
     };
-    
+
     // Initial update
     updateElapsed();
-    
+
     // Update every second
     const intervalId = setInterval(updateElapsed, 1000);
-    
-    return () => clearInterval(intervalId);
-  }, [isGenerating, generationInfo?.startTime]);
-  
-  // Fullscreen is now handled via a separate route in a new tab
-  const isFullscreen = false;
-  if (initialState && !initialized.current) {
-    nodeIdCounterRef.current = initialState.nodeIdCounter;
-    initialized.current = true;
-  }
-  
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialState?.nodes || []);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialState?.edges || []);
-  const { screenToFlowPosition, fitView } = useReactFlow();
+
+    // Safety: auto-clean skeleton nodes after 10 minutes if generation hangs
+    const safetyTimeout = setTimeout(() => {
+      const info = generationInfoRef.current;
+      if (info) {
+        setNodes(nds => nds.filter(n => !info.skeletonNodeIds.includes(n.id)));
+        setEdges(eds => eds.filter(e => !info.skeletonNodeIds.some(sid => e.target === sid)));
+      }
+      setIsGenerating(false);
+      setGenerationInfo(null);
+    }, 10 * 60 * 1000);
+
+    return () => {
+      clearInterval(intervalId);
+      clearTimeout(safetyTimeout);
+    };
+  }, [isGenerating, generationInfo?.startTime, setNodes, setEdges]);
 
   // Keep refs in sync with state (for use inside polling/interval callbacks)
   useEffect(() => {
@@ -321,7 +328,6 @@ export default function PlaygroundCanvas() {
   const scanForIterations = useCallback(async (resetTimeoutOnFind = false) => {
     setIsScanning(true);
     try {
-      console.log('[Playground] Scanning for iterations...');
       const response = await fetch('/playground/api/iterations');
       if (!response.ok) {
         console.error('[Playground] Failed to fetch iterations:', response.status);
@@ -329,7 +335,6 @@ export default function PlaygroundCanvas() {
       }
       
       const { iterations } = await response.json() as { iterations: IterationFile[] };
-      console.log('[Playground] Found iterations from API:', iterations);
       
       const currentNodes = nodesRef.current;
       const currentKnownIterations = knownIterationsRef.current;
@@ -347,7 +352,6 @@ export default function PlaygroundCanvas() {
       );
       
       if (newIterations.length === 0) {
-        console.log('[Playground] No new iterations to add');
         return;
       }
       
@@ -383,7 +387,6 @@ export default function PlaygroundCanvas() {
         }
         
         if (!sourceNodeId) {
-          console.log(`[Playground] No parent found for ${iter.filename} (source: ${iter.sourceIteration}, parentId: ${iter.parentId})`);
           continue;
         }
         
@@ -424,7 +427,6 @@ export default function PlaygroundCanvas() {
       }
       
       if (newNodes.length > 0) {
-        console.log(`[Playground] Adding ${newNodes.length} new iteration nodes to canvas`);
         setNodes(nds => [...nds, ...newNodes]);
         setEdges(eds => [...eds, ...newEdges]);
         setKnownIterations(prev => [...prev, ...newKnownFilenames]);
@@ -491,7 +493,6 @@ export default function PlaygroundCanvas() {
     const handleGenerationStart = (e: CustomEvent<GenerationStartPayload>) => {
       const { componentId, componentName, parentNodeId, iterationCount } = e.detail;
       
-      console.log('[Playground] Generation started:', { componentId, componentName, iterationCount });
       
       // Find the parent node (use ref for current nodes)
       const parentNode = nodesRef.current.find(n => n.id === parentNodeId);
@@ -556,8 +557,7 @@ export default function PlaygroundCanvas() {
       }, SKELETON_ARRANGE_DELAY);
     };
 
-    const handleGenerationComplete = (e: CustomEvent<GenerationCompletePayload>) => {
-      console.log('[Playground] Generation completed:', e.detail);
+    const handleGenerationComplete = (): void => {
       
       // Use ref to get latest generation info
       const info = generationInfoRef.current;
@@ -570,12 +570,10 @@ export default function PlaygroundCanvas() {
         const seconds = totalSeconds % 60;
         const formatted = `${minutes}m:${seconds.toString().padStart(2, '0')}s`;
         setLastGenerationDuration(formatted);
-        console.log('[Playground] Generation took:', formatted);
       }
       
       // Remove skeleton nodes
       if (info) {
-        console.log('[Playground] Removing skeleton nodes:', info.skeletonNodeIds);
         setNodes(nds => nds.filter(n => !info.skeletonNodeIds.includes(n.id)));
         setEdges(eds => eds.filter(e => !info.skeletonNodeIds.some(id => e.target === id)));
       }
@@ -613,7 +611,6 @@ export default function PlaygroundCanvas() {
       
       // Remove skeleton nodes
       if (info) {
-        console.log('[Playground] Removing skeleton nodes (error):', info.skeletonNodeIds);
         setNodes(nds => nds.filter(n => !info.skeletonNodeIds.includes(n.id)));
         setEdges(eds => eds.filter(e => !info.skeletonNodeIds.some(id => e.target === id)));
       }
@@ -668,7 +665,7 @@ export default function PlaygroundCanvas() {
 
       setNodes((nds) => nds.concat(newNode));
     },
-    [screenToFlowPosition, setNodes]
+    [screenToFlowPosition, setNodes, getNodeId]
   );
 
   const handlePaneClick = useCallback(() => {
@@ -1023,19 +1020,36 @@ export default function PlaygroundCanvas() {
     return { visibleNodes: annotatedNodes, visibleEdges: vEdges };
   })();
 
-  // Clear all nodes and edges (called after AlertDialog confirmation)
-  const confirmClearAllNodes = useCallback(() => {
+  // Clear all nodes and edges, and delete iteration files from disk
+  const confirmClearAllNodes = useCallback(async () => {
     stopPolling();
-    
+
+    // Delete all iteration files via the API
+    const iterationFilenames = nodes
+      .filter((n) => n.type === 'iteration' && n.data.filename)
+      .map((n) => n.data.filename as string);
+
+    for (const filename of iterationFilenames) {
+      try {
+        await fetch('/playground/api/iterations', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename }),
+        });
+      } catch (error) {
+        console.error(`Error deleting iteration file ${filename}:`, error);
+      }
+    }
+
     setNodes([]);
     setEdges([]);
     setKnownIterations([]);
     setCollapsedNodeIds(new Set());
-    
+
     localStorage.removeItem(STORAGE_KEY);
-    
+
     setShowClearDialog(false);
-  }, [setNodes, setEdges, stopPolling]);
+  }, [nodes, setNodes, setEdges, stopPolling]);
 
   return (
     <TooltipProvider>
@@ -1056,99 +1070,92 @@ export default function PlaygroundCanvas() {
           proOptions={{ hideAttribution: true }}
           minZoom={CANVAS_MIN_ZOOM}
           maxZoom={CANVAS_MAX_ZOOM}
-          panOnScroll={!isFullscreen}
+          panOnScroll
           zoomOnScroll={false}
-          zoomOnPinch={!isFullscreen}
+          zoomOnPinch
           panOnDrag={false}
-          selectionOnDrag={!isFullscreen}
-          selectionMode="partial"
-          nodesDraggable={!isFullscreen}
-          nodesConnectable={!isFullscreen}
-          elementsSelectable={!isFullscreen}
+          selectionOnDrag
+          selectionMode={SelectionMode.Partial}
+          nodesDraggable
+          nodesConnectable
+          elementsSelectable
         >
-          {/* Hide controls in fullscreen mode */}
-          {!isFullscreen && (
-            <Panel position="top-right" className="flex items-center gap-2">
-              {/* Generation status indicator with running timer */}
-              {isGenerating && generationInfo && (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-700">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-xs font-medium">
-                    Generating {generationInfo.iterationCount} iterations for {generationInfo.componentName}...
-                  </span>
-                  <span className="text-xs text-amber-500 font-mono">
-                    {elapsedTime}
-                  </span>
-                </div>
-              )}
-              {/* Last generation duration */}
-              {!isGenerating && lastGenerationDuration && (
-                <span className="text-xs text-gray-400 font-mono">
-                  {lastGenerationDuration}
+          <Panel position="top-right" className="flex items-center gap-2">
+            {/* Generation status indicator with running timer */}
+            {isGenerating && generationInfo && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-700">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-xs font-medium">
+                  Generating {generationInfo.iterationCount} iterations for {generationInfo.componentName}...
                 </span>
-              )}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => autoArrangeNodes()}
-                    className="p-2 rounded-lg border bg-white border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-                  >
-                    <LayoutGrid className="w-4 h-4" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Auto-arrange nodes: components left, iterations right</p>
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => scanForIterations(false)}
-                    disabled={isScanning}
-                    className={`p-2 rounded-lg border transition-colors ${
-                      isPolling 
-                        ? 'bg-amber-50 border-amber-200 text-amber-700' 
-                        : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                    } disabled:opacity-50`}
-                  >
-                    <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{isPolling ? 'Auto-scanning for 120s (resets on find)' : 'Scan for new iterations'}</p>
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => setShowClearDialog(true)}
-                    className="p-2 rounded-lg border bg-white border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-                  >
-                    <Eraser className="w-4 h-4" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Clear canvas</p>
-                </TooltipContent>
-              </Tooltip>
-            </Panel>
-          )}
-          {!isFullscreen && (
-            <Controls
-              className="!bg-white !border-gray-200 !rounded-lg !shadow-sm [&>button]:!bg-white [&>button]:!border-gray-200 [&>button]:!text-gray-600 [&>button:hover]:!bg-gray-50"
-            />
-          )}
-          {!isFullscreen && (
-            <MiniMap
-              className="!bg-white !border-gray-200 !rounded-lg !shadow-sm"
-              nodeColor={(node) => {
-                if (node.type === 'skeleton') return MINIMAP_SKELETON_COLOR;
-                if (node.type === 'iteration') return MINIMAP_ITERATION_COLOR;
-                return MINIMAP_COMPONENT_COLOR;
-              }}
-              maskColor={MINIMAP_MASK_COLOR}
-            />
-          )}
+                <span className="text-xs text-amber-500 font-mono">
+                  {elapsedTime}
+                </span>
+              </div>
+            )}
+            {/* Last generation duration */}
+            {!isGenerating && lastGenerationDuration && (
+              <span className="text-xs text-gray-400 font-mono">
+                {lastGenerationDuration}
+              </span>
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => autoArrangeNodes()}
+                  className="p-2 rounded-lg border bg-white border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Auto-arrange layout</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => scanForIterations(false)}
+                  disabled={isScanning}
+                  className={`p-2 rounded-lg border transition-colors ${
+                    isPolling
+                      ? 'bg-amber-50 border-amber-200 text-amber-700'
+                      : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                  } disabled:opacity-50`}
+                >
+                  <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{isPolling ? 'Watching for new variations...' : 'Refresh variations'}</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setShowClearDialog(true)}
+                  className="p-2 rounded-lg border bg-white border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  <Eraser className="w-4 h-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Clear all</p>
+              </TooltipContent>
+            </Tooltip>
+          </Panel>
+          <Controls
+            className="!bg-white !border-gray-200 !rounded-lg !shadow-sm [&>button]:!bg-white [&>button]:!border-gray-200 [&>button]:!text-gray-600 [&>button:hover]:!bg-gray-50"
+          />
+          <MiniMap
+            className="!bg-white !border-gray-200 !rounded-lg !shadow-sm"
+            nodeColor={(node) => {
+              if (node.type === 'skeleton') return MINIMAP_SKELETON_COLOR;
+              if (node.type === 'iteration') return MINIMAP_ITERATION_COLOR;
+              return MINIMAP_COMPONENT_COLOR;
+            }}
+            maskColor={MINIMAP_MASK_COLOR}
+          />
         <Background
           variant={BackgroundVariant.Dots}
           gap={BACKGROUND_GAP}
@@ -1161,9 +1168,9 @@ export default function PlaygroundCanvas() {
       <AlertDialog open={showClearDialog} onOpenChange={setShowClearDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Clear the canvas?</AlertDialogTitle>
+            <AlertDialogTitle>Clear everything?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove all component and iteration nodes from the canvas. Iteration files on disk will not be deleted.
+              This will remove all components and variations from the canvas and permanently delete all generated variation files. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1182,9 +1189,9 @@ export default function PlaygroundCanvas() {
       <AlertDialog open={!!deleteDialogNode} onOpenChange={(open) => { if (!open) setDeleteDialogNode(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete iteration with children?</AlertDialogTitle>
+            <AlertDialogTitle>Delete variation with children?</AlertDialogTitle>
             <AlertDialogDescription>
-              <strong>{deleteDialogNode?.data.filename as string}</strong> has child iterations. Choose how to handle them:
+              <strong>{deleteDialogNode?.data.filename as string}</strong> has child variations. What would you like to do?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col sm:flex-row gap-2">
@@ -1193,13 +1200,13 @@ export default function PlaygroundCanvas() {
               onClick={() => handleDeleteWithMode('reparent')}
               className="bg-blue-600 hover:bg-blue-700 focus:ring-blue-600"
             >
-              Keep children (reparent)
+              Keep children
             </AlertDialogAction>
             <AlertDialogAction
               onClick={() => handleDeleteWithMode('cascade')}
               className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
             >
-              Delete all descendants
+              Delete all
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

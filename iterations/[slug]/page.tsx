@@ -26,6 +26,18 @@ function getRegistryItemForIteration(filename: string) {
   return undefined;
 }
 
+function ScreenFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 bg-gray-100 p-4">
+      <div className="w-full h-full overflow-auto rounded-2xl border border-gray-300 bg-white shadow-sm">
+        <div className="grid min-h-full place-items-center p-6">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default async function PlaygroundIterationIsolatedPage({ params }: IterationPageProps) {
   const { slug } = await params;
 
@@ -38,9 +50,9 @@ export default async function PlaygroundIterationIsolatedPage({ params }: Iterat
     const props = (registryItem?.props ?? {}) as Record<string, unknown>;
 
     return (
-      <div className="m-2 border border-gray-300 rounded-3xl p-4">
+      <ScreenFrame>
         <IterationComponent {...props} />
-      </div>
+      </ScreenFrame>
     );
   }
 
@@ -50,13 +62,12 @@ export default async function PlaygroundIterationIsolatedPage({ params }: Iterat
     notFound();
   }
 
-  const { Component, props, label } = registryItem;
+  const { Component, props } = registryItem;
   const effectiveProps = (props ?? {}) as Record<string, unknown>;
 
   return (
-    <div className="m-4 border border-gray-200 rounded-lg p-3">
+    <ScreenFrame>
       <Component {...effectiveProps} />
-    </div>
+    </ScreenFrame>
   );
 }
-

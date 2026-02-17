@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Check, Loader2, XCircle, Download } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../ui/tooltip';
 import {
   GENERATION_ERROR_EVENT,
   MODELS_STORAGE_KEY,
@@ -96,7 +96,6 @@ export function useAvailableModels() {
         if (Array.isArray(data.models) && data.models.length > 0) {
           setModels(data.models);
           saveModelsToStorage(data.models, data.source);
-          console.log(`[Models] Loaded ${data.models.length} models from ${data.source}`);
         } else {
           throw new Error('No models returned from API');
         }
@@ -340,7 +339,6 @@ export function CancelGenerationButton() {
       const data = await response.json();
       
       if (response.ok) {
-        console.log('Generation cancelled:', data.message);
         // Dispatch error event to clean up skeleton nodes
         window.dispatchEvent(new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
           detail: { componentId: '', parentNodeId: '', error: 'Cancelled by user' }

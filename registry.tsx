@@ -1,6 +1,7 @@
 import { ComponentType } from 'react';
 import type { ComponentSize } from './lib/constants';
 import PricingCard from './examples/PricingCard';
+import PricingPage from './examples/PricingPage';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -59,6 +60,86 @@ const pricingCardProps = {
   badge: 'Most Popular',
 };
 
+const pricingPageProps = {
+  headline: 'Simple pricing for every team',
+  subheadline:
+    'Start free and scale as you grow. No hidden fees, no surprises. Cancel anytime.',
+  tiers: [
+    {
+      name: 'Starter',
+      price: '$0',
+      period: 'month',
+      description: 'Perfect for side projects and trying things out.',
+      features: [
+        { label: '3 projects', included: true },
+        { label: '1 GB storage', included: true },
+        { label: 'Community support', included: true },
+        { label: 'Basic analytics', included: true },
+        { label: 'Custom domains', included: false },
+        { label: 'Priority support', included: false },
+        { label: 'SSO & SAML', included: false },
+      ],
+      ctaLabel: 'Get started free',
+    },
+    {
+      name: 'Pro',
+      price: '$29',
+      period: 'month',
+      description: 'For growing teams that need more power and flexibility.',
+      features: [
+        { label: 'Unlimited projects', included: true },
+        { label: '100 GB storage', included: true },
+        { label: 'Priority support', included: true },
+        { label: 'Advanced analytics', included: true },
+        { label: 'Custom domains', included: true },
+        { label: 'Team collaboration', included: true },
+        { label: 'SSO & SAML', included: false },
+      ],
+      ctaLabel: 'Start free trial',
+      highlighted: true,
+      badge: 'Most Popular',
+    },
+    {
+      name: 'Enterprise',
+      price: '$99',
+      period: 'month',
+      description: 'For organizations with advanced security and compliance needs.',
+      features: [
+        { label: 'Unlimited projects', included: true },
+        { label: 'Unlimited storage', included: true },
+        { label: 'Dedicated support', included: true },
+        { label: 'Custom analytics', included: true },
+        { label: 'Custom domains', included: true },
+        { label: 'Team collaboration', included: true },
+        { label: 'SSO & SAML', included: true },
+      ],
+      ctaLabel: 'Contact sales',
+    },
+  ],
+  faqItems: [
+    {
+      question: 'Can I change plans later?',
+      answer:
+        'Yes, you can upgrade or downgrade at any time. Changes take effect at the start of your next billing cycle.',
+    },
+    {
+      question: 'Is there a free trial?',
+      answer:
+        'The Pro plan comes with a 14-day free trial. No credit card required to start.',
+    },
+    {
+      question: 'What payment methods do you accept?',
+      answer:
+        'We accept all major credit cards, PayPal, and wire transfers for annual Enterprise plans.',
+    },
+    {
+      question: 'Can I cancel anytime?',
+      answer:
+        'Absolutely. Cancel with one click from your dashboard. No cancellation fees, ever.',
+    },
+  ],
+};
+
 // ---------------------------------------------------------------------------
 // Registry tree
 // ---------------------------------------------------------------------------
@@ -84,6 +165,29 @@ export const registry: RegistryItem[] = [
   highlighted?: boolean;
   badge?: string;
   onCtaClick?: () => void;
+}`,
+      },
+      {
+        id: 'pricing-page',
+        label: 'Pricing Page',
+        Component: PricingPage as unknown as ComponentType<Record<string, unknown>>,
+        props: pricingPageProps,
+        sourcePath: 'src/app/playground/examples/PricingPage.tsx',
+        size: 'laptop' as ComponentSize,
+        propsInterface: `interface PricingPageProps {
+  headline: string;
+  subheadline: string;
+  tiers: {
+    name: string;
+    price: string;
+    period: string;
+    description: string;
+    features: { label: string; included: boolean }[];
+    ctaLabel: string;
+    highlighted?: boolean;
+    badge?: string;
+  }[];
+  faqItems: { question: string; answer: string }[];
 }`,
       },
     ],

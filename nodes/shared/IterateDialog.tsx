@@ -2,9 +2,9 @@
 
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Check, Copy, Play, Loader2 } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Kbd } from '@/components/ui/kbd';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../ui/tooltip';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../../ui/dialog';
+import { Kbd } from '../../ui/kbd';
 import { flatRegistry, generateIterationPrompt, generateIterationFromIterationPrompt } from '../../registry';
 import {
   GENERATION_START_EVENT,
@@ -180,7 +180,6 @@ export default function IterateDialog({
 
     // API waits for completion - runs in background while dialog is closed
     try {
-      console.log('[IterateDialog] Starting generation, waiting for completion...');
 
       const response = await fetch('/playground/api/generate', {
         method: 'POST',
@@ -228,7 +227,6 @@ export default function IterateDialog({
           }),
         );
       } else {
-        console.log('[IterateDialog] Generation completed successfully:', data.generationId);
         window.dispatchEvent(
           new CustomEvent<GenerationCompletePayload>(GENERATION_COMPLETE_EVENT, {
             detail: { componentId, parentNodeId, output: '' },

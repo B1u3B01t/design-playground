@@ -3,7 +3,7 @@
 import { memo, useState, Suspense, useMemo, useRef, useEffect } from 'react';
 import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { Check, Trash2, Sparkles, Loader2, Fullscreen, ChevronRight } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { flatRegistry, generateAdoptPrompt } from '../registry';
 import { getIterationComponent } from '../iterations';
 import {
@@ -165,7 +165,6 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
     
     try {
       await navigator.clipboard.writeText(adoptPrompt);
-      console.log('[IterationNode] Adopt prompt copied to clipboard');
     } catch (err) {
       console.error('[IterationNode] Failed to copy adopt prompt:', err);
     }
@@ -207,7 +206,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
             <div className="flex items-center gap-1.5">
               <Sparkles className="w-3 h-3 text-amber-500" />
               <span className="text-xs font-medium text-gray-700">
-                Iteration #{data.iterationNumber}
+                Variation #{data.iterationNumber}
               </span>
             </div>
             <span className="text-[10px] text-gray-400 font-mono">{data.componentName}</span>
@@ -229,7 +228,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
               </button>
             </TooltipTrigger>
             <TooltipContent>
-              <p>View fullscreen</p>
+              <p>Open in new tab</p>
             </TooltipContent>
           </Tooltip>
           <IterateDialog
@@ -290,7 +289,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
             <div className="flex items-center justify-center h-full text-center">
               <div>
                 <p className="text-[10px] text-gray-400">{data.filename}</p>
-                <p className="text-[9px] text-amber-500 mt-1">Not registered in index</p>
+                <p className="text-[9px] text-amber-500 mt-1">Waiting for registration — try refreshing</p>
               </div>
             </div>
           )}
@@ -314,7 +313,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
           ) : (
             <div className="text-center">
               <p className="text-[10px] text-gray-400">{data.filename}</p>
-              <p className="text-[9px] text-amber-500 mt-1">Not registered in index</p>
+              <p className="text-[9px] text-amber-500 mt-1">Waiting for registration — try refreshing</p>
             </div>
           )}
         </div>
@@ -330,11 +329,11 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
               className="flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded transition-colors disabled:opacity-50"
             >
               <Check className="w-2.5 h-2.5" />
-              {isAdopting ? 'Copied!' : 'Adopt'}
+              {isAdopting ? 'Copied!' : 'Use this'}
             </button>
           </TooltipTrigger>
           <TooltipContent>
-            <p>Copy adopt prompt to clipboard</p>
+            <p>Copy code to use this variation in your project</p>
           </TooltipContent>
         </Tooltip>
         <Tooltip>
@@ -349,7 +348,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
             </button>
           </TooltipTrigger>
           <TooltipContent>
-            <p>Delete this iteration</p>
+            <p>Delete this variation</p>
           </TooltipContent>
         </Tooltip>
       </div>
