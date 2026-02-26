@@ -14,12 +14,10 @@ import {
   useReactFlow,
   Node,
   Edge,
-  Panel,
   SelectionMode,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { RefreshCw, LayoutGrid, Eraser, Loader2 } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+import { TooltipProvider } from './ui/tooltip';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -70,6 +68,7 @@ import {
   CANVAS_MAX_ZOOM,
   CANVAS_MIN_ZOOM,
   ITERATION_COLLAPSE_TOGGLE_EVENT,
+  PLAYGROUND_CLEAR_EVENT,
   TREE_COLUMN_WIDTH,
   type GenerationStartPayload,
   type GenerationErrorPayload,
@@ -979,6 +978,15 @@ export default function PlaygroundCanvas() {
   }, []);
 
   // ---------------------------------------------------------------------------
+  // Clear event from PlaygroundHeader
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const handleClear = () => setShowClearDialog(true);
+    window.addEventListener(PLAYGROUND_CLEAR_EVENT, handleClear);
+    return () => window.removeEventListener(PLAYGROUND_CLEAR_EVENT, handleClear);
+  }, []);
+
+  // ---------------------------------------------------------------------------
   // Compute hasChildren + isCollapsed for iteration nodes and filter visible
   // ---------------------------------------------------------------------------
   const { visibleNodes, visibleEdges } = (() => {
@@ -1080,75 +1088,11 @@ export default function PlaygroundCanvas() {
           nodesConnectable
           elementsSelectable
         >
-          <Panel position="top-right" className="flex items-center gap-2">
-            {/* Generation status indicator with running timer */}
-            {isGenerating && generationInfo && (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-700">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span className="text-xs font-medium">
-                  Generating {generationInfo.iterationCount} iterations for {generationInfo.componentName}...
-                </span>
-                <span className="text-xs text-amber-500 font-mono">
-                  {elapsedTime}
-                </span>
-              </div>
-            )}
-            {/* Last generation duration */}
-            {!isGenerating && lastGenerationDuration && (
-              <span className="text-xs text-gray-400 font-mono">
-                {lastGenerationDuration}
-              </span>
-            )}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => autoArrangeNodes()}
-                  className="p-2 rounded-lg border bg-white border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-                >
-                  <LayoutGrid className="w-4 h-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Auto-arrange layout</p>
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => scanForIterations(false)}
-                  disabled={isScanning}
-                  className={`p-2 rounded-lg border transition-colors ${
-                    isPolling
-                      ? 'bg-amber-50 border-amber-200 text-amber-700'
-                      : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                  } disabled:opacity-50`}
-                >
-                  <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{isPolling ? 'Watching for new variations...' : 'Refresh variations'}</p>
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => setShowClearDialog(true)}
-                  className="p-2 rounded-lg border bg-white border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-                >
-                  <Eraser className="w-4 h-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Clear all</p>
-              </TooltipContent>
-            </Tooltip>
-          </Panel>
           <Controls
-            className="!bg-white !border-gray-200 !rounded-lg !shadow-sm [&>button]:!bg-white [&>button]:!border-gray-200 [&>button]:!text-gray-600 [&>button:hover]:!bg-gray-50"
+            className="!bg-white !border-stone-200 !rounded-lg !shadow-sm [&>button]:!bg-white [&>button]:!border-stone-200 [&>button]:!text-stone-600 [&>button:hover]:!bg-stone-50"
           />
           <MiniMap
-            className="!bg-white !border-gray-200 !rounded-lg !shadow-sm"
+            className="!bg-white !border-stone-200 !rounded-lg !shadow-sm"
             nodeColor={(node) => {
               if (node.type === 'skeleton') return MINIMAP_SKELETON_COLOR;
               if (node.type === 'iteration') return MINIMAP_ITERATION_COLOR;

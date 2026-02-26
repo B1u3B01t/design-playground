@@ -11,6 +11,8 @@ import PricingCardIteration5 from './PricingCard.iteration-5';
 import PricingCardIteration6 from './PricingCard.iteration-6';
 import PricingCardIteration7 from './PricingCard.iteration-7';
 import PricingCardIteration8 from './PricingCard.iteration-8';
+import PricingCardIteration9 from './PricingCard.iteration-9';
+import PricingCardIteration10 from './PricingCard.iteration-10';
 
 // Map of filename to component
 // Each iteration component has its own props, but the registry treats them as
@@ -32,6 +34,10 @@ export const iterationComponents: Record<string, ComponentType<Record<string, un
     PricingCardIteration7 as unknown as ComponentType<Record<string, unknown>>,
   'PricingCard.iteration-8.tsx':
     PricingCardIteration8 as unknown as ComponentType<Record<string, unknown>>,
+  'PricingCard.iteration-9.tsx':
+    PricingCardIteration9 as unknown as ComponentType<Record<string, unknown>>,
+  'PricingCard.iteration-10.tsx':
+    PricingCardIteration10 as unknown as ComponentType<Record<string, unknown>>,
 };
 
 export function getIterationComponent(

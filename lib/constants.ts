@@ -34,6 +34,9 @@ export const PLAYGROUND_AUTO_ARRANGE_EVENT = 'PLAYGROUND_AUTO_ARRANGE';
 /** Fired when an iteration node's collapse/expand state is toggled */
 export const ITERATION_COLLAPSE_TOGGLE_EVENT = 'playground:iteration-collapse-toggle';
 
+/** Fired to open the clear-all confirmation dialog */
+export const PLAYGROUND_CLEAR_EVENT = 'playground:clear-requested';
+
 // ---------------------------------------------------------------------------
 // localStorage Keys
 // ---------------------------------------------------------------------------

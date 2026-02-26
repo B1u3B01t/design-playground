@@ -24,6 +24,12 @@
     },
     "PricingCard.iteration-8.tsx": {
       "parent": "PricingCard.iteration-2.tsx"
+    },
+    "PricingCard.iteration-9.tsx": {
+      "parent": "PricingCard.iteration-7.tsx"
+    },
+    "PricingCard.iteration-10.tsx": {
+      "parent": "PricingCard.iteration-7.tsx"
     }
   }
 }
