@@ -5,10 +5,12 @@ This guide is for AI agents (like Cursor) to understand how to generate componen
 ## Your Task
 
 When a user pastes an iteration prompt, you will:
-1. Read the source component
-2. Understand its structure and purpose
-3. Generate the requested number of variations
-4. Save each variation as a separate file in the iterations folder
+1. Read this guide carefully
+2. Read the source component
+3. Understand its structure, props interface, and current design
+4. Generate the requested number of **compatible** variations (layout and visual design can both change)
+5. Save each variation as a separate file in the iterations folder
+6. Register each variation in the iterations registry and tree manifest
 
 ## Input Format
 
@@ -37,7 +39,8 @@ Props interface (DO NOT CHANGE):
 
 ## Generation Rules
 
-### 1. Props Interface
+### 1. Props Interface – ABSOLUTE REQUIREMENT
+
 **NEVER** change the props interface. The iteration must be a drop-in replacement.
 
 ```tsx
@@ -165,52 +168,7 @@ Focus on structural changes:
 
 ## Tailwind Constraints
 
-Key principle: **Stick to existing Tailwind classes used in the codebase**. Do not introduce new color values, custom utilities, or CSS-in-JS.
-
-## CRITICAL: Preserve Design Theme
-
-> ⚠️ **Always follow the design theme of the original component unless explicitly told otherwise.**
-
-When generating iterations, you MUST preserve the visual theme from the source component:
-
-### Colors & Text Classes
-Copy the exact color classes from the original:
-```tsx
-// ✅ CORRECT - Use same colors as original
-text-foreground        // Title text
-text-text-brown-dark   // Secondary text (category, author, date)
-opacity-80             // Subtitle opacity
-bg-accent              // Image placeholder background
-
-// ❌ WRONG - Inventing new theme colors
-text-white             // Unless original uses white text
-bg-gray-900            // Unless original has dark backgrounds
-text-white/80          // Don't assume dark theme
-```
-
-### Badge & Icon Styling
-Preserve exact styling including inline styles:
-```tsx
-// ✅ CORRECT - Copy exact badge styling
-<Badge className="px-0 py-0 text-xs leading-none border-transparent bg-transparent" style={{ color: "#6D5B4B" }}>
-
-// ❌ WRONG - Changing badge colors/style
-<Badge className="bg-amber-500/20 text-amber-300">
-```
-
-### Why This Matters
-- Iterations should be **layout variations**, not theme variations
-- Users expect iterations to match their app's existing visual identity
-- White-on-white or dark-on-dark text makes iterations unusable
-- The playground renders iterations in the same context as the original component
-
-### Quick Checklist
-Before finalizing an iteration, verify:
-- [ ] Text colors match original (`text-foreground`, `text-text-brown-dark`, etc.)
-- [ ] Background colors match original (`bg-accent`, no dark backgrounds unless original has them)
-- [ ] Badge/icon styling is identical
-- [ ] Opacity values preserved (`opacity-80`, `opacity-50`, etc.)
-- [ ] No assumptions about light/dark mode - use what the original uses
+Key principle: **Stick to existing Tailwind utilities and patterns used in the codebase**. Do not introduce custom utilities or ad‑hoc CSS-in-JS beyond what the source component already uses. You may change colors, typography, spacing, and other design aspects as part of the iteration, as long as you stay within the existing Tailwind configuration.
 
 ## CRITICAL: Register Iterations in Index
 
@@ -369,8 +327,7 @@ Before saving each iteration:
 - [ ] File named correctly
 - [ ] No TypeScript errors
 - [ ] Uses only allowed Tailwind classes
-- [ ] **Design theme preserved** (text colors, backgrounds, badge styling match original)
-- [ ] Meaningful variation from original
+- [ ] Meaningful variation from original (layout and/or visual design)
 - [ ] Each iteration is distinct from others
 - [ ] **Iterations registered in `iterations/index.ts`**
 - [ ] **Map keys include `.tsx` extension** (e.g., `'Component.iteration-1.tsx'`)

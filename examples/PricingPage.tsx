@@ -1,6 +1,7 @@
 'use client';
 
-import { Check, X, Zap, Shield, Headphones, ArrowRight } from 'lucide-react';
+import { Zap, Shield, Headphones } from 'lucide-react';
+import PricingCard from './PricingCard';
 
 export interface PricingPageProps {
   headline: string;
@@ -16,77 +17,6 @@ export interface PricingPageProps {
     badge?: string;
   }[];
   faqItems: { question: string; answer: string }[];
-}
-
-function TierCard({
-  tier,
-}: {
-  tier: PricingPageProps['tiers'][number];
-}) {
-  return (
-    <div
-      className={`relative flex flex-col rounded-2xl border p-8 transition-shadow hover:shadow-lg ${
-        tier.highlighted
-          ? 'border-blue-600 bg-blue-50/50 shadow-md shadow-blue-100/50 ring-1 ring-blue-600'
-          : 'border-gray-200 bg-white shadow-sm'
-      }`}
-    >
-      {tier.badge && (
-        <span className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-blue-600 px-4 py-1 text-xs font-semibold text-white shadow-sm">
-          {tier.badge}
-        </span>
-      )}
-
-      <h3
-        className={`text-sm font-semibold uppercase tracking-wider ${
-          tier.highlighted ? 'text-blue-700' : 'text-gray-500'
-        }`}
-      >
-        {tier.name}
-      </h3>
-
-      <div className="mt-4 flex items-baseline gap-1">
-        <span className="text-5xl font-extrabold tracking-tight text-gray-900">
-          {tier.price}
-        </span>
-        <span className="text-base text-gray-500">/{tier.period}</span>
-      </div>
-
-      <p className="mt-3 text-sm leading-relaxed text-gray-600">
-        {tier.description}
-      </p>
-
-      <hr className="my-6 border-gray-200" />
-
-      <ul className="flex-1 space-y-3">
-        {tier.features.map((feature, idx) => (
-          <li key={idx} className="flex items-start gap-2.5 text-sm">
-            {feature.included ? (
-              <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-500" />
-            ) : (
-              <X className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-300" />
-            )}
-            <span
-              className={feature.included ? 'text-gray-700' : 'text-gray-400'}
-            >
-              {feature.label}
-            </span>
-          </li>
-        ))}
-      </ul>
-
-      <button
-        className={`mt-8 flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition-colors ${
-          tier.highlighted
-            ? 'bg-blue-600 text-white hover:bg-blue-700'
-            : 'bg-gray-900 text-white hover:bg-gray-800'
-        }`}
-      >
-        {tier.ctaLabel}
-        <ArrowRight className="h-4 w-4" />
-      </button>
-    </div>
-  );
 }
 
 function FAQItem({ question, answer }: { question: string; answer: string }) {
@@ -154,7 +84,19 @@ export default function PricingPage({
           }`}
         >
           {tiers.map((tier, idx) => (
-            <TierCard key={idx} tier={tier} />
+            <PricingCard
+              key={idx}
+              planName={tier.name}
+              price={tier.price}
+              period={tier.period}
+              description={tier.description}
+              features={tier.features
+                .filter((feature) => feature.included)
+                .map((feature) => feature.label)}
+              ctaLabel={tier.ctaLabel}
+              highlighted={tier.highlighted}
+              badge={tier.badge}
+            />
           ))}
         </div>
       </section>

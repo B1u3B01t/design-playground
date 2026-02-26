@@ -1,7 +1,29 @@
 {
   "version": 1,
   "entries": {
-    "PricingCard.iteration-1.tsx": { "parent": "pricing-card" },
-    "PricingCard.iteration-2.tsx": { "parent": "pricing-card" }
+    "PricingCard.iteration-1.tsx": {
+      "parent": "pricing-card"
+    },
+    "PricingCard.iteration-2.tsx": {
+      "parent": "pricing-card"
+    },
+    "PricingCard.iteration-3.tsx": {
+      "parent": "pricing-card"
+    },
+    "PricingCard.iteration-4.tsx": {
+      "parent": "pricing-card"
+    },
+    "PricingCard.iteration-5.tsx": {
+      "parent": "PricingCard.iteration-2.tsx"
+    },
+    "PricingCard.iteration-6.tsx": {
+      "parent": "PricingCard.iteration-2.tsx"
+    },
+    "PricingCard.iteration-7.tsx": {
+      "parent": "PricingCard.iteration-2.tsx"
+    },
+    "PricingCard.iteration-8.tsx": {
+      "parent": "PricingCard.iteration-2.tsx"
+    }
   }
 }
