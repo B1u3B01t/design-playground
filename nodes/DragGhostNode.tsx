@@ -68,7 +68,7 @@ function DragGhostNode({ data }: DragGhostNodeProps) {
             }}
           >
             <span
-              className="text-2xl font-medium select-none"
+              className="text-xl font-medium select-none"
               style={{ color: 'rgba(11, 153, 255, 0.45)' }}
             >
               Create variant {cell.variantNumber}

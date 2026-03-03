@@ -171,6 +171,9 @@ export const DEPTH_OPTIONS: { key: 'shell' | '1-level' | 'all'; label: string }[
   { key: 'all', label: 'All levels' },
 ];
 
+/** Default instructions used when the iterate chat is empty or drag-to-iterate is used */
+export const DEFAULT_EMPTY_ITERATION_INSTRUCTIONS = 'use inline css instead of tailwind. make the layout prfession, elements should not clash.';
+
 // ---------------------------------------------------------------------------
 // Fallback AI Models
 // ---------------------------------------------------------------------------

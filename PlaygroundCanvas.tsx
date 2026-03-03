@@ -80,11 +80,13 @@ import {
   PLAYGROUND_CLEAR_EVENT,
   TREE_COLUMN_WIDTH,
   DRAG_GHOST_GAP,
+  DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
   type GenerationStartPayload,
   type GenerationCompletePayload,
   type GenerationErrorPayload,
   type DragIteratePayload,
 } from './lib/constants';
+import type { PlaygroundSkill } from './skills';
 
 const nodeTypes = {
   component: ComponentNode,
@@ -92,6 +94,33 @@ const nodeTypes = {
   skeleton: SkeletonIterationNode,
   'drag-ghost': DragGhostNode,
 };
+
+const DEFAULT_SKILL_IDS = ['design-variations', 'frontend-design'] as const;
+let cachedDefaultSkillPrompt: string | null = null;
+
+async function loadDefaultSkillPrompt(): Promise<string | null> {
+  if (cachedDefaultSkillPrompt !== null) return cachedDefaultSkillPrompt;
+  try {
+    const response = await fetch('/playground/api/skills');
+    if (!response.ok) {
+      cachedDefaultSkillPrompt = '';
+      return cachedDefaultSkillPrompt;
+    }
+    const data = (await response.json()) as { skills?: PlaygroundSkill[] };
+    const skills = data.skills || [];
+    const parts: string[] = [];
+    for (const id of DEFAULT_SKILL_IDS) {
+      const skill = skills.find((s) => s.id === id);
+      const body = skill?.systemPrompt?.trim();
+      if (body) parts.push(body);
+    }
+    cachedDefaultSkillPrompt = parts.length ? parts.join('\n\n') : '';
+    return cachedDefaultSkillPrompt;
+  } catch {
+    cachedDefaultSkillPrompt = '';
+    return cachedDefaultSkillPrompt;
+  }
+}
 
 interface IterationFile {
   filename: string;
@@ -765,6 +794,8 @@ export default function PlaygroundCanvas() {
 
       // Build the prompt
       let prompt: string;
+      const defaultSkillPrompt = await loadDefaultSkillPrompt();
+
       if (sourceFilename) {
         try {
           const response = await fetch('/playground/api/iterations');
@@ -787,12 +818,26 @@ export default function PlaygroundCanvas() {
             iterationCount,
             startNumber,
             'shell',
+            DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
+            defaultSkillPrompt || undefined,
           );
         } catch {
-          prompt = generateIterationPrompt(componentId, iterationCount, 'shell');
+          prompt = generateIterationPrompt(
+            componentId,
+            iterationCount,
+            'shell',
+            DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
+            defaultSkillPrompt || undefined,
+          );
         }
       } else {
-        prompt = generateIterationPrompt(componentId, iterationCount, 'shell');
+        prompt = generateIterationPrompt(
+          componentId,
+          iterationCount,
+          'shell',
+          DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
+          defaultSkillPrompt || undefined,
+        );
       }
 
       // Dispatch generation start (creates skeleton nodes in grid layout)
