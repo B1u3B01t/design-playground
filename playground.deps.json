@@ -10,7 +10,9 @@
     "class-variance-authority": "latest",
     "clsx": "latest",
     "tailwind-merge": "latest",
-    "sonner": "latest"
+    "sonner": "latest",
+    "@tailwindcss/typography": "latest",
+    "tw-animate-css": "latest"
   },
   "requires": [
     "next",
