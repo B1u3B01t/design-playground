@@ -5,7 +5,7 @@ import * as React from "react"
 // level. The dropdown now renders inside the inline-reference container so
 // it inherits parent transforms (e.g. canvas zoom), so the import is unused.
 
-import { cn } from "@/lib/utils"
+import { cn } from "../lib/utils"
 
 // ---------------------------------------------------------------------------
 // Types
