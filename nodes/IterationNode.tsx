@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useState, Suspense, useMemo, useRef, useEffect } from 'react';
-import { Handle, Position, useReactFlow } from '@xyflow/react';
+import { useReactFlow } from '@xyflow/react';
 import { Check, Trash2, Loader2, ArrowUpRight, ChevronRight } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { flatRegistry, generateAdoptPrompt } from '../registry';
@@ -18,6 +18,7 @@ import {
   type ComponentSize,
 } from '../lib/constants';
 import { useAsyncProps, useScrollCapture } from '../hooks/useNodeShared';
+import { useTunnelShare } from '../hooks/useTunnelShare';
 import ComponentErrorBoundary from './ComponentErrorBoundary';
 import IterateDialog from './shared/IterateDialog';
 
@@ -59,6 +60,9 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
     }
     return possibleIds[0];
   }, [data.componentName]);
+
+  const iterationSlug = useMemo(() => data.filename.replace(/\.tsx$/, ''), [data.filename]);
+  const { share: handleShare, state: shareState } = useTunnelShare(iterationSlug);
 
   const { resolvedProps, isLoadingProps, propsError } = useAsyncProps(registryId);
   const staticProps = useMemo(() => flatRegistry[registryId]?.props || {}, [registryId]);
@@ -299,21 +303,48 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
               </TooltipTrigger>
               <TooltipContent side="right"><p>Delete variation</p></TooltipContent>
             </Tooltip>
+
+            {/* Share public link */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleShare}
+                  disabled={shareState === 'connecting'}
+                  className={`w-8 h-8 flex items-center justify-center rounded-full bg-white border transition-colors disabled:opacity-50 ${
+                    shareState === 'copied'
+                      ? 'border-green-300 text-green-600'
+                      : shareState === 'error'
+                        ? 'border-red-300 text-red-500'
+                        : 'border-stone-200 text-stone-400 hover:text-stone-700 hover:border-stone-300'
+                  }`}
+                  aria-label="Copy public link"
+                >
+                  {shareState === 'connecting' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : shareState === 'copied' ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                    </svg>
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p>
+                  {shareState === 'connecting' ? 'Starting tunnel…' :
+                   shareState === 'copied' ? 'Link copied!' :
+                   shareState === 'error' ? 'Tunnel failed' :
+                   'Copy public link'}
+                </p>
+              </TooltipContent>
+            </Tooltip>
           </div>
       </div>
 
-      {/* Target handle — incoming from parent */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="!w-3 !h-3 !bg-[#0B99FF] !border-2 !border-white"
-      />
-      {/* Source handle — outgoing to child iterations */}
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="!w-3 !h-3 !bg-[#0B99FF] !border-2 !border-white"
-      />
     </div>
   );
 }

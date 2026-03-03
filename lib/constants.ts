@@ -37,6 +37,9 @@ export const ITERATION_COLLAPSE_TOGGLE_EVENT = 'playground:iteration-collapse-to
 /** Fired to open the clear-all confirmation dialog */
 export const PLAYGROUND_CLEAR_EVENT = 'playground:clear-requested';
 
+/** Fired when drag-to-iterate releases (triggers toast + generation) */
+export const DRAG_ITERATE_EVENT = 'playground:drag-iterate';
+
 // ---------------------------------------------------------------------------
 // localStorage Keys
 // ---------------------------------------------------------------------------
@@ -87,7 +90,7 @@ export const ARRANGE_START_X = 50;
 export const ARRANGE_START_Y = 50;
 
 /** Vertical gap between nodes within a component group (px) */
-export const ARRANGE_VERTICAL_GAP = 60;
+export const ARRANGE_VERTICAL_GAP = 80;
 
 /** Extra vertical gap between component groups (px) */
 export const ARRANGE_GROUP_GAP = 100;
@@ -179,7 +182,7 @@ export interface ModelOption {
 
 /** Fallback models used when the CLI fetch fails and localStorage is empty */
 export const FALLBACK_MODELS: ModelOption[] = [
-  { value: '', label: 'Auto (Default)' },
+  { value: 'auto', label: 'Auto (Default)' },
   { value: 'opus-4.6-thinking', label: 'Claude 4.6 Opus (Thinking)' },
   { value: 'opus-4.6', label: 'Claude 4.6 Opus' },
   { value: 'sonnet-4.5', label: 'Claude 4.5 Sonnet' },
@@ -312,6 +315,41 @@ export const ITERATION_FILENAME_PARSE_PATTERN = /^(.+)\.iteration-(\d+)\.tsx$/;
 export const DND_DATA_KEY = 'application/x-playground-component';
 
 // ---------------------------------------------------------------------------
+// Drag-to-Iterate Constants
+// ---------------------------------------------------------------------------
+
+/** Pixels of drag distance per grid step (row or column) */
+export const DRAG_ITERATE_PX_PER_STEP = 200;
+
+/** Minimum pointer distance (px) to enter drag state (prevents accidental drags) */
+export const DRAG_ITERATE_THRESHOLD_PX = 5;
+
+/** Maximum time (ms) for a pointerdown→pointerup to count as a click */
+export const DRAG_ITERATE_CLICK_TIMEOUT_MS = 150;
+
+/** Duration (ms) of the undo window before generation starts */
+export const DRAG_ITERATE_UNDO_DURATION_MS = 3000;
+
+/** Duration (ms) for the Sonner toast auto-dismiss */
+export const DRAG_ITERATE_TOAST_DURATION_MS = 4000;
+
+/** Maximum total new iterations from a single drag */
+export const DRAG_ITERATE_MAX_TOTAL = 8;
+
+/** Maximum grid columns for drag-to-iterate */
+export const DRAG_ITERATE_MAX_COLS = 4;
+
+/** Maximum grid rows for drag-to-iterate */
+export const DRAG_ITERATE_MAX_ROWS = 4;
+
+/** Gap between ghost boxes in flow coordinates (px) */
+export const DRAG_GHOST_GAP = 20;
+
+/** Screen-pixel padding around the selection overlay so it visually encompasses the original node */
+export const DRAG_OVERLAY_PADDING_X = 0;
+export const DRAG_OVERLAY_PADDING_Y = 0;
+
+// ---------------------------------------------------------------------------
 // Tree Layout Constants
 // ---------------------------------------------------------------------------
 
@@ -331,6 +369,11 @@ export interface GenerationStartPayload {
   componentName: string;
   parentNodeId: string;
   iterationCount: number;
+  /** When set, skeleton nodes are placed in a grid matching drag-to-iterate ghost positions */
+  gridLayout?: {
+    rows: number;
+    cols: number;
+  };
 }
 
 /** Payload for GENERATION_COMPLETE_EVENT */
@@ -345,4 +388,16 @@ export interface GenerationErrorPayload {
   componentId: string;
   parentNodeId: string;
   error: string;
+}
+
+/** Payload for DRAG_ITERATE_EVENT */
+export interface DragIteratePayload {
+  componentId: string;
+  componentName: string;
+  parentNodeId: string;
+  iterationCount: number;
+  rows: number;
+  cols: number;
+  model?: string;
+  sourceFilename?: string;
 }

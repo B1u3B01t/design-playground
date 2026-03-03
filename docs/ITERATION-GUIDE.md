@@ -188,17 +188,19 @@ import ArticleCardIteration3 from './ArticleCard.iteration-3';
 import ArticleCardIteration4 from './ArticleCard.iteration-4';
 
 // Map filename to component
-export const iterationComponents: Record<string, ComponentType<Record<string, unknown>>> = {
-  'ArticleCard.iteration-1.tsx': ArticleCardIteration1 as ComponentType<Record<string, unknown>>,
-  'ArticleCard.iteration-2.tsx': ArticleCardIteration2 as ComponentType<Record<string, unknown>>,
-  'ArticleCard.iteration-3.tsx': ArticleCardIteration3 as ComponentType<Record<string, unknown>>,
-  'ArticleCard.iteration-4.tsx': ArticleCardIteration4 as ComponentType<Record<string, unknown>>,
+export const iterationComponents: Record<string, ComponentType<any>> = {
+  'ArticleCard.iteration-1.tsx': ArticleCardIteration1 as ComponentType<any>,
+  'ArticleCard.iteration-2.tsx': ArticleCardIteration2 as ComponentType<any>,
+  'ArticleCard.iteration-3.tsx': ArticleCardIteration3 as ComponentType<any>,
+  'ArticleCard.iteration-4.tsx': ArticleCardIteration4 as ComponentType<any>,
 };
 
-export function getIterationComponent(filename: string): ComponentType<Record<string, unknown>> | undefined {
+export function getIterationComponent(filename: string): ComponentType<any> | undefined {
   return iterationComponents[filename];
 }
 ```
+
+> **TypeScript note:** Iteration components have concrete, non‑uniform props (e.g. `PricingCardProps`). The index intentionally uses `ComponentType<any>` so that all iterations can be stored in a single map without TypeScript complaining that `Record<string, unknown>` is missing required props. When you add new entries to the map, keep the `ComponentType<any>` typing and cast each imported iteration to `ComponentType<any>`.
 
 > ⚠️ **CRITICAL: Map keys MUST include `.tsx` extension**
 >
@@ -234,8 +236,8 @@ import NewComponentIteration2 from './NewComponent.iteration-2';
 // Add to the map
 export const iterationComponents = {
   // ... existing entries
-  'NewComponent.iteration-1.tsx': NewComponentIteration1 as ComponentType<Record<string, unknown>>,
-  'NewComponent.iteration-2.tsx': NewComponentIteration2 as ComponentType<Record<string, unknown>>,
+  'NewComponent.iteration-1.tsx': NewComponentIteration1 as ComponentType<any>,
+  'NewComponent.iteration-2.tsx': NewComponentIteration2 as ComponentType<any>,
   // ... etc
 };
 ```

@@ -1,14 +1,15 @@
 'use client';
 
 import { memo, useState, useRef, useEffect } from 'react';
-import { Handle, Position, useNodeId } from '@xyflow/react';
-import { Monitor, Smartphone, ArrowUpRight } from 'lucide-react';
+import { useNodeId } from '@xyflow/react';
+import { Monitor, Smartphone, ArrowUpRight, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { flatRegistry } from '../registry';
 import { CancelGenerationButton } from './shared/IterateDialogParts';
 import IterateDialog from './shared/IterateDialog';
 
 import { useAsyncProps, useScrollCapture } from '../hooks/useNodeShared';
+import { useTunnelShare } from '../hooks/useTunnelShare';
 import ComponentErrorBoundary from './ComponentErrorBoundary';
 import {
   COMPONENT_SIZE_CHANGE_EVENT,
@@ -88,6 +89,8 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   const nodeId = useNodeId();
   const isInteractive = !!selected;
 
+  const { share: handleShare, state: shareState } = useTunnelShare(componentId);
+
   const [size, setSize] = useState<ComponentSize>(registryItem?.size || 'default');
 
   useEffect(() => {
@@ -114,7 +117,6 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4 min-w-[200px]">
         <p className="text-red-600 text-sm">Unknown component: {componentId}</p>
-        <Handle type="source" position={Position.Right} className="!bg-red-500" />
       </div>
     );
   }
@@ -230,48 +232,49 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                   isGlobalGenerating={isGlobalGenerating}
                 />
 
-                {/* Placeholder — Globe */}
+                {/* Share public link */}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
-                      className="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-stone-200 text-stone-400 hover:text-stone-700 hover:border-stone-300 transition-colors"
-                      aria-label="Coming soon"
+                      onClick={handleShare}
+                      disabled={shareState === 'connecting'}
+                      className={`w-8 h-8 flex items-center justify-center rounded-full bg-white border transition-colors disabled:opacity-50 ${
+                        shareState === 'copied'
+                          ? 'border-green-300 text-green-600'
+                          : shareState === 'error'
+                            ? 'border-red-300 text-red-500'
+                            : 'border-stone-200 text-stone-400 hover:text-stone-700 hover:border-stone-300'
+                      }`}
+                      aria-label="Copy public link"
                     >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10" />
-                        <path d="M2 12h20" />
-                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                      </svg>
+                      {shareState === 'connecting' ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : shareState === 'copied' ? (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                        </svg>
+                      )}
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="right"><p>Coming soon</p></TooltipContent>
-                </Tooltip>
-
-                {/* Placeholder — Link */}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      className="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-stone-200 text-stone-400 hover:text-stone-700 hover:border-stone-300 transition-colors"
-                      aria-label="Coming soon"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                      </svg>
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right"><p>Coming soon</p></TooltipContent>
+                  <TooltipContent side="right">
+                    <p>
+                      {shareState === 'connecting' ? 'Starting tunnel…' :
+                       shareState === 'copied' ? 'Link copied!' :
+                       shareState === 'error' ? 'Tunnel failed' :
+                       'Copy public link'}
+                    </p>
+                  </TooltipContent>
                 </Tooltip>
               </>
             )}
           </div>
       </div>
 
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="!w-3 !h-3 !bg-[#0B99FF] !border-2 !border-white"
-      />
     </div>
   );
 }

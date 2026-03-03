@@ -189,9 +189,9 @@ import { ComponentType } from 'react';
 // No iterations currently registered
 
 // Map of filename to component
-export const iterationComponents: Record<string, ComponentType<Record<string, unknown>>> = {};
+export const iterationComponents: Record<string, ComponentType<any>> = {};
 
-export function getIterationComponent(filename: string): ComponentType<Record<string, unknown>> | undefined {
+export function getIterationComponent(filename: string): ComponentType<any> | undefined {
   return iterationComponents[filename];
 }
 `;
@@ -222,7 +222,7 @@ export function getIterationComponent(filename: string): ComponentType<Record<st
   for (const [, iters] of byComponent) {
     for (const iter of iters.sort((a, b) => a.iterationNumber - b.iterationNumber)) {
       const importName = `${iter.componentName}Iteration${iter.iterationNumber}`;
-      mapEntries.push(`  '${iter.filename}': ${importName} as ComponentType<Record<string, unknown>>,`);
+      mapEntries.push(`  '${iter.filename}': ${importName} as ComponentType<any>,`);
     }
   }
 
@@ -233,11 +233,11 @@ import { ComponentType } from 'react';
 
 ${imports.join('\n')}
 // Map of filename to component
-export const iterationComponents: Record<string, ComponentType<Record<string, unknown>>> = {
+export const iterationComponents: Record<string, ComponentType<any>> = {
 ${mapEntries.join('\n')}
 };
 
-export function getIterationComponent(filename: string): ComponentType<Record<string, unknown>> | undefined {
+export function getIterationComponent(filename: string): ComponentType<any> | undefined {
   return iterationComponents[filename];
 }
 `;

@@ -2,6 +2,14 @@ import { ComponentType } from 'react';
 import type { ComponentSize } from './lib/constants';
 import PricingCard from './examples/PricingCard';
 import PricingPage from './examples/PricingPage';
+import {
+  formatChildrenSection,
+  formatCustomInstructionsSection,
+  formatSkillSection,
+} from './prompts/utility';
+import { iterationPrompt } from './prompts/iteration.prompt';
+import { iterationFromIterationPrompt } from './prompts/iteration-from-iteration.prompt';
+import { adoptIterationPrompt } from './prompts/adopt.prompt';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -228,87 +236,26 @@ export function generateIterationPrompt(
   const item = flatRegistry[componentId];
   if (!item) return '';
 
+  const componentName = item.label.replace(/\s*\(.*\)/, '');
+  const cleanComponentName = componentName.replace(/\s+/g, '');
   const depthLabel = depth === 'shell' ? 'Shell only' : depth === '1-level' ? '1 level deep' : 'All levels';
-  
-  const childrenSection = item.children && item.children.length > 0
-    ? `
-Children to keep stable:
-${item.children.map(c => `- ${c}`).join('\n')}
-`
-    : '';
 
-  const customInstructionsSection = customInstructions && customInstructions.trim()
-    ? `
+  const childrenSection = formatChildrenSection(item.children);
+  const customInstructionsSection = formatCustomInstructionsSection(customInstructions);
+  const skillSection = formatSkillSection(skillPrompt);
 
-CUSTOM INSTRUCTIONS:
-${customInstructions.trim()}
-
-`
-    : '';
-
-  const skillSection = skillPrompt?.trim()
-    ? `SKILL CONTEXT
-══════════════
-
-${skillPrompt.trim()}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-`
-    : '';
-
-  return `${skillSection}ITERATION REQUEST
-═════════════════
-
-Component: ${item.label.replace(/\s*\(.*\)/, '')}
-Source: ${item.sourcePath}
-Iterations requested: ${iterationCount}
-Depth: ${depthLabel}
-${childrenSection}
-Props interface (DO NOT MODIFY):
-${item.propsInterface}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-INSTRUCTIONS
-
-1. Read the generation guide: src/app/playground/docs/ITERATION-GUIDE.md
-2. Read the source component at the path above
-3. Understand its structure, props interface, and current design
-4. Generate ${iterationCount} **compatible** variations (you may change both layout and visual design)
-5. For EACH variation you create:
-   - Save it as: src/app/playground/iterations/${item.label.replace(/\s*\(.*\)/, '').replace(/\s+/g, '')}.iteration-{n}.tsx
-   - Include the required metadata comment block with @iteration, @parent, optional @sourceIteration, and @description
-   - Immediately register that file in: src/app/playground/iterations/index.ts (map key MUST include ".tsx")
-   - Immediately add a matching entry to: src/app/playground/iterations/tree.json with parent set to "${componentId}"
-
-${customInstructionsSection}
-CRITICAL REQUIREMENTS
-- **Props interface**: Keep it IDENTICAL to the original component (no added/removed/renamed props, no type changes).
-- **Iteration depth**: Follow the requested depth (Shell only, 1 level deep, or All levels).
-- **Tree manifest**: Update src/app/playground/iterations/tree.json for every new iteration file.
-- **Registry index**: Register every iteration in src/app/playground/iterations/index.ts with a ".tsx" map key.
-
-CREATIVE LAYOUT & THEME FREEDOM
-- Explore bold, unconventional layouts: asymmetric grids, overlapping elements, unusual spacing, and creative alignments.
-- Feel free to iterate on visual design (colors, typography, spacing, badges, backgrounds) while staying within the existing Tailwind configuration.
-- Each iteration must be structurally and/or visually distinct from the original and from other iterations.
-
-QUALITY CHECKLIST (FOR EACH ITERATION)
-- [ ] Props interface unchanged from original
-- [ ] All imports resolve correctly with no TypeScript errors
-- [ ] Metadata comment included with correct @iteration/@parent (and @sourceIteration when applicable)
-- [ ] File named correctly: ComponentName.iteration-{n}.tsx
-- [ ] Uses only allowed Tailwind classes already present in the codebase
-- [ ] Layout and/or visual design is meaningfully different and creatively structured
-- [ ] Iteration is distinct from all other iterations
-- [ ] Registered in iterations/index.ts with a ".tsx" key
-- [ ] Entry added/updated in iterations/tree.json with correct parent
-- [ ] @sourceIteration set when derived from another iteration
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Generate the iterations now.`;
+  return iterationPrompt({
+    skillSection,
+    componentName,
+    sourcePath: item.sourcePath,
+    iterationCount: String(iterationCount),
+    depthLabel,
+    childrenSection,
+    propsInterface: item.propsInterface,
+    cleanComponentName,
+    componentId,
+    customInstructionsSection,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -333,78 +280,36 @@ export function generateIterationFromIterationPrompt(
   const endNumber = startNumber + iterationCount - 1;
   const iterationSourcePath = `src/app/playground/iterations/${sourceIterationFilename}`;
 
-  const childrenSection = item.children && item.children.length > 0
-    ? `
-Children to keep stable:
-${item.children.map(c => `- ${c}`).join('\n')}
-`
-    : '';
-
-  const customInstructionsSection = customInstructions && customInstructions.trim()
-    ? `
-
-CUSTOM INSTRUCTIONS:
-${customInstructions.trim()}
-
-`
-    : '';
-
-  const skillSection = skillPrompt && skillPrompt.trim()
-    ? `SKILL CONTEXT
-══════════════
-
-${skillPrompt.trim()}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-`
-    : '';
+  const childrenSection = formatChildrenSection(item.children);
+  const customInstructionsSection = formatCustomInstructionsSection(customInstructions);
+  const skillSection = formatSkillSection(skillPrompt);
 
   const iterationNumbers = Array.from(
     { length: iterationCount },
     (_, i) => startNumber + i,
   );
 
-  return `${skillSection}ITERATION REQUEST (from existing iteration)
-═════════════════════════════════════════════
+  const iterationSavesBlock = iterationNumbers
+    .map((n) => `   - Save as src/app/playground/iterations/${cleanComponentName}.iteration-${n}.tsx`)
+    .join('\n');
 
-Component: ${componentName}
-Original source: ${item.sourcePath}
-Base iteration: ${iterationSourcePath}
-Iterations requested: ${iterationCount} (numbered ${startNumber}–${endNumber})
-Depth: ${depthLabel}
-${childrenSection}
-Props interface (DO NOT MODIFY):
-${item.propsInterface}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-INSTRUCTIONS
-
-1. Read the generation guide: src/app/playground/docs/ITERATION-GUIDE.md
-2. Read the BASE ITERATION at: ${iterationSourcePath}
-3. Also read the ORIGINAL component for context: ${item.sourcePath}
-4. Generate ${iterationCount} new variations based on the base iteration
-5. For EACH new variation you create:
-${iterationNumbers.map(n => `   - Save as src/app/playground/iterations/${cleanComponentName}.iteration-${n}.tsx`).join('\n')}
-   - Immediately register that file in: src/app/playground/iterations/index.ts
-   - Immediately add a matching entry to: src/app/playground/iterations/tree.json with parent set to "${sourceIterationFilename}"
-${customInstructionsSection}
-IMPORTANT
-- Use the BASE ITERATION as your starting point, NOT the original component
-- Each new variation should diverge from the base iteration in meaningful ways
-- Iteration numbers MUST be ${iterationNumbers.join(', ')} (continuing from existing iterations)
-- Include @sourceIteration ${sourceIterationFilename} in each file's metadata comment
-
-CONSTRAINTS
-- Keep props interface identical
-- Use only existing Tailwind classes
-- Include metadata comment in each file (with correct @iteration number AND @sourceIteration)
-- Make each iteration meaningfully different from the base and from each other
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Generate the iterations now.`;
+  return iterationFromIterationPrompt({
+    skillSection,
+    componentName,
+    sourcePath: item.sourcePath,
+    iterationSourcePath,
+    iterationCount: String(iterationCount),
+    startNumber: String(startNumber),
+    endNumber: String(endNumber),
+    depthLabel,
+    childrenSection,
+    propsInterface: item.propsInterface,
+    iterationSavesBlock,
+    treeParent: sourceIterationFilename,
+    customInstructionsSection,
+    iterationNumbersList: iterationNumbers.join(', '),
+    sourceIterationFilename,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -419,51 +324,5 @@ export function generateAdoptPrompt(
   const originalPath = item?.sourcePath || `src/components/${iterationFilename.split('.iteration')[0]}.tsx`;
   const iterationPath = `src/app/playground/iterations/${iterationFilename}`;
 
-  return `ADOPT ITERATION
-═══════════════
-
-Original Component: ${originalPath}
-Iteration to Adopt: ${iterationPath}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-TASK
-
-Replace the UI implementation of the original component with the layout/styling from the iteration, while ensuring ZERO breaking changes.
-
-INSTRUCTIONS
-
-1. Read both files:
-   - Original: ${originalPath}
-   - Iteration: ${iterationPath}
-
-2. In the ORIGINAL component file:
-   - Replace the JSX/render logic with the iteration's layout
-   - Keep ALL existing imports that are still needed
-   - Keep the EXACT same props interface and types
-   - Keep ALL existing function logic (handlers, effects, computed values)
-   - Keep the same export (default/named) as before
-
-3. Do NOT:
-   - Change the props interface in any way
-   - Remove any existing functionality
-   - Change the component's public API
-   - Rename the component
-   - Move the file
-
-VERIFICATION CHECKLIST
-
-Before saving, verify:
-- [ ] Props interface is IDENTICAL to before
-- [ ] All existing imports still resolve
-- [ ] No TypeScript errors
-- [ ] Component name unchanged
-- [ ] Export style unchanged (default/named)
-- [ ] All event handlers preserved
-- [ ] All hooks/effects preserved
-- [ ] File location unchanged
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Adopt the iteration now. Only modify the original component file.`;
+  return adoptIterationPrompt({ originalPath, iterationPath });
 }

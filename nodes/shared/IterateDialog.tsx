@@ -1,9 +1,21 @@
 'use client';
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Check, Copy, Loader2, Zap, ChevronDown } from 'lucide-react';
+import { Check, Copy, Loader2, Zap } from 'lucide-react';
+import { useReactFlow } from '@xyflow/react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../ui/tooltip';
-import { flatRegistry, generateIterationPrompt, generateIterationFromIterationPrompt } from '../../registry';
+import { generateIterationPrompt, generateIterationFromIterationPrompt } from '../../registry';
+import {
+  InlineReference,
+  InlineReferenceInput,
+  InlineReferenceContent,
+  InlineReferenceList,
+  InlineReferenceItem,
+  InlineReferenceEmpty,
+  InlineReferenceGroup,
+  type Segment,
+} from '../../ui/inline-reference';
+import type { PlaygroundSkill } from '../../skills';
 import {
   GENERATION_START_EVENT,
   GENERATION_COMPLETE_EVENT,
@@ -11,9 +23,18 @@ import {
   ITERATION_PROMPT_COPIED_EVENT,
   COPIED_FEEDBACK_DURATION,
   ITERATION_COUNT_OPTIONS,
+  DRAG_ITERATE_EVENT,
+  DRAG_GHOST_GAP,
+  DRAG_OVERLAY_PADDING_X,
+  DRAG_OVERLAY_PADDING_Y,
+  DEFAULT_COMPONENT_NODE_WIDTH,
+  DEFAULT_COMPONENT_NODE_HEIGHT,
+  DEFAULT_ITERATION_NODE_WIDTH,
+  DEFAULT_ITERATION_NODE_HEIGHT,
   type GenerationStartPayload,
   type GenerationCompletePayload,
   type GenerationErrorPayload,
+  type DragIteratePayload,
 } from '../../lib/constants';
 import {
   ModelDropdown,
@@ -21,16 +42,11 @@ import {
   loadSelectedModel,
   saveSelectedModel,
 } from './IterateDialogParts';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '../../ui/alert-dialog';
+import { useDragToIterate, clampGrid, type DragDelta, type CursorScreenPos } from '../../hooks/useDragToIterate';
+import DragSelectionOverlay from './DragSelectionOverlay';
+
+// Ghost node ID prefix to identify and clean up drag-ghost nodes
+const GHOST_NODE_PREFIX = 'drag-ghost-';
 
 // ---------------------------------------------------------------------------
 // IterateDialog — inline popover panel
@@ -55,9 +71,10 @@ export default function IterateDialog({
   const [copied, setCopied] = useState(false);
   const [iterationCount, setIterationCount] = useState(4);
   const [depth] = useState<'shell' | '1-level' | 'all'>('shell');
-  const [customInstructions, setCustomInstructions] = useState('');
   const [selectedModel, setSelectedModel] = useState(() => loadSelectedModel());
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [segments, setSegments] = useState<Segment[]>([]);
+  const [skills, setSkills] = useState<PlaygroundSkill[]>([]);
+  const [isLoadingSkills, setIsLoadingSkills] = useState(false);
 
   const [startNumber, setStartNumber] = useState<number | null>(null);
   const [isFetchingMax, setIsFetchingMax] = useState(false);
@@ -66,11 +83,80 @@ export default function IterateDialog({
   const panelRef = useRef<HTMLDivElement>(null);
 
   const { models, isLoading: isLoadingModels } = useAvailableModels();
+  const { getNode, setNodes, flowToScreenPosition, screenToFlowPosition } = useReactFlow();
 
   const handleModelChange = useCallback((model: string) => {
     setSelectedModel(model);
     saveSelectedModel(model);
   }, []);
+
+  // Load available skills when the dialog opens (once)
+  useEffect(() => {
+    if (!open || skills.length > 0) return;
+
+    let cancelled = false;
+    const fetchSkills = async () => {
+      setIsLoadingSkills(true);
+      try {
+        const response = await fetch('/playground/api/skills');
+        if (!response.ok) return;
+        const data = (await response.json()) as { skills?: PlaygroundSkill[] };
+        if (!cancelled && Array.isArray(data.skills)) {
+          setSkills(data.skills);
+        }
+      } catch {
+        // ignore – inline reference will just have no skill items
+      } finally {
+        if (!cancelled) {
+          setIsLoadingSkills(false);
+        }
+      }
+    };
+
+    fetchSkills();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, skills.length]);
+
+  const skillsById = useMemo(() => {
+    const map = new Map<string, PlaygroundSkill>();
+    for (const skill of skills) {
+      map.set(skill.id, skill);
+    }
+    return map;
+  }, [skills]);
+
+  // Derive freeform instructions + skill prompt from inline reference segments
+  const { customInstructionsText, skillPrompt } = useMemo(() => {
+    if (!segments || segments.length === 0) {
+      return { customInstructionsText: undefined, skillPrompt: undefined };
+    }
+
+    const textParts: string[] = [];
+    const skillSections: string[] = [];
+
+    for (const segment of segments) {
+      if (segment.type === 'text') {
+        const trimmed = segment.value.trim();
+        if (trimmed) {
+          textParts.push(trimmed);
+        }
+      } else if (segment.type === 'reference') {
+        const skill = skillsById.get(segment.value);
+        if (skill?.systemPrompt) {
+          skillSections.push(skill.systemPrompt);
+        }
+      }
+    }
+
+    const customInstructionsText =
+      textParts.join('\n').trim() || undefined;
+    const skillPromptText =
+      skillSections.join('\n\n').trim() || undefined;
+
+    return { customInstructionsText, skillPrompt: skillPromptText };
+  }, [segments, skillsById]);
 
   // Fetch max iteration number when panel opens (iteration-from-iteration)
   useEffect(() => {
@@ -102,13 +188,34 @@ export default function IterateDialog({
     if (isFromIteration) {
       if (startNumber === null) return '';
       return generateIterationFromIterationPrompt(
-        componentId, sourceFilename!, iterationCount, startNumber, depth, customInstructions || undefined,
+        componentId,
+        sourceFilename!,
+        iterationCount,
+        startNumber,
+        depth,
+        customInstructionsText,
+        skillPrompt,
       );
     }
-    return generateIterationPrompt(componentId, iterationCount, depth, customInstructions || undefined);
-  }, [componentId, sourceFilename, iterationCount, startNumber, depth, customInstructions, isFromIteration]);
+    return generateIterationPrompt(
+      componentId,
+      iterationCount,
+      depth,
+      customInstructionsText,
+      skillPrompt,
+    );
+  }, [
+    componentId,
+    sourceFilename,
+    iterationCount,
+    startNumber,
+    depth,
+    isFromIteration,
+    customInstructionsText,
+    skillPrompt,
+  ]);
 
-  const handleCopyPrompt = async (prompt: string) => {
+  const handleCopyPrompt = useCallback(async (prompt: string) => {
     try {
       await navigator.clipboard.writeText(prompt);
       setCopied(true);
@@ -117,13 +224,11 @@ export default function IterateDialog({
     } catch (err) {
       console.error('Failed to copy prompt:', err);
     }
-  };
+  }, []);
 
-  const handleDefaultCopy = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleDefaultCopy = useCallback(async () => {
     await handleCopyPrompt(generateIterationPrompt(componentId, 4, 'shell', undefined));
-  };
+  }, [componentId, handleCopyPrompt]);
 
   const handleRunWithCursor = async () => {
     if (!parentNodeId) return;
@@ -163,10 +268,8 @@ export default function IterateDialog({
       if (!response.ok || !data.success) {
         const rawError = data?.error || data?.message || data || 'Generation failed';
         const normalizedError = typeof rawError === 'string' ? rawError.trim() : JSON.stringify(rawError);
-        const friendly = normalizedError.includes('usage limit') || normalizedError.includes('Spend Limit')
-          ? 'Generation failed because the selected model has hit its usage limit.\n\nPlease switch to a different model in the dialog and try again.'
-          : `Generation failed: ${normalizedError}`;
-        setErrorMessage(friendly);
+
+        // Delegate all error handling to PlaygroundCanvas via the generation error event
         window.dispatchEvent(new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
           detail: { componentId, parentNodeId, error: normalizedError },
         }));
@@ -180,11 +283,215 @@ export default function IterateDialog({
       window.dispatchEvent(new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
         detail: { componentId, parentNodeId, error: msg },
       }));
-      setErrorMessage(`Generation error: ${msg}`);
     }
   };
 
   const canRun = !isGlobalGenerating && parentNodeId && (!isFromIteration || (startNumber !== null && !isFetchingMax));
+
+  // ---------------------------------------------------------------------------
+  // Drag-to-iterate: ghost node management
+  // ---------------------------------------------------------------------------
+
+  // Track the last ghost grid to avoid re-rendering when only cursor moves
+  const lastGhostGridRef = useRef<{ rows: number; cols: number } | null>(null);
+
+  const removeGhostNodes = useCallback(() => {
+    lastGhostGridRef.current = null;
+    setNodes(nds => nds.filter(n => !n.id.startsWith(GHOST_NODE_PREFIX)));
+  }, [setNodes]);
+
+  // Get the parent node's cell dimensions in flow-space
+  const getParentCellSize = useCallback(() => {
+    const parentNode = getNode(parentNodeId);
+    if (!parentNode) return null;
+    const cellW =
+      parentNode.measured?.width ??
+      (parentNode.type === 'component'
+        ? DEFAULT_COMPONENT_NODE_WIDTH
+        : DEFAULT_ITERATION_NODE_WIDTH);
+    const cellH =
+      parentNode.measured?.height ??
+      (parentNode.type === 'component'
+        ? DEFAULT_COMPONENT_NODE_HEIGHT
+        : DEFAULT_ITERATION_NODE_HEIGHT);
+    return { cellW, cellH, parentNode };
+  }, [getNode, parentNodeId]);
+
+  // Compute grid dimensions based on the overlay extent: from the parent
+  // node's top-left corner to the current cursor position, both converted
+  // to flow-space. This ensures rows and columns appear at the same
+  // threshold — only when the cursor crosses a full cell boundary.
+  const computeGridFromScreenDelta = useCallback(
+    (delta: DragDelta, dragStart: { x: number; y: number } | null) => {
+      const info = getParentCellSize();
+      if (!info || !dragStart) return null;
+      const { cellW, cellH, parentNode } = info;
+
+      // The cursor's absolute screen position
+      const cursorScreenX = dragStart.x + delta.dx;
+      const cursorScreenY = dragStart.y + delta.dy;
+
+      // Parent node's top-left in screen space
+      const parentScreen = flowToScreenPosition({
+        x: parentNode.position.x,
+        y: parentNode.position.y,
+      });
+
+      // The overlay extent in screen pixels (from parent top-left to cursor)
+      const overlayW = cursorScreenX - parentScreen.x;
+      const overlayH = cursorScreenY - parentScreen.y;
+
+      // Convert the overlay extent to flow-space (zoom-aware)
+      const flowOrigin = screenToFlowPosition({ x: 0, y: 0 });
+      const flowExtent = screenToFlowPosition({ x: overlayW, y: overlayH });
+      const flowW = flowExtent.x - flowOrigin.x;
+      const flowH = flowExtent.y - flowOrigin.y;
+
+      // How many cells fit? The first cell is the original. A new ghost cell
+      // appears once the cursor crosses 50% of that cell's extent (+ gap).
+      const step = cellW + DRAG_GHOST_GAP;
+      const stepH = cellH + DRAG_GHOST_GAP;
+      const rawCols = 1 + Math.max(0, Math.floor((flowW - cellW + step * 0.5) / step));
+      const rawRows = 1 + Math.max(0, Math.floor((flowH - cellH + stepH * 0.5) / stepH));
+
+      return { grid: clampGrid(rawCols, rawRows), cellW, cellH };
+    },
+    [getParentCellSize, screenToFlowPosition, flowToScreenPosition],
+  );
+
+  const handleDragUpdate = useCallback(
+    (delta: DragDelta | null, dragStart: CursorScreenPos | null) => {
+      if (!delta || !dragStart) {
+        removeGhostNodes();
+        return;
+      }
+
+      const result = computeGridFromScreenDelta(delta, dragStart);
+      if (!result || result.grid.count === 0) {
+        // Grid went to zero — remove ghosts only if they were showing
+        if (lastGhostGridRef.current) {
+          removeGhostNodes();
+        }
+        return;
+      }
+
+      const { grid, cellW, cellH } = result;
+
+      // Skip setNodes if the grid dimensions haven't changed
+      const prev = lastGhostGridRef.current;
+      if (prev && prev.rows === grid.rows && prev.cols === grid.cols) {
+        return;
+      }
+      lastGhostGridRef.current = { rows: grid.rows, cols: grid.cols };
+
+      const info = getParentCellSize();
+      if (!info) return;
+
+      // Convert screen-pixel padding to flow-space so the ghost border
+      // aligns with the selection overlay's padded origin.
+      const flowZero = screenToFlowPosition({ x: 0, y: 0 });
+      const flowPad = screenToFlowPosition({ x: DRAG_OVERLAY_PADDING_X, y: DRAG_OVERLAY_PADDING_Y });
+      const padX = flowPad.x - flowZero.x;
+      const padY = flowPad.y - flowZero.y;
+
+      // Single bounding-box ghost node — shifted by padding so its border
+      // starts at the same point as the selection overlay.
+      const ghostNode = {
+        id: `${GHOST_NODE_PREFIX}bounding`,
+        type: 'drag-ghost' as const,
+        position: {
+          x: info.parentNode.position.x - padX,
+          y: info.parentNode.position.y - padY,
+        },
+        data: {
+          cols: grid.cols,
+          rows: grid.rows,
+          cellWidth: cellW,
+          cellHeight: cellH,
+          padX,
+          padY,
+        },
+        draggable: false,
+        selectable: false,
+        connectable: false,
+      };
+
+      setNodes(nds => [
+        ...nds.filter(n => !n.id.startsWith(GHOST_NODE_PREFIX)),
+        ghostNode,
+      ]);
+    },
+    [computeGridFromScreenDelta, getParentCellSize, setNodes, removeGhostNodes, screenToFlowPosition],
+  );
+
+  const handleDragEnd = useCallback(
+    (delta: DragDelta, dragStart: CursorScreenPos) => {
+      removeGhostNodes();
+
+      const result = computeGridFromScreenDelta(delta, dragStart);
+      if (!result || result.grid.count === 0) return;
+
+      const { grid } = result;
+      const model = loadSelectedModel();
+      window.dispatchEvent(
+        new CustomEvent<DragIteratePayload>(DRAG_ITERATE_EVENT, {
+          detail: {
+            componentId,
+            componentName,
+            parentNodeId,
+            iterationCount: grid.count,
+            rows: grid.rows,
+            cols: grid.cols,
+            model: model || undefined,
+            sourceFilename: sourceFilename || undefined,
+          },
+        }),
+      );
+    },
+    [componentId, componentName, parentNodeId, sourceFilename, removeGhostNodes, computeGridFromScreenDelta],
+  );
+
+  const handleZapClick = useCallback(
+    (shiftKey: boolean) => {
+      if (isGlobalGenerating) return;
+      if (!isFromIteration && shiftKey) {
+        handleDefaultCopy();
+      } else {
+        setOpen(o => !o);
+      }
+    },
+    [isGlobalGenerating, isFromIteration, handleDefaultCopy],
+  );
+
+  const { isDragging, cursorScreen, dragStartScreen, handlers } = useDragToIterate({
+    onDragEnd: handleDragEnd,
+    onClick: handleZapClick,
+    disabled: isGlobalGenerating,
+    onDragUpdate: handleDragUpdate,
+  });
+
+  // Compute parent node's screen-space top-left for the selection overlay origin.
+  // Offset by a small padding so the overlay visually encompasses the original node.
+  const overlayOrigin = useMemo(() => {
+    if (!isDragging || !dragStartScreen) return null;
+    const parentNode = getNode(parentNodeId);
+    if (!parentNode) return dragStartScreen;
+    const screenPos = flowToScreenPosition({
+      x: parentNode.position.x,
+      y: parentNode.position.y,
+    });
+    return {
+      x: screenPos.x - DRAG_OVERLAY_PADDING_X,
+      y: screenPos.y - DRAG_OVERLAY_PADDING_Y,
+    };
+  }, [isDragging, dragStartScreen, getNode, parentNodeId, flowToScreenPosition]);
+
+  // Clean up ghost nodes if component unmounts during drag
+  useEffect(() => {
+    return () => {
+      removeGhostNodes();
+    };
+  }, [removeGhostNodes]);
 
   // Esc to close
   useEffect(() => {
@@ -202,13 +509,21 @@ export default function IterateDialog({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, generatedPrompt, canRun]);
 
   // Click-outside to close
   useEffect(() => {
     if (!open) return;
     const handleClickOutside = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+      const target = e.target as HTMLElement | null;
+
+      // Keep dialog open when interacting with inline reference dropdown
+      if (target?.closest('[data-slot="inline-reference-content"]')) {
+        return;
+      }
+
+      if (panelRef.current && !panelRef.current.contains(target as Node)) {
         setOpen(false);
       }
     };
@@ -221,47 +536,42 @@ export default function IterateDialog({
   }, [open]);
 
   // ── Trigger button ──
-  const triggerButton = isFromIteration ? (
+  const triggerButton = (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
-          onClick={() => setOpen(o => !o)}
+          onPointerDown={handlers.onPointerDown}
           disabled={isGlobalGenerating}
           className={`w-8 h-8 flex items-center justify-center text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed ${open ? 'rounded-l-full rounded-r-[8px]' : 'rounded-full'}`}
-          style={{ background: '#0B99FF' }}
+          style={{ background: '#0B99FF', touchAction: 'none' }}
           aria-label="Iterate"
         >
           <Zap className="w-4 h-4 fill-white" />
         </button>
       </TooltipTrigger>
       <TooltipContent side="right">
-        <p>{isGlobalGenerating ? 'Another generation is in progress' : 'Iterate'}</p>
+        <p>
+          {isGlobalGenerating
+            ? 'Another generation is in progress'
+            : isDragging
+              ? 'Release to generate'
+              : 'Click to configure, drag to iterate'}
+        </p>
       </TooltipContent>
-    </Tooltip>
-  ) : (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          onClick={(e) => {
-            if (e.shiftKey) {
-              handleDefaultCopy(e);
-            } else {
-              setOpen(o => !o);
-            }
-          }}
-          className={`w-8 h-8 flex items-center justify-center text-white transition-all ${open ? 'rounded-l-full rounded-r-[8px]' : 'rounded-full'}`}
-          style={{ background: '#0B99FF' }}
-          aria-label="Iterate"
-        >
-          <Zap className="w-4 h-4 fill-white" />
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="right"><p>Iterate</p></TooltipContent>
     </Tooltip>
   );
 
   return (
     <>
+      {/* Free-flowing selection rectangle during drag */}
+      <DragSelectionOverlay
+        visible={isDragging && !!cursorScreen}
+        originX={overlayOrigin?.x ?? dragStartScreen?.x ?? 0}
+        originY={overlayOrigin?.y ?? dragStartScreen?.y ?? 0}
+        cursorX={cursorScreen?.x ?? 0}
+        cursorY={cursorScreen?.y ?? 0}
+      />
+
       {/* Wrapper keeps trigger + panel in the same stacking context */}
       <div className="relative" ref={panelRef}>
         {triggerButton}
@@ -290,17 +600,49 @@ export default function IterateDialog({
                 </div>
               )}
 
-              {/* Textarea */}
-              <textarea
-                autoFocus
-                value={customInstructions}
-                onChange={(e) => setCustomInstructions(e.target.value)}
-                placeholder={isFromIteration
-                  ? 'Eg: "Try bolder typography"'
-                  : 'Eg: "Try different color styles"'}
-                rows={4}
-                className="w-full px-3 py-2.5 text-sm bg-white rounded-xl border border-stone-200 outline-none resize-none text-stone-800 placeholder:text-stone-400"
-              />
+              {/* Inline reference input for instructions + skills */}
+              <InlineReference
+                value={segments}
+                onValueChange={setSegments}
+                className="w-full"
+              >
+                <InlineReferenceInput
+                  autoFocus
+                  placeholder={
+                    isFromIteration
+                      ? 'Describe how you want to iterate, then type / to add a skill…'
+                      : 'Describe what to explore, then type / to add a skill…'
+                  }
+                  className="min-h-[96px] text-sm bg-white rounded-xl border border-stone-200 outline-none text-stone-800 placeholder:text-stone-400"
+                />
+
+                <InlineReferenceContent
+                  trigger="/"
+                  items={skills.map((skill) => ({
+                    id: skill.id,
+                    label: skill.label,
+                    description: skill.description,
+                    systemPrompt: skill.systemPrompt,
+                  }))}
+                >
+                  <InlineReferenceGroup heading="Skills">
+                    <InlineReferenceList>
+                      {(item) => (
+                        <InlineReferenceItem key={item.id} value={item}>
+                          <span className="text-xs font-medium">
+                            {item.label}
+                          </span>
+                        </InlineReferenceItem>
+                      )}
+                    </InlineReferenceList>
+                    <InlineReferenceEmpty>
+                      {isLoadingSkills
+                        ? 'Loading skills…'
+                        : 'No skills available.'}
+                    </InlineReferenceEmpty>
+                  </InlineReferenceGroup>
+                </InlineReferenceContent>
+              </InlineReference>
 
               {/* Controls row: model dropdown + count pills */}
               <div className="flex items-center justify-between gap-2">
@@ -364,21 +706,6 @@ export default function IterateDialog({
         )}
       </div>
 
-      {/* Error alert — kept as-is since it's a separate concern */}
-      <AlertDialog open={!!errorMessage} onOpenChange={(o) => !o && setErrorMessage(null)}>
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Iteration generation failed</AlertDialogTitle>
-            <AlertDialogDescription className="whitespace-pre-line">
-              {errorMessage}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Close</AlertDialogCancel>
-            <AlertDialogAction onClick={() => setErrorMessage(null)}>OK</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }

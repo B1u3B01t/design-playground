@@ -32,11 +32,20 @@ import {
 import ComponentNode from './nodes/ComponentNode';
 import IterationNode from './nodes/IterationNode';
 import SkeletonIterationNode from './nodes/SkeletonIterationNode';
+import DragGhostNode from './nodes/DragGhostNode';
+import {
+  generateIterationPrompt,
+  generateIterationFromIterationPrompt,
+} from './registry';
+import { loadSelectedModel } from './nodes/shared/IterateDialogParts';
 import {
   GENERATION_START_EVENT,
   GENERATION_COMPLETE_EVENT,
   GENERATION_ERROR_EVENT,
   PLAYGROUND_AUTO_ARRANGE_EVENT,
+  DRAG_ITERATE_EVENT,
+  DRAG_ITERATE_UNDO_DURATION_MS,
+  DRAG_ITERATE_TOAST_DURATION_MS,
   STORAGE_KEY,
   POLL_INTERVAL,
   POLL_DURATION,
@@ -70,14 +79,18 @@ import {
   ITERATION_COLLAPSE_TOGGLE_EVENT,
   PLAYGROUND_CLEAR_EVENT,
   TREE_COLUMN_WIDTH,
+  DRAG_GHOST_GAP,
   type GenerationStartPayload,
+  type GenerationCompletePayload,
   type GenerationErrorPayload,
+  type DragIteratePayload,
 } from './lib/constants';
 
 const nodeTypes = {
   component: ComponentNode,
   iteration: IterationNode,
   skeleton: SkeletonIterationNode,
+  'drag-ghost': DragGhostNode,
 };
 
 interface IterationFile {
@@ -132,6 +145,10 @@ interface GenerationInfo {
   iterationCount: number;
   skeletonNodeIds: string[];
   startTime: number; // Timestamp when generation started
+  /** Grid layout positions for each skeleton node (ordered by variant number) */
+  gridPositions?: { x: number; y: number }[];
+  /** Parent node cell size so real iteration nodes can match ghost/skeleton sizing */
+  gridCellSize?: { width: number; height: number };
 }
 
 export default function PlaygroundCanvas() {
@@ -490,9 +507,9 @@ export default function PlaygroundCanvas() {
   // Handle generation lifecycle events
   useEffect(() => {
     const handleGenerationStart = (e: CustomEvent<GenerationStartPayload>) => {
-      const { componentId, componentName, parentNodeId, iterationCount } = e.detail;
-      
-      
+      const { componentId, componentName, parentNodeId, iterationCount, gridLayout } = e.detail;
+
+
       // Find the parent node (use ref for current nodes)
       const parentNode = nodesRef.current.find(n => n.id === parentNodeId);
       if (!parentNode) {
@@ -500,13 +517,60 @@ export default function PlaygroundCanvas() {
         return;
       }
 
+      // Parent node dimensions (used for grid sizing and skeleton sizing)
+      const cellW =
+        parentNode.measured?.width ??
+        (parentNode.type === 'component'
+          ? DEFAULT_COMPONENT_NODE_WIDTH
+          : DEFAULT_ITERATION_NODE_WIDTH);
+      const cellH =
+        parentNode.measured?.height ??
+        (parentNode.type === 'component'
+          ? DEFAULT_COMPONENT_NODE_HEIGHT
+          : DEFAULT_ITERATION_NODE_HEIGHT);
+
       // Create skeleton nodes
       const skeletonNodes: Node[] = [];
       const skeletonEdges: Edge[] = [];
       const skeletonNodeIds: string[] = [];
 
       for (let i = 1; i <= iterationCount; i++) {
-        const position = calculateIterationPosition(parentNode, i, iterationCount);
+        let position: { x: number; y: number };
+
+        if (gridLayout) {
+          // Grid layout from drag-to-iterate: position skeleton nodes at the
+          // same positions as ghost cells, matching each variation number.
+          // The parent node occupies cell (0,0). Variants are numbered
+          // left-to-right, top-to-bottom, skipping (0,0).
+          const { rows, cols } = gridLayout;
+          const gap = DRAG_GHOST_GAP;
+
+          // Find the (row, col) for variant number i (skipping 0,0)
+          let variantIndex = 0;
+          let targetRow = 0;
+          let targetCol = 0;
+          for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+              if (r === 0 && c === 0) continue; // skip original
+              variantIndex++;
+              if (variantIndex === i) {
+                targetRow = r;
+                targetCol = c;
+                break;
+              }
+            }
+            if (variantIndex === i) break;
+          }
+
+          position = {
+            x: parentNode.position.x + targetCol * (cellW + gap),
+            y: parentNode.position.y + targetRow * (cellH + gap),
+          };
+        } else {
+          // Default layout: centered horizontally below parent
+          position = calculateIterationPosition(parentNode, i, iterationCount);
+        }
+
         const nodeId = getNodeId();
         skeletonNodeIds.push(nodeId);
 
@@ -517,8 +581,11 @@ export default function PlaygroundCanvas() {
           data: {
             iterationNumber: i,
             componentName,
-            parentNodeId, // Include parentNodeId for auto-arrange grouping
+            parentNodeId,
             totalIterations: iterationCount,
+            // Always size skeleton nodes to match parent so button and drag flows are consistent
+            width: cellW,
+            height: cellH,
           },
         });
 
@@ -527,7 +594,7 @@ export default function PlaygroundCanvas() {
           source: parentNodeId,
           target: nodeId,
           type: 'smoothstep',
-          animated: true, // Animated edges for skeleton nodes
+          animated: true,
           style: SKELETON_EDGE_STYLE,
         });
       }
@@ -546,21 +613,27 @@ export default function PlaygroundCanvas() {
         iterationCount,
         skeletonNodeIds,
         startTime: Date.now(),
+        // Store skeleton positions so real iteration nodes inherit them
+        gridPositions: gridLayout
+          ? skeletonNodes.map(n => ({ x: n.position.x, y: n.position.y }))
+          : undefined,
+        gridCellSize: gridLayout ? { width: cellW, height: cellH } : undefined,
       });
 
-      // Auto-arrange nodes after skeleton nodes are added (with small delay for state update)
-      // We need to trigger this after React processes the state update
-      setTimeout(() => {
-        // Dispatch a custom event to trigger auto-arrange with fitView
-        window.dispatchEvent(new CustomEvent(PLAYGROUND_AUTO_ARRANGE_EVENT, { detail: { fitView: true } }));
-      }, SKELETON_ARRANGE_DELAY);
+      if (!gridLayout) {
+        // Auto-arrange only for non-drag generations (dialog flow).
+        // Drag-to-iterate positions nodes in the grid layout already.
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent(PLAYGROUND_AUTO_ARRANGE_EVENT, { detail: { fitView: true } }));
+        }, SKELETON_ARRANGE_DELAY);
+      }
     };
 
     const handleGenerationComplete = (): void => {
-      
+
       // Use ref to get latest generation info
       const info = generationInfoRef.current;
-      
+
       // Calculate and store duration
       if (info?.startTime) {
         const durationMs = Date.now() - info.startTime;
@@ -570,7 +643,11 @@ export default function PlaygroundCanvas() {
         const formatted = `${minutes}m:${seconds.toString().padStart(2, '0')}s`;
         setLastGenerationDuration(formatted);
       }
-      
+
+      // Capture grid positions before clearing generation state
+      const savedGridPositions = info?.gridPositions;
+      const savedParentNodeId = info?.parentNodeId;
+
       // Remove skeleton nodes
       if (info) {
         setNodes(nds => nds.filter(n => !info.skeletonNodeIds.includes(n.id)));
@@ -583,12 +660,45 @@ export default function PlaygroundCanvas() {
 
       // Trigger iteration scan to fetch newly created iterations
       // Small delay to allow filesystem to sync
-      setTimeout(() => {
-        scanForIterations(false);
-        // Auto-arrange after new iterations are added
-        setTimeout(() => {
-          window.dispatchEvent(new CustomEvent(PLAYGROUND_AUTO_ARRANGE_EVENT, { detail: { fitView: true } }));
-        }, POST_GENERATION_ARRANGE_DELAY);
+      setTimeout(async () => {
+        const nodesBefore = new Set(nodesRef.current.map(n => n.id));
+        await scanForIterations(false);
+
+        if (savedGridPositions && savedParentNodeId) {
+          // Drag-to-iterate: reposition newly created iteration nodes to match
+          // the grid layout where ghost/skeleton nodes were displayed.
+          // Use a short delay to let React process the state update from scanForIterations.
+          setTimeout(() => {
+            const newNodes = nodesRef.current.filter(
+              n => !nodesBefore.has(n.id) && n.type === 'iteration',
+            );
+            if (newNodes.length > 0) {
+              // Sort new nodes by iteration number so positions map 1:1 to grid cells
+              const sorted = [...newNodes].sort((a, b) => {
+                const aNum = (a.data.iterationNumber as number) || 0;
+                const bNum = (b.data.iterationNumber as number) || 0;
+                return aNum - bNum;
+              });
+
+              setNodes(nds =>
+                nds.map(n => {
+                  const idx = sorted.findIndex(sn => sn.id === n.id);
+                  if (idx !== -1 && idx < savedGridPositions.length) {
+                    return { ...n, position: savedGridPositions[idx] };
+                  }
+                  return n;
+                }),
+              );
+            }
+          }, 150);
+        } else {
+          // Default flow: auto-arrange after new iterations are added
+          setTimeout(() => {
+            window.dispatchEvent(
+              new CustomEvent(PLAYGROUND_AUTO_ARRANGE_EVENT, { detail: { fitView: true } }),
+            );
+          }, POST_GENERATION_ARRANGE_DELAY);
+        }
       }, POST_GENERATION_SCAN_DELAY);
     };
 
@@ -597,16 +707,24 @@ export default function PlaygroundCanvas() {
       const errorMessage = detail.error || 'Unknown error occurred';
       const componentId = detail.componentId || 'unknown';
       const parentNodeId = detail.parentNodeId || 'unknown';
-      
-      console.error('[Playground] Generation error:', {
+      const logPayload = {
         error: errorMessage,
         componentId,
         parentNodeId,
         fullDetail: detail,
-      });
-      
-      // Use ref to get latest generation info
+      };
+
+      // Use ref to get latest generation info to distinguish dialog vs drag-to-iterate flows.
       const info = generationInfoRef.current;
+      const isDragFlow = !!info?.gridPositions;
+
+      if (errorMessage === 'Cancelled by user') {
+        console.info('[Playground] Generation cancelled by user.', logPayload);
+      } else if (errorMessage.includes('generation is already in progress')) {
+        console.info('[Playground] Generation already in progress.', logPayload);
+      } else {
+        console.error('[Playground] Generation error:', errorMessage, logPayload);
+      }
       
       // Remove skeleton nodes
       if (info) {
@@ -630,6 +748,126 @@ export default function PlaygroundCanvas() {
     };
     // Using refs for nodes and generationInfo so we don't need them in deps
   }, [calculateIterationPosition, getNodeId, setNodes, setEdges, scanForIterations]);
+
+  // ---------------------------------------------------------------------------
+  // Drag-to-iterate handler
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const handleDragIterate = async (e: CustomEvent<DragIteratePayload>) => {
+      const {
+        componentId,
+        componentName,
+        parentNodeId,
+        iterationCount,
+        model,
+        sourceFilename,
+      } = e.detail;
+
+      // Build the prompt
+      let prompt: string;
+      if (sourceFilename) {
+        try {
+          const response = await fetch('/playground/api/iterations');
+          let startNumber = 1;
+          if (response.ok) {
+            const { iterations } = await response.json();
+            const componentIterations = iterations.filter(
+              (i: { componentName: string }) => i.componentName === componentName
+            );
+            const maxNumber = componentIterations.reduce(
+              (max: number, i: { iterationNumber: number }) =>
+                Math.max(max, i.iterationNumber),
+              0
+            );
+            startNumber = maxNumber + 1;
+          }
+          prompt = generateIterationFromIterationPrompt(
+            componentId,
+            sourceFilename,
+            iterationCount,
+            startNumber,
+            'shell',
+          );
+        } catch {
+          prompt = generateIterationPrompt(componentId, iterationCount, 'shell');
+        }
+      } else {
+        prompt = generateIterationPrompt(componentId, iterationCount, 'shell');
+      }
+
+      // Dispatch generation start (creates skeleton nodes in grid layout)
+      window.dispatchEvent(
+        new CustomEvent<GenerationStartPayload>(GENERATION_START_EVENT, {
+          detail: {
+            componentId,
+            componentName,
+            parentNodeId,
+            iterationCount,
+            gridLayout: { rows: e.detail.rows, cols: e.detail.cols },
+          },
+        }),
+      );
+
+      // Call the generate API
+      try {
+        const response = await fetch('/playground/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt,
+            componentId,
+            iterationCount,
+            model: model || undefined,
+          }),
+        });
+
+        let data;
+        try {
+          data = await response.json();
+        } catch {
+          window.dispatchEvent(
+            new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+              detail: {
+                componentId,
+                parentNodeId,
+                error: 'Failed to parse response',
+              },
+            }),
+          );
+          return;
+        }
+
+        if (!response.ok || !data.success) {
+          const error =
+            typeof data?.error === 'string' ? data.error : 'Generation failed';
+          window.dispatchEvent(
+            new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+              detail: { componentId, parentNodeId, error },
+            }),
+          );
+        } else {
+          window.dispatchEvent(
+            new CustomEvent<GenerationCompletePayload>(
+              GENERATION_COMPLETE_EVENT,
+              { detail: { componentId, parentNodeId, output: '' } },
+            ),
+          );
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        window.dispatchEvent(
+          new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+            detail: { componentId, parentNodeId, error: msg },
+          }),
+        );
+      }
+    };
+
+    const listener = ((e: Event) =>
+      handleDragIterate(e as CustomEvent<DragIteratePayload>)) as EventListener;
+    window.addEventListener(DRAG_ITERATE_EVENT, listener);
+    return () => window.removeEventListener(DRAG_ITERATE_EVENT, listener);
+  }, []);
 
   // Fullscreen fitView behavior is no longer used; nodes open in a new tab instead
 
@@ -1028,25 +1266,43 @@ export default function PlaygroundCanvas() {
     return { visibleNodes: annotatedNodes, visibleEdges: vEdges };
   })();
 
-  // Clear all nodes and edges, and delete iteration files from disk
+  // Clear all nodes and edges, and delete all iteration files from disk
   const confirmClearAllNodes = useCallback(async () => {
     stopPolling();
 
-    // Delete all iteration files via the API
-    const iterationFilenames = nodes
-      .filter((n) => n.type === 'iteration' && n.data.filename)
-      .map((n) => n.data.filename as string);
+    // Best-effort: cancel any active generation process so subsequent runs
+    // don't hit "generation already in progress" conflicts after clearing.
+    try {
+      await fetch('/playground/api/generate', {
+        method: 'DELETE',
+      });
+    } catch (error) {
+      console.error('[Playground] Error cancelling generation during clear:', error);
+    }
 
-    for (const filename of iterationFilenames) {
-      try {
-        await fetch('/playground/api/iterations', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filename }),
-        });
-      } catch (error) {
-        console.error(`Error deleting iteration file ${filename}:`, error);
+    try {
+      // Fetch all known iteration files from the API, not just ones currently on the canvas
+      const response = await fetch('/playground/api/iterations');
+      if (response.ok) {
+        const data = (await response.json()) as { iterations?: { filename: string }[] };
+        const iterationFilenames = (data.iterations ?? []).map((iter) => iter.filename);
+
+        await Promise.all(
+          iterationFilenames.map(async (filename) => {
+            try {
+              await fetch('/playground/api/iterations', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename, mode: 'cascade' as const }),
+              });
+            } catch (error) {
+              console.error(`Error deleting iteration file ${filename}:`, error);
+            }
+          }),
+        );
       }
+    } catch (error) {
+      console.error('Error clearing iteration files:', error);
     }
 
     setNodes([]);
@@ -1057,14 +1313,14 @@ export default function PlaygroundCanvas() {
     localStorage.removeItem(STORAGE_KEY);
 
     setShowClearDialog(false);
-  }, [nodes, setNodes, setEdges, stopPolling]);
+  }, [setNodes, setEdges, setKnownIterations, setCollapsedNodeIds, stopPolling]);
 
   return (
     <TooltipProvider>
       <div ref={reactFlowWrapper} className="w-full h-full">
         <ReactFlow
           nodes={visibleNodes}
-          edges={visibleEdges}
+          edges={[]}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodesDelete={onNodesDelete}
@@ -1085,7 +1341,7 @@ export default function PlaygroundCanvas() {
           selectionOnDrag
           selectionMode={SelectionMode.Partial}
           nodesDraggable
-          nodesConnectable
+          nodesConnectable={false}
           elementsSelectable
         >
           <Controls
@@ -1096,6 +1352,7 @@ export default function PlaygroundCanvas() {
             nodeColor={(node) => {
               if (node.type === 'skeleton') return MINIMAP_SKELETON_COLOR;
               if (node.type === 'iteration') return MINIMAP_ITERATION_COLOR;
+              if (node.type === 'drag-ghost') return '#0B99FF';
               return MINIMAP_COMPONENT_COLOR;
             }}
             maskColor={MINIMAP_MASK_COLOR}
