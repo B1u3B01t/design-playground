@@ -1,5 +1,5 @@
 {
-  "description": "Required npm packages for the Playground. Run: node src/app/playground/setup.mjs",
+  "description": "Required npm packages for the Playground UI components. Run: node src/app/playground/setup.mjs",
   "dependencies": {
     "@xyflow/react": "latest",
     "lucide-react": "latest",
@@ -9,7 +9,8 @@
     "@radix-ui/react-slot": "latest",
     "class-variance-authority": "latest",
     "clsx": "latest",
-    "tailwind-merge": "latest"
+    "tailwind-merge": "latest",
+    "sonner": "latest"
   },
   "requires": [
     "next",
