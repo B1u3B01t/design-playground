@@ -272,6 +272,57 @@ export default function PlaygroundCanvas() {
     };
   }, [isGenerating, generationInfo?.startTime, setNodes, setEdges]);
 
+  // Reconcile UI loading state with backend generation status in case events are missed
+  useEffect(() => {
+    if (!isGenerating) return;
+
+    let cancelled = false;
+
+    const pollStatus = async () => {
+      if (cancelled) return;
+
+      try {
+        const response = await fetch('/playground/api/generate?action=status');
+        if (!response.ok) return;
+
+        const data = (await response.json()) as {
+          success: boolean;
+          isGenerating: boolean;
+          hasProcess: boolean;
+        };
+
+        // If the backend reports that no generation is running but the UI
+        // still thinks it is, force-complete to clear any lingering skeletons.
+        if (!data.isGenerating && generationInfoRef.current) {
+          const info = generationInfoRef.current;
+          window.dispatchEvent(
+            new CustomEvent<GenerationCompletePayload>(GENERATION_COMPLETE_EVENT, {
+              detail: {
+                componentId: info.componentId,
+                parentNodeId: info.parentNodeId,
+                output: '',
+              },
+            }),
+          );
+          return;
+        }
+      } catch {
+        // Best-effort reconciliation only; ignore polling errors.
+      }
+
+      // Continue polling while the UI still believes generation is active.
+      if (!cancelled && isGenerating) {
+        setTimeout(pollStatus, 5000);
+      }
+    };
+
+    pollStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isGenerating]);
+
   // Keep refs in sync with state (for use inside polling/interval callbacks)
   useEffect(() => {
     nodesRef.current = nodes;
@@ -648,14 +699,6 @@ export default function PlaygroundCanvas() {
           : undefined,
         gridCellSize: gridLayout ? { width: cellW, height: cellH } : undefined,
       });
-
-      if (!gridLayout) {
-        // Auto-arrange only for non-drag generations (dialog flow).
-        // Drag-to-iterate positions nodes in the grid layout already.
-        setTimeout(() => {
-          window.dispatchEvent(new CustomEvent(PLAYGROUND_AUTO_ARRANGE_EVENT, { detail: { fitView: true } }));
-        }, SKELETON_ARRANGE_DELAY);
-      }
     };
 
     const handleGenerationComplete = (): void => {
@@ -720,13 +763,6 @@ export default function PlaygroundCanvas() {
               );
             }
           }, 150);
-        } else {
-          // Default flow: auto-arrange after new iterations are added
-          setTimeout(() => {
-            window.dispatchEvent(
-              new CustomEvent(PLAYGROUND_AUTO_ARRANGE_EVENT, { detail: { fitView: true } }),
-            );
-          }, POST_GENERATION_ARRANGE_DELAY);
         }
       }, POST_GENERATION_SCAN_DELAY);
     };
