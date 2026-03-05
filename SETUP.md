@@ -50,3 +50,11 @@ Delete the `src/app/playground/` folder. Then optionally uninstall packages you 
 ```
 npm uninstall @xyflow/react lucide-react @radix-ui/react-alert-dialog @radix-ui/react-dialog @radix-ui/react-tooltip @radix-ui/react-slot class-variance-authority clsx tailwind-merge
 ```
+
+## License
+
+The `playground/` folder is licensed under the [PolyForm Shield 1.0.0](https://polyformproject.org/licenses/shield/1.0.0/) license.
+
+See the `src/app/playground/LICENSE` file for full terms.
+
+Required Notice: Copyright 2026 b1u3b01t (https://github.com/b1u3b01t)

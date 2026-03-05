@@ -15,7 +15,6 @@
     "tw-animate-css": "latest"
   },
   "requires": [
-    "next",
     "react",
     "react-dom",
     "tailwindcss"

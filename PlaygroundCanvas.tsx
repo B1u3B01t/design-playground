@@ -86,6 +86,7 @@ import {
   type GenerationErrorPayload,
   type DragIteratePayload,
 } from './lib/constants';
+import { playgroundFetch } from './lib/api';
 import type { PlaygroundSkill } from './skills';
 
 const nodeTypes = {
@@ -101,7 +102,7 @@ let cachedDefaultSkillPrompt: string | null = null;
 async function loadDefaultSkillPrompt(): Promise<string | null> {
   if (cachedDefaultSkillPrompt !== null) return cachedDefaultSkillPrompt;
   try {
-    const response = await fetch('/playground/api/skills');
+    const response = await playgroundFetch('/playground/api/skills');
     if (!response.ok) {
       cachedDefaultSkillPrompt = '';
       return cachedDefaultSkillPrompt;
@@ -282,7 +283,7 @@ export default function PlaygroundCanvas() {
       if (cancelled) return;
 
       try {
-        const response = await fetch('/playground/api/generate?action=status');
+        const response = await playgroundFetch('/playground/api/generate?action=status');
         if (!response.ok) return;
 
         const data = (await response.json()) as {
@@ -424,7 +425,7 @@ export default function PlaygroundCanvas() {
   const scanForIterations = useCallback(async (resetTimeoutOnFind = false) => {
     setIsScanning(true);
     try {
-      const response = await fetch('/playground/api/iterations');
+      const response = await playgroundFetch('/playground/api/iterations');
       if (!response.ok) {
         console.error('[Playground] Failed to fetch iterations:', response.status);
         return;
@@ -834,7 +835,7 @@ export default function PlaygroundCanvas() {
 
       if (sourceFilename) {
         try {
-          const response = await fetch('/playground/api/iterations');
+          const response = await playgroundFetch('/playground/api/iterations');
           let startNumber = 1;
           if (response.ok) {
             const { iterations } = await response.json();
@@ -891,7 +892,7 @@ export default function PlaygroundCanvas() {
 
       // Call the generate API
       try {
-        const response = await fetch('/playground/api/generate', {
+        const response = await playgroundFetch('/playground/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1004,7 +1005,7 @@ export default function PlaygroundCanvas() {
 
         // No children -- simple delete
         try {
-          await fetch('/playground/api/iterations', {
+          await playgroundFetch('/playground/api/iterations', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ filename: node.data.filename }),
@@ -1023,7 +1024,7 @@ export default function PlaygroundCanvas() {
     if (!node || !node.data.filename) return;
 
     try {
-      const resp = await fetch('/playground/api/iterations', {
+      const resp = await playgroundFetch('/playground/api/iterations', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: node.data.filename, mode }),
@@ -1354,7 +1355,7 @@ export default function PlaygroundCanvas() {
     // Best-effort: cancel any active generation process so subsequent runs
     // don't hit "generation already in progress" conflicts after clearing.
     try {
-      await fetch('/playground/api/generate', {
+      await playgroundFetch('/playground/api/generate', {
         method: 'DELETE',
       });
     } catch (error) {
@@ -1363,7 +1364,7 @@ export default function PlaygroundCanvas() {
 
     try {
       // Fetch all known iteration files from the API, not just ones currently on the canvas
-      const response = await fetch('/playground/api/iterations');
+      const response = await playgroundFetch('/playground/api/iterations');
       if (response.ok) {
         const data = (await response.json()) as { iterations?: { filename: string }[] };
         const iterationFilenames = (data.iterations ?? []).map((iter) => iter.filename);
@@ -1371,7 +1372,7 @@ export default function PlaygroundCanvas() {
         await Promise.all(
           iterationFilenames.map(async (filename) => {
             try {
-              await fetch('/playground/api/iterations', {
+              await playgroundFetch('/playground/api/iterations', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ filename, mode: 'cascade' as const }),

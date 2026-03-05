@@ -4,6 +4,7 @@ import { memo, useState, Suspense, useMemo, useRef, useEffect } from 'react';
 import { useReactFlow } from '@xyflow/react';
 import { Check, Trash2, Loader2, ArrowUpRight, ChevronRight } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
+import { playgroundFetch } from '../lib/api';
 import { flatRegistry, generateAdoptPrompt } from '../registry';
 import { getIterationComponent } from '../iterations';
 import {
@@ -100,7 +101,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
     if (isDeleting) return;
     setIsDeleting(true);
     try {
-      const response = await fetch('/playground/api/iterations', {
+      const response = await playgroundFetch('/playground/api/iterations', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: data.filename }),

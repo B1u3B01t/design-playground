@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { playgroundFetch, playgroundApiUrl } from '../lib/api';
 
 type ShareState = 'idle' | 'connecting' | 'copied' | 'error';
 
@@ -16,11 +17,11 @@ function ensureUnloadCleanup() {
   window.addEventListener('beforeunload', () => {
     // Prefer sendBeacon (fire-and-forget, browser guarantees delivery)
     if (navigator.sendBeacon) {
-      navigator.sendBeacon('/playground/api/tunnel/beacon');
+      navigator.sendBeacon(playgroundApiUrl('/playground/api/tunnel/beacon'));
     } else {
       // Synchronous XHR fallback — only works in some browsers on unload
       const xhr = new XMLHttpRequest();
-      xhr.open('DELETE', '/playground/api/tunnel', false /* sync */);
+      xhr.open('DELETE', playgroundApiUrl('/playground/api/tunnel'), false /* sync */);
       xhr.send();
     }
   });
@@ -60,7 +61,7 @@ export function useTunnelShare(componentPath: string) {
       const port = Number(window.location.port) || (window.location.protocol === 'https:' ? 443 : 80);
 
       // 1. Check if tunnel is already running
-      const checkRes = await fetch('/playground/api/tunnel');
+      const checkRes = await playgroundFetch('/playground/api/tunnel');
       const checkData = await checkRes.json();
 
       let tunnelBaseUrl: string;
@@ -69,7 +70,7 @@ export function useTunnelShare(componentPath: string) {
         tunnelBaseUrl = checkData.url;
       } else {
         // 2. Start a new tunnel
-        const startRes = await fetch('/playground/api/tunnel', {
+        const startRes = await playgroundFetch('/playground/api/tunnel', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ port }),

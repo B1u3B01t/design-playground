@@ -79,3 +79,9 @@ For composite components, users select iteration depth:
 - **1 level deep**: Container + direct children
 - **All levels**: Full recursive iteration
 
+## License
+
+The `src/app/playground/` directory is licensed under the [PolyForm Shield 1.0.0](https://polyformproject.org/licenses/shield/1.0.0/) license.
+
+See `src/app/playground/LICENSE` for the full license text and Required Notice.
+

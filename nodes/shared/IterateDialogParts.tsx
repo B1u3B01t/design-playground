@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Check, Loader2, XCircle, Download } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../ui/tooltip';
+import { playgroundFetch, playgroundApiUrl } from '../../lib/api';
 import {
   GENERATION_ERROR_EVENT,
   MODELS_STORAGE_KEY,
@@ -88,7 +89,7 @@ export function useAvailableModels() {
     const fetchModels = async () => {
       setIsLoading(true);
       try {
-        const response = await fetch('/playground/api/models');
+        const response = await playgroundFetch('/playground/api/models');
         const data = await response.json();
         if (!response.ok || !data.success) {
           throw new Error(data?.error || 'Failed to fetch models');
@@ -333,7 +334,7 @@ export function CancelGenerationButton() {
   const handleCancel = async () => {
     setIsCancelling(true);
     try {
-      const response = await fetch('/playground/api/generate', {
+      const response = await playgroundFetch('/playground/api/generate', {
         method: 'DELETE',
       });
       const data = await response.json();
@@ -354,7 +355,7 @@ export function CancelGenerationButton() {
 
   const handleViewChat = () => {
     // Open chat log in new tab
-    window.open('/playground/api/generate?action=download-chat', '_blank');
+    window.open(playgroundApiUrl('/playground/api/generate?action=download-chat'), '_blank');
   };
 
   return (

@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Check, Copy, Loader2, Zap } from 'lucide-react';
 import { useReactFlow } from '@xyflow/react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../ui/tooltip';
+import { playgroundFetch } from '../../lib/api';
 import { generateIterationPrompt, generateIterationFromIterationPrompt } from '../../registry';
 import {
   InlineReference,
@@ -99,7 +100,7 @@ export default function IterateDialog({
     const fetchSkills = async () => {
       setIsLoadingSkills(true);
       try {
-        const response = await fetch('/playground/api/skills');
+        const response = await playgroundFetch('/playground/api/skills');
         if (!response.ok) return;
         const data = (await response.json()) as { skills?: PlaygroundSkill[] };
         if (!cancelled && Array.isArray(data.skills)) {
@@ -197,7 +198,7 @@ export default function IterateDialog({
     const fetchMaxIteration = async () => {
       setIsFetchingMax(true);
       try {
-        const response = await fetch('/playground/api/iterations');
+        const response = await playgroundFetch('/playground/api/iterations');
         if (!response.ok) { setStartNumber(1); return; }
         const { iterations } = (await response.json()) as {
           iterations: { filename: string; componentName: string; iterationNumber: number }[];
@@ -273,7 +274,7 @@ export default function IterateDialog({
     setOpen(false);
 
     try {
-      const response = await fetch('/playground/api/generate', {
+      const response = await playgroundFetch('/playground/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

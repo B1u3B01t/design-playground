@@ -1,5 +1,6 @@
 {
   "version": 1,
   "entries": {
+    "PricingCard.iteration-1.tsx": { "parent": "pricing-card" }
   }
 }
