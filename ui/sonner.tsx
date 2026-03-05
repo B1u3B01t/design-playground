@@ -1,11 +1,7 @@
 "use client";
 
 import * as React from "react";
-import dynamic from "next/dynamic";
-
-const SonnerToaster = dynamic(async () => (await import("sonner")).Toaster, {
-  ssr: false,
-});
+import { Toaster as SonnerToaster } from "sonner";
 
 export function PlaygroundToaster() {
   return (

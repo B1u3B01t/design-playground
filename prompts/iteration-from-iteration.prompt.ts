@@ -39,14 +39,14 @@ Props interface (DO NOT MODIFY):
 
 INSTRUCTIONS
 
-1. Read the generation guide: src/app/playground/docs/ITERATION-GUIDE.md
+1. Read the generation guide: {{playgroundRoot}}/docs/ITERATION-GUIDE.md
 2. Read the BASE ITERATION at: {{iterationSourcePath}}
 3. Also read the ORIGINAL component for context: {{sourcePath}}
 4. Generate {{iterationCount}} new variations based on the base iteration
 5. For EACH new variation you create:
 {{iterationSavesBlock}}
-   - Immediately register that file in: src/app/playground/iterations/index.ts
-   - Immediately add a matching entry to: src/app/playground/iterations/tree.json with parent set to "{{treeParent}}"
+   - Immediately register that file in: {{playgroundRoot}}/iterations/index.ts
+   - Immediately add a matching entry to: {{playgroundRoot}}/iterations/tree.json with parent set to "{{treeParent}}"
 {{customInstructionsSection}}IMPORTANT
 - Use the BASE ITERATION as your starting point, NOT the original component
 - Each new variation should diverge from the base iteration in meaningful ways
@@ -79,6 +79,7 @@ export interface IterationFromIterationPromptVars {
   customInstructionsSection?: string;
   iterationNumbersList: string;
   sourceIterationFilename: string;
+  playgroundRoot: string;
 }
 
 export function iterationFromIterationPrompt(

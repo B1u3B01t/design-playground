@@ -2,6 +2,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import type { PlaygroundSkill } from '../skills';
 import type { ApiRequest, ApiResponse } from './types';
+import { resolvePlaygroundAbsolute } from './paths';
 
 async function findSkillFiles(dir: string, acc: string[] = []): Promise<string[]> {
   const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -62,7 +63,15 @@ function toLabelFromId(id: string): string {
 
 export async function handleSkillsGet(_req: ApiRequest, res: ApiResponse) {
   try {
-    const skillsRoot = path.join(process.cwd(), 'src/app/playground/skills');
+    const skillsRoot = path.join(resolvePlaygroundAbsolute(), 'skills');
+
+    // Skills directory is optional — return empty if it doesn't exist
+    try {
+      await fs.access(skillsRoot);
+    } catch {
+      return res.json({ skills: [] });
+    }
+
     const files = await findSkillFiles(skillsRoot);
 
     const skills: PlaygroundSkill[] = [];

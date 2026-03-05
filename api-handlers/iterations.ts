@@ -18,6 +18,7 @@ function resolveIterationsDir(): string {
 
   const candidates = [
     path.join(root, 'src', 'app', 'playground', 'iterations'),
+    path.join(root, 'src', 'playground', 'iterations'),
     path.join(root, 'app', 'playground', 'iterations'),
   ];
 
@@ -27,15 +28,22 @@ function resolveIterationsDir(): string {
 
   // Fallback: scan for a playground/iterations with an index.ts
   for (const base of [path.join(root, 'src'), root]) {
+    // Check app/*/iterations (Next.js layout)
     const appDir = path.join(base, 'app');
-    if (!fs.existsSync(appDir)) continue;
-    for (const entry of fs.readdirSync(appDir, { withFileTypes: true })) {
-      if (entry.isDirectory()) {
-        const iterDir = path.join(appDir, entry.name, 'iterations');
-        if (fs.existsSync(path.join(iterDir, ITERATIONS_INDEX_FILENAME))) {
-          return iterDir;
+    if (fs.existsSync(appDir)) {
+      for (const entry of fs.readdirSync(appDir, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          const iterDir = path.join(appDir, entry.name, 'iterations');
+          if (fs.existsSync(path.join(iterDir, ITERATIONS_INDEX_FILENAME))) {
+            return iterDir;
+          }
         }
       }
+    }
+    // Check playground/iterations directly (Vite layout)
+    const directIterDir = path.join(base, 'playground', 'iterations');
+    if (fs.existsSync(path.join(directIterDir, ITERATIONS_INDEX_FILENAME))) {
+      return directIterDir;
     }
   }
 

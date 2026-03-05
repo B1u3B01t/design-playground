@@ -1,5 +1,6 @@
 import { ComponentType } from 'react';
 import type { ComponentSize } from './lib/constants';
+import { getPlaygroundRoot } from './lib/playground-root';
 import PricingCard from './examples/PricingCard';
 import PricingPage from './examples/PricingPage';
 import {
@@ -226,6 +227,16 @@ export const flatRegistry = flattenRegistry(registry);
 // Prompt generator
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolve a sourcePath so it reflects the actual playground location.
+ * Built-in examples use `src/app/playground/...` but the playground may live
+ * at `src/playground/` (Vite) or another location.
+ */
+function resolveSourcePath(sourcePath: string): string {
+  const root = getPlaygroundRoot();
+  return sourcePath.replace(/^src\/app\/playground\//, `${root}/`);
+}
+
 export function generateIterationPrompt(
   componentId: string,
   iterationCount: number = 4,
@@ -236,6 +247,7 @@ export function generateIterationPrompt(
   const item = flatRegistry[componentId];
   if (!item) return '';
 
+  const playgroundRoot = getPlaygroundRoot();
   const componentName = item.label.replace(/\s*\(.*\)/, '');
   const cleanComponentName = componentName.replace(/\s+/g, '');
   const depthLabel = depth === 'shell' ? 'Shell only' : depth === '1-level' ? '1 level deep' : 'All levels';
@@ -247,7 +259,7 @@ export function generateIterationPrompt(
   return iterationPrompt({
     skillSection,
     componentName,
-    sourcePath: item.sourcePath,
+    sourcePath: resolveSourcePath(item.sourcePath),
     iterationCount: String(iterationCount),
     depthLabel,
     childrenSection,
@@ -255,6 +267,7 @@ export function generateIterationPrompt(
     cleanComponentName,
     componentId,
     customInstructionsSection,
+    playgroundRoot,
   });
 }
 
@@ -274,11 +287,12 @@ export function generateIterationFromIterationPrompt(
   const item = flatRegistry[componentId];
   if (!item) return '';
 
+  const playgroundRoot = getPlaygroundRoot();
   const componentName = item.label.replace(/\s*\(.*\)/, '');
   const cleanComponentName = componentName.replace(/\s+/g, '');
   const depthLabel = depth === 'shell' ? 'Shell only' : depth === '1-level' ? '1 level deep' : 'All levels';
   const endNumber = startNumber + iterationCount - 1;
-  const iterationSourcePath = `src/app/playground/iterations/${sourceIterationFilename}`;
+  const iterationSourcePath = `${playgroundRoot}/iterations/${sourceIterationFilename}`;
 
   const childrenSection = formatChildrenSection(item.children);
   const customInstructionsSection = formatCustomInstructionsSection(customInstructions);
@@ -290,13 +304,13 @@ export function generateIterationFromIterationPrompt(
   );
 
   const iterationSavesBlock = iterationNumbers
-    .map((n) => `   - Save as src/app/playground/iterations/${cleanComponentName}.iteration-${n}.tsx`)
+    .map((n) => `   - Save as ${playgroundRoot}/iterations/${cleanComponentName}.iteration-${n}.tsx`)
     .join('\n');
 
   return iterationFromIterationPrompt({
     skillSection,
     componentName,
-    sourcePath: item.sourcePath,
+    sourcePath: resolveSourcePath(item.sourcePath),
     iterationSourcePath,
     iterationCount: String(iterationCount),
     startNumber: String(startNumber),
@@ -309,6 +323,7 @@ export function generateIterationFromIterationPrompt(
     customInstructionsSection,
     iterationNumbersList: iterationNumbers.join(', '),
     sourceIterationFilename,
+    playgroundRoot,
   });
 }
 
@@ -321,8 +336,10 @@ export function generateAdoptPrompt(
   iterationFilename: string
 ): string {
   const item = flatRegistry[componentId];
-  const originalPath = item?.sourcePath || `src/components/${iterationFilename.split('.iteration')[0]}.tsx`;
-  const iterationPath = `src/app/playground/iterations/${iterationFilename}`;
+  const originalPath = item
+    ? resolveSourcePath(item.sourcePath)
+    : `src/components/${iterationFilename.split('.iteration')[0]}.tsx`;
+  const iterationPath = `${getPlaygroundRoot()}/iterations/${iterationFilename}`;
 
   return adoptIterationPrompt({ originalPath, iterationPath });
 }

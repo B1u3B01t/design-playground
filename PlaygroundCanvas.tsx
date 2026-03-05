@@ -87,6 +87,7 @@ import {
   type DragIteratePayload,
 } from './lib/constants';
 import { playgroundFetch } from './lib/api';
+import { fetchPlaygroundRoot, getPlaygroundRoot } from './lib/playground-root';
 import type { PlaygroundSkill } from './skills';
 
 const nodeTypes = {
@@ -207,7 +208,10 @@ export default function PlaygroundCanvas() {
   useEffect(() => {
     collapsedNodeIdsRef.current = collapsedNodeIds;
   }, [collapsedNodeIds]);
-  
+
+  // Prime the playground root cache so prompt generators use the correct paths
+  useEffect(() => { fetchPlaygroundRoot(); }, []);
+
   // Delete cascade/reparent dialog
   const [deleteDialogNode, setDeleteDialogNode] = useState<Node | null>(null);
   
@@ -394,7 +398,7 @@ export default function PlaygroundCanvas() {
   // Handle iteration adoption
   const handleIterationAdopt = useCallback((filename: string) => {
     // Copy the import path to clipboard
-    const importPath = `@/app/playground/iterations/${filename.replace('.tsx', '')}`;
+    const importPath = `@/${getPlaygroundRoot().replace(/^src\//, '')}/iterations/${filename.replace('.tsx', '')}`;
     navigator.clipboard.writeText(importPath).catch(() => {});
   }, []);
 
@@ -784,7 +788,12 @@ export default function PlaygroundCanvas() {
       const info = generationInfoRef.current;
       const isDragFlow = !!info?.gridPositions;
 
-      if (errorMessage === 'Cancelled by user') {
+      // Treat user-driven cancellations and benign agent exits as informational.
+      const isUserCancelled =
+        errorMessage === 'Cancelled by user' ||
+        errorMessage.includes('exited with code 143');
+
+      if (isUserCancelled) {
         console.info('[Playground] Generation cancelled by user.', logPayload);
       } else if (errorMessage.includes('generation is already in progress')) {
         console.info('[Playground] Generation already in progress.', logPayload);

@@ -20,6 +20,7 @@ interface VitePlugin {
   name: string;
   configureServer?: (server: ViteDevServer) => void;
 }
+import { handleConfigGet } from './api-handlers/config';
 import { handleGeneratePost, handleGenerateDelete, handleGenerateGet } from './api-handlers/generate';
 import { handleIterationsGet, handleIterationsPost, handleIterationsDelete } from './api-handlers/iterations';
 import { handleModelsGet } from './api-handlers/models';
@@ -90,6 +91,9 @@ interface Route {
 }
 
 const routeMap: Record<string, Route[]> = {
+  '/playground/api/config': [
+    { method: 'GET', handler: handleConfigGet },
+  ],
   '/playground/api/generate': [
     { method: 'POST', handler: handleGeneratePost },
     { method: 'DELETE', handler: handleGenerateDelete },

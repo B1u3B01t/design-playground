@@ -32,21 +32,21 @@ Props interface (DO NOT MODIFY):
 
 INSTRUCTIONS
 
-1. Read the generation guide: src/app/playground/docs/ITERATION-GUIDE.md
+1. Read the generation guide: {{playgroundRoot}}/docs/ITERATION-GUIDE.md
 2. Read the source component at the path above
 3. Understand its structure, props interface, and current design
 4. Generate {{iterationCount}} **compatible** variations (you may change both layout and visual design)
 5. For EACH variation you create:
-   - Save it as: src/app/playground/iterations/{{cleanComponentName}}.iteration-{n}.tsx
+   - Save it as: {{playgroundRoot}}/iterations/{{cleanComponentName}}.iteration-{n}.tsx
    - Include the required metadata comment block with @iteration, @parent, optional @sourceIteration, and @description
-   - Immediately register that file in: src/app/playground/iterations/index.ts (map key MUST include ".tsx")
-   - Immediately add a matching entry to: src/app/playground/iterations/tree.json with parent set to "{{componentId}}"
+   - Immediately register that file in: {{playgroundRoot}}/iterations/index.ts (map key MUST include ".tsx")
+   - Immediately add a matching entry to: {{playgroundRoot}}/iterations/tree.json with parent set to "{{componentId}}"
 
 {{customInstructionsSection}}CRITICAL REQUIREMENTS
 - **Props interface**: Keep it IDENTICAL to the original component (no added/removed/renamed props, no type changes).
 - **Iteration depth**: Follow the requested depth (Shell only, 1 level deep, or All levels).
-- **Tree manifest**: Update src/app/playground/iterations/tree.json for every new iteration file.
-- **Registry index**: Register every iteration in src/app/playground/iterations/index.ts with a ".tsx" map key.
+- **Tree manifest**: Update {{playgroundRoot}}/iterations/tree.json for every new iteration file.
+- **Registry index**: Register every iteration in {{playgroundRoot}}/iterations/index.ts with a ".tsx" map key.
 
 CREATIVE LAYOUT & THEME FREEDOM
 - Explore bold, unconventional layouts: asymmetric grids, overlapping elements, unusual spacing, and creative alignments.
@@ -80,6 +80,7 @@ export interface IterationPromptVars {
   cleanComponentName: string;
   componentId: string;
   customInstructionsSection?: string;
+  playgroundRoot: string;
 }
 
 export function iterationPrompt(vars: IterationPromptVars): string {

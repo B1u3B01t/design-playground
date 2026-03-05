@@ -12,6 +12,7 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { handleConfigGet } from './api-handlers/config';
 import { handleGeneratePost, handleGenerateDelete, handleGenerateGet } from './api-handlers/generate';
 import { handleIterationsGet, handleIterationsPost, handleIterationsDelete } from './api-handlers/iterations';
 import { handleModelsGet } from './api-handlers/models';
@@ -79,6 +80,9 @@ function adaptResponse(res: ServerResponse): ApiResponse {
 type Handler = (req: ApiRequest, res: ApiResponse) => Promise<void>;
 
 const routes: Record<string, Record<string, Handler>> = {
+  '/playground/api/config': {
+    GET: handleConfigGet,
+  },
   '/playground/api/generate': {
     POST: handleGeneratePost,
     DELETE: handleGenerateDelete,

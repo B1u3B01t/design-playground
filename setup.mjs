@@ -186,7 +186,21 @@ function main() {
     }
   }
 
-  // 8. Print framework-specific instructions
+  // 8. Detect playground location relative to project root
+  const playgroundRoot = (() => {
+    const candidates = ['src/app/playground', 'src/playground', 'app/playground'];
+    for (const c of candidates) {
+      if (existsSync(join(root, c, 'PlaygroundClient.tsx'))) return c;
+    }
+    // Default based on framework
+    return framework === 'next' ? 'src/app/playground' : 'src/playground';
+  })();
+
+  console.log('');
+  console.log(bold('  Location:'));
+  console.log(`    ${green('+')} ${playgroundRoot}`);
+
+  // 9. Print framework-specific instructions
   console.log('');
   console.log(dim('  ─────────────────────────────────'));
 
@@ -197,7 +211,7 @@ function main() {
     console.log('');
     console.log(bold('  1. Add the Vite plugin to your vite.config.ts:'));
     console.log('');
-    console.log(dim('     import playgroundPlugin from \'./src/app/playground/vite-plugin\';'));
+    console.log(dim(`     import playgroundPlugin from './${playgroundRoot}/vite-plugin';`));
     console.log('');
     console.log(dim('     export default defineConfig({'));
     console.log(dim('       plugins: [playgroundPlugin()],'));
@@ -205,7 +219,7 @@ function main() {
     console.log('');
     console.log(bold('  2. Create a route that renders the playground:'));
     console.log('');
-    console.log(dim('     import PlaygroundClient from \'./src/app/playground/PlaygroundClient\';'));
+    console.log(dim(`     import PlaygroundClient from './${playgroundRoot}/PlaygroundClient';`));
     console.log(dim('     // Render <PlaygroundClient /> in your route'));
     console.log('');
   } else {
@@ -215,7 +229,7 @@ function main() {
     console.log(dim('     Add playgroundPlugin() to your vite.config.ts plugins array'));
     console.log('');
     console.log(bold('  Option B: Standalone server (any framework)'));
-    console.log(dim('     npx tsx src/app/playground/server.ts'));
+    console.log(dim(`     npx tsx ${playgroundRoot}/server.ts`));
     console.log(dim('     Then set: window.__PLAYGROUND_API_BASE = \'http://localhost:4800\''));
     console.log('');
     console.log(bold('  Then render <PlaygroundClient /> in your app.'));
