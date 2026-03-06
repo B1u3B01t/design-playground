@@ -1,4 +1,6 @@
 {
   "version": 1,
-  "entries": {}
+  "entries": {
+    "ArticleCard.iteration-1.tsx": { "parent": "article-card" }
+  }
 }

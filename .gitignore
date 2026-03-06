@@ -13,6 +13,12 @@ iterations/*.iteration-*.tsx
 
 previews/
 
+# Discovery manifest — AI-generated per-project, not tracked
+discovery.json
+
+# Discovered component wrappers — AI-generated, not tracked
+discovered/*.discovered.tsx
+
 # ============================================================================
 # FRAMEWORK FILES (tracked in git)
 # ============================================================================

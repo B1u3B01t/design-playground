@@ -4,7 +4,7 @@ import { memo, useState, useRef, useEffect } from 'react';
 import { useNodeId } from '@xyflow/react';
 import { Monitor, Smartphone, ArrowUpRight, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
-import { flatRegistry } from '../registry';
+import { flatRegistry, resolveRegistryItem } from '../registry';
 import { CancelGenerationButton } from './shared/IterateDialogParts';
 import IterateDialog from './shared/IterateDialog';
 
@@ -79,7 +79,7 @@ function SizeButtons({
 
 function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   const componentId = data.componentId;
-  const registryItem = flatRegistry[componentId];
+  const registryItem = resolveRegistryItem(componentId);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isGlobalGenerating, setIsGlobalGenerating] = useState(false);
 

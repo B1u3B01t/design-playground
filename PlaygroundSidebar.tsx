@@ -1,9 +1,14 @@
 'use client';
 
-import { useState, DragEvent } from 'react';
-import { ChevronRight, ChevronDown, GripVertical, ChevronLeft } from 'lucide-react';
+import { useState, useEffect, DragEvent, useCallback } from 'react';
+import { ChevronRight, ChevronDown, GripVertical, ChevronLeft, Plus, Loader2 } from 'lucide-react';
 import { registry, RegistryItem, isGroup, isLeaf } from './registry';
 import { DND_DATA_KEY } from './lib/constants';
+import type { DiscoveryEntry } from './DiscoveryModal';
+
+// ---------------------------------------------------------------------------
+// Tree node (shared by static registry and discovered items)
+// ---------------------------------------------------------------------------
 
 interface TreeNodeProps {
   item: RegistryItem;
@@ -61,35 +66,121 @@ function TreeNode({ item, depth = 0 }: TreeNodeProps) {
   return null;
 }
 
-interface PlaygroundSidebarProps {
-  onCollapse: () => void;
+// ---------------------------------------------------------------------------
+// Discovered item row (draggable, same visual style)
+// ---------------------------------------------------------------------------
+
+function DiscoveredLeafNode({
+  entry,
+  depth = 1,
+}: {
+  entry: DiscoveryEntry;
+  depth?: number;
+}) {
+  const handleDragStart = (e: DragEvent<HTMLDivElement>) => {
+    e.dataTransfer.setData(DND_DATA_KEY, entry.id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  return (
+    <div
+      draggable
+      onDragStart={handleDragStart}
+      className="flex items-center gap-1.5 py-1 text-sm text-stone-700 hover:text-stone-900 hover:bg-stone-100 rounded-md cursor-grab active:cursor-grabbing transition-colors group"
+      style={{ paddingLeft: `${depth * 10 + 8}px`, paddingRight: '8px' }}
+    >
+      <GripVertical className="w-3.5 h-3.5 text-stone-300 group-hover:text-stone-400 shrink-0 transition-colors" />
+      <span>{entry.name}</span>
+    </div>
+  );
 }
 
-export default function PlaygroundSidebar({ onCollapse }: PlaygroundSidebarProps) {
-  const [search, setSearch] = useState('');
+// ---------------------------------------------------------------------------
+// Discovered group header
+// ---------------------------------------------------------------------------
 
+function DiscoveredGroupHeader({
+  label,
+  expanded,
+  onToggle,
+  depth = 0,
+}: {
+  label: string;
+  expanded: boolean;
+  onToggle: () => void;
+  depth?: number;
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className="flex items-center gap-1 w-full px-2 py-0.5 text-left text-[11px] font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-md transition-colors"
+      style={{ paddingLeft: `${depth * 10 + 8}px` }}
+    >
+      {expanded ? (
+        <ChevronDown className="w-3 h-3 shrink-0" />
+      ) : (
+        <ChevronRight className="w-3 h-3 shrink-0" />
+      )}
+      <span className="uppercase tracking-wider text-[10px]">{label}</span>
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main sidebar
+// ---------------------------------------------------------------------------
+
+interface PlaygroundSidebarProps {
+  onCollapse: () => void;
+  onOpenDiscovery: () => void;
+}
+
+export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery }: PlaygroundSidebarProps) {
+  const [search, setSearch] = useState('');
+  const [discoveredEntries, setDiscoveredEntries] = useState<DiscoveryEntry[]>([]);
+  const [pagesExpanded, setPagesExpanded] = useState(true);
+  const [componentsExpanded, setComponentsExpanded] = useState(true);
+  const [isLoadingDiscovery, setIsLoadingDiscovery] = useState(false);
+
+  // Fetch discovered components on mount
+  const fetchDiscovery = useCallback(async () => {
+    setIsLoadingDiscovery(true);
+    try {
+      const res = await fetch('/playground/api/discover');
+      const data = await res.json();
+      if (data.status === 'complete' && data.entries) {
+        setDiscoveredEntries(data.entries.filter((e: DiscoveryEntry) => e.status === 'added'));
+      }
+    } catch { /* ignore */ }
+    finally {
+      setIsLoadingDiscovery(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDiscovery();
+  }, [fetchDiscovery]);
+
+  // Re-fetch when a component is added (called from parent)
+  useEffect(() => {
+    const handler = () => fetchDiscovery();
+    window.addEventListener('playground:discovery-updated', handler);
+    return () => window.removeEventListener('playground:discovery-updated', handler);
+  }, [fetchDiscovery]);
+
+  // Filter static registry
   const filterItems = (items: RegistryItem[], query: string): RegistryItem[] => {
     if (!query.trim()) return items;
-
     const lowerQuery = query.toLowerCase();
-
     return items
       .map((item) => {
         if (isGroup(item)) {
           const filteredChildren = filterItems(item.children, query);
-          if (filteredChildren.length > 0) {
-            return { ...item, children: filteredChildren };
-          }
-          if (item.label.toLowerCase().includes(lowerQuery)) {
-            return item;
-          }
+          if (filteredChildren.length > 0) return { ...item, children: filteredChildren };
+          if (item.label.toLowerCase().includes(lowerQuery)) return item;
           return null;
         }
-
-        if (isLeaf(item) && item.label.toLowerCase().includes(lowerQuery)) {
-          return item;
-        }
-
+        if (isLeaf(item) && item.label.toLowerCase().includes(lowerQuery)) return item;
         return null;
       })
       .filter((item): item is RegistryItem => item !== null);
@@ -97,11 +188,21 @@ export default function PlaygroundSidebar({ onCollapse }: PlaygroundSidebarProps
 
   const filteredRegistry = filterItems(registry, search);
 
+  // Filter discovered entries by search
+  const lowerSearch = search.toLowerCase();
+  const filteredDiscovered = discoveredEntries.filter(
+    (e) => e.name.toLowerCase().includes(lowerSearch),
+  );
+  const discoveredPages = filteredDiscovered.filter((e) => e.type === 'page');
+  const discoveredComponents = filteredDiscovered.filter((e) => e.type === 'component');
+
+  const hasDiscovered = discoveredPages.length > 0 || discoveredComponents.length > 0;
+
   return (
     <aside
       className="w-52 h-full bg-white rounded-xl border border-stone-200/80 flex flex-col overflow-hidden"
     >
-      {/* Header row: label + collapse button */}
+      {/* Header row: label + actions */}
       <div className="flex items-center justify-between px-3 pt-3 pb-2 flex-shrink-0">
         <div className="flex items-center gap-1.5">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-stone-400">
@@ -111,13 +212,22 @@ export default function PlaygroundSidebar({ onCollapse }: PlaygroundSidebarProps
             Components
           </span>
         </div>
-        <button
-          onClick={onCollapse}
-          className="p-0.5 rounded-md text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
-          aria-label="Collapse sidebar"
-        >
-          <ChevronLeft className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={onOpenDiscovery}
+            className="p-0.5 rounded-md text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
+            aria-label="Add components"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={onCollapse}
+            className="p-0.5 rounded-md text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
+            aria-label="Collapse sidebar"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -133,11 +243,53 @@ export default function PlaygroundSidebar({ onCollapse }: PlaygroundSidebarProps
 
       {/* Component tree — scrollable */}
       <div className="flex-1 overflow-y-auto px-1.5 min-h-0">
+        {/* Discovered: Your Pages */}
+        {discoveredPages.length > 0 && (
+          <div className="mb-1">
+            <DiscoveredGroupHeader
+              label="Your Pages"
+              expanded={pagesExpanded}
+              onToggle={() => setPagesExpanded(!pagesExpanded)}
+            />
+            {pagesExpanded && discoveredPages.map((entry) => (
+              <DiscoveredLeafNode key={entry.id} entry={entry} />
+            ))}
+          </div>
+        )}
+
+        {/* Discovered: Your Components */}
+        {discoveredComponents.length > 0 && (
+          <div className="mb-1">
+            <DiscoveredGroupHeader
+              label="Your Components"
+              expanded={componentsExpanded}
+              onToggle={() => setComponentsExpanded(!componentsExpanded)}
+            />
+            {componentsExpanded && discoveredComponents.map((entry) => (
+              <DiscoveredLeafNode key={entry.id} entry={entry} />
+            ))}
+          </div>
+        )}
+
+        {/* Loading shimmer for discovery */}
+        {isLoadingDiscovery && discoveredEntries.length === 0 && (
+          <div className="px-3 py-2 flex items-center gap-2 text-stone-400">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            <span className="text-[11px]">Loading…</span>
+          </div>
+        )}
+
+        {/* Separator between discovered and examples */}
+        {hasDiscovered && filteredRegistry.length > 0 && (
+          <div className="my-1.5 mx-2 border-t border-stone-100" />
+        )}
+
+        {/* Static registry */}
         {filteredRegistry.length > 0 ? (
           filteredRegistry.map((item) => <TreeNode key={item.id} item={item} />)
-        ) : (
+        ) : !hasDiscovered && !isLoadingDiscovery ? (
           <p className="text-xs text-stone-400 text-center py-3">No components found</p>
-        )}
+        ) : null}
       </div>
 
       {/* Footer */}

@@ -4,7 +4,7 @@ import { memo, useState, Suspense, useMemo, useRef, useEffect } from 'react';
 import { useReactFlow } from '@xyflow/react';
 import { Check, Trash2, Loader2, ArrowUpRight, ChevronRight } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
-import { flatRegistry, generateAdoptPrompt } from '../registry';
+import { flatRegistry, resolveRegistryItem, generateAdoptPrompt } from '../registry';
 import { getIterationComponent } from '../iterations';
 import {
   COMPONENT_SIZE_CHANGE_EVENT,
@@ -65,10 +65,10 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
   const { share: handleShare, state: shareState } = useTunnelShare(iterationSlug);
 
   const { resolvedProps, isLoadingProps, propsError } = useAsyncProps(registryId);
-  const staticProps = useMemo(() => flatRegistry[registryId]?.props || {}, [registryId]);
+  const staticProps = useMemo(() => resolveRegistryItem(registryId)?.props || {}, [registryId]);
   const effectiveProps = (resolvedProps ?? staticProps) as Record<string, unknown>;
 
-  const [size, setSize] = useState<ComponentSize>(() => flatRegistry[registryId]?.size || 'default');
+  const [size, setSize] = useState<ComponentSize>(() => resolveRegistryItem(registryId)?.size || 'default');
 
   useEffect(() => {
     const handleSizeChange = (e: CustomEvent<{ componentId: string; size: ComponentSize }>) => {

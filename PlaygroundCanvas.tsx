@@ -894,6 +894,20 @@ export default function PlaygroundCanvas() {
         );
       }
 
+      // Guard: prompt must be non-empty before we proceed
+      if (!prompt) {
+        window.dispatchEvent(
+          new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+            detail: {
+              componentId,
+              parentNodeId,
+              error: `Component "${componentId}" is not registered. Add it to the registry or re-run discovery before iterating.`,
+            },
+          }),
+        );
+        return;
+      }
+
       // Dispatch generation start (creates skeleton nodes in grid layout)
       window.dispatchEvent(
         new CustomEvent<GenerationStartPayload>(GENERATION_START_EVENT, {

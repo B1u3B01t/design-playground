@@ -2,11 +2,11 @@
 // This file maps iteration filenames to their components
 
 import { ComponentType } from 'react';
+import ArticleCardIteration1 from './ArticleCard.iteration-1';
 
-// No iterations currently registered
-
-// Map of filename to component
-export const iterationComponents: Record<string, ComponentType<any>> = {};
+export const iterationComponents: Record<string, ComponentType<any>> = {
+  'ArticleCard.iteration-1.tsx': ArticleCardIteration1 as ComponentType<any>,
+};
 
 export function getIterationComponent(filename: string): ComponentType<any> | undefined {
   return iterationComponents[filename];

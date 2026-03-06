@@ -304,6 +304,18 @@ export const TEMP_DIR_RELATIVE = '.playground-temp';
 /** Filename for the generation lockfile */
 export const GENERATION_LOCKFILE_FILENAME = 'generation.lock';
 
+/** Filename for the discovery scan lockfile */
+export const DISCOVERY_LOCKFILE_FILENAME = 'discovery.lock';
+
+/** Filename for the discovery manifest */
+export const DISCOVERY_MANIFEST_FILENAME = 'discovery.json';
+
+/** Filename for the discovered components index */
+export const DISCOVERED_INDEX_FILENAME = 'index.ts';
+
+/** Directory name for discovered component wrappers */
+export const DISCOVERED_DIR_NAME = 'discovered';
+
 /** Regex pattern to validate iteration filenames (prevents directory traversal) */
 export const ITERATION_FILENAME_PATTERN = /^[A-Za-z0-9]+\.iteration-\d+\.tsx$/;
 

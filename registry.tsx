@@ -223,6 +223,57 @@ export function flattenRegistry(
 export const flatRegistry = flattenRegistry(registry);
 
 // ---------------------------------------------------------------------------
+// Discovered component resolution
+// ---------------------------------------------------------------------------
+
+import { getDiscoveredComponent } from './discovered';
+import { discoveredProps } from './discovered/props';
+import discoveryData from './discovery.json';
+
+interface DiscoveryEntry {
+  id: string;
+  name: string;
+  path: string;
+  type: string;
+  status: string;
+  analysis?: {
+    propsInterface: string;
+    [key: string]: unknown;
+  };
+}
+
+const discoveryMap = new Map<string, DiscoveryEntry>(
+  (discoveryData as { entries: DiscoveryEntry[] }).entries.map((e) => [e.id, e]),
+);
+
+/**
+ * Resolve a component by ID, checking both the static registry
+ * and discovered components.
+ */
+export function resolveRegistryItem(componentId: string): RegistryLeafItem | null {
+  const staticItem = flatRegistry[componentId];
+  if (staticItem) return staticItem;
+
+  const DiscoveredComponent = getDiscoveredComponent(componentId);
+  if (DiscoveredComponent) {
+    const entry = discoveryMap.get(componentId);
+    return {
+      id: componentId,
+      label: entry?.name ?? componentId
+        .split('-')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' '),
+      Component: DiscoveredComponent as unknown as ComponentType<Record<string, unknown>>,
+      props: discoveredProps[componentId] ?? {},
+      sourcePath: entry?.path ?? '',
+      propsInterface: entry?.analysis?.propsInterface ?? '',
+    };
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Prompt generator
 // ---------------------------------------------------------------------------
 
@@ -233,7 +284,7 @@ export function generateIterationPrompt(
   customInstructions?: string,
   skillPrompt?: string,
 ): string {
-  const item = flatRegistry[componentId];
+  const item = resolveRegistryItem(componentId);
   if (!item) return '';
 
   const componentName = item.label.replace(/\s*\(.*\)/, '');
@@ -271,7 +322,7 @@ export function generateIterationFromIterationPrompt(
   customInstructions?: string,
   skillPrompt?: string,
 ): string {
-  const item = flatRegistry[componentId];
+  const item = resolveRegistryItem(componentId);
   if (!item) return '';
 
   const componentName = item.label.replace(/\s*\(.*\)/, '');
