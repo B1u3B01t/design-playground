@@ -144,7 +144,19 @@ function loadCanvasState(): CanvasState | null {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      return JSON.parse(stored);
+      const state = JSON.parse(stored) as CanvasState;
+      // Strip skeleton nodes that may have been persisted mid-generation;
+      // generationInfo is not stored so they can never be cleaned up.
+      const skeletonIds = new Set(
+        state.nodes.filter(n => n.type === 'skeleton').map(n => n.id),
+      );
+      if (skeletonIds.size > 0) {
+        state.nodes = state.nodes.filter(n => n.type !== 'skeleton');
+        state.edges = state.edges.filter(
+          e => !skeletonIds.has(e.source) && !skeletonIds.has(e.target),
+        );
+      }
+      return state;
     }
   } catch (e) {
     console.error('Failed to load canvas state:', e);
@@ -683,22 +695,25 @@ export default function PlaygroundCanvas() {
       setNodes(nds => [...nds, ...skeletonNodes]);
       setEdges(eds => [...eds, ...skeletonEdges]);
 
-      // Update generation state
-      setIsGenerating(true);
-      setLastGenerationDuration(null); // Clear previous duration
-      setGenerationInfo({
+      // Update generation state — sync ref eagerly so that a fast
+      // GENERATION_COMPLETE_EVENT can read the skeleton IDs before React
+      // renders and the useEffect-based ref sync fires.
+      const newInfo: GenerationInfo = {
         componentId,
         componentName,
         parentNodeId,
         iterationCount,
         skeletonNodeIds,
         startTime: Date.now(),
-        // Store skeleton positions so real iteration nodes inherit them
         gridPositions: gridLayout
           ? skeletonNodes.map(n => ({ x: n.position.x, y: n.position.y }))
           : undefined,
         gridCellSize: gridLayout ? { width: cellW, height: cellH } : undefined,
-      });
+      };
+      generationInfoRef.current = newInfo;
+      setIsGenerating(true);
+      setLastGenerationDuration(null);
+      setGenerationInfo(newInfo);
     };
 
     const handleGenerationComplete = (): void => {
@@ -726,7 +741,9 @@ export default function PlaygroundCanvas() {
         setEdges(eds => eds.filter(e => !info.skeletonNodeIds.some(id => e.target === id)));
       }
 
-      // Reset generation state
+      // Reset generation state — eagerly sync ref so concurrent callers
+      // (e.g. status polling) see the cleared state immediately.
+      generationInfoRef.current = null;
       setIsGenerating(false);
       setGenerationInfo(null);
 
@@ -797,7 +814,8 @@ export default function PlaygroundCanvas() {
         setEdges(eds => eds.filter(e => !info.skeletonNodeIds.some(id => e.target === id)));
       }
 
-      // Reset generation state
+      // Reset generation state — eagerly sync ref
+      generationInfoRef.current = null;
       setIsGenerating(false);
       setGenerationInfo(null);
     };
