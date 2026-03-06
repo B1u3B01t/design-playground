@@ -129,7 +129,32 @@ Size guidelines:
 - \`default\` — cards, sections, small/medium components
 - \`tablet\` / \`mobile\` — only if the component targets that specific viewport
 
-## Step 4: Update discovery.json
+## Step 4: Add a props fetcher (if the component uses real data)
+
+Open \`${playgroundDir}/lib/props-fetchers.server.ts\`.
+
+Examine the component at \`${componentPath}\` and its data-fetching logic (look at the page's \`fetch\`/\`async\` calls, server actions, database queries, or API calls it delegates to):
+
+- **If the component fetches real data** (from a database, API, CMS, etc.), add an async fetcher entry to the \`propsFetchers\` map. The key must be the same **kebab-case registry ID** you used in Step 3 (e.g. \`'article-card'\`, \`'team'\`).
+  - Mirror the real data-fetching logic from the source component/page — same imports, same client, same query.
+  - Return the data shaped exactly like the props the component expects (same structure as the mock data you wrote in Step 2).
+  - Keep the snapshot small: use \`.limit()\`, \`.slice()\`, or similar to cap lists to 5–10 items.
+  - Only import what the host app already has (e.g. its existing DB client, fetch helpers, etc.). Do NOT add new dependencies.
+  - Add any required imports at the top of the file (alongside existing imports).
+
+- **If the component is purely static** (no data fetching — it only uses props, hardcoded values, or context), skip this step entirely.
+
+Example entry shape:
+
+\`\`\`ts
+'registry-id': async () => {
+  // use the host app's existing data client / fetch helpers
+  const data = await fetchSomething();
+  return { propA: data.x, propB: data.y };
+},
+\`\`\`
+
+## Step 5: Update discovery.json
 
 Read \`${playgroundDir}/discovery.json\` and update the entry with id \`${id}\`:
 
@@ -152,8 +177,9 @@ Read \`${playgroundDir}/discovery.json\` and update the entry with id \`${id}\`:
 
 - Do NOT modify the original component at \`${componentPath}\`
 - Do NOT create any wrapper or \`discovered/\` files — there is no \`discovered/\` directory
-- Only touch: \`${playgroundDir}/data/${mockDataFilename}\`, \`${playgroundDir}/registry.tsx\`, \`${playgroundDir}/discovery.json\`
+- Only touch: \`${playgroundDir}/data/${mockDataFilename}\`, \`${playgroundDir}/registry.tsx\`, \`${playgroundDir}/discovery.json\`, and (if the component fetches data) \`${playgroundDir}/lib/props-fetchers.server.ts\`
 - All import paths must be correct relative to the project root (\`@/\` alias maps to \`src/\`)
 - Mock data must look visually appealing and realistic when rendered
+- The props fetcher key MUST match the kebab-case registry ID exactly — this is how the analyze route links the two
 `;
 }

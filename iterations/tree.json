@@ -1,9 +1,4 @@
 {
   "version": 1,
-  "entries": {
-    "Team.iteration-1.tsx": { "parent": "team" },
-    "Team.iteration-2.tsx": { "parent": "team" },
-    "Team.iteration-3.tsx": { "parent": "team" },
-    "Team.iteration-4.tsx": { "parent": "Team.iteration-3.tsx" }
-  }
+  "entries": {}
 }

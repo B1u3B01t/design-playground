@@ -1,15 +1,7 @@
 import { ComponentType } from 'react';
-import dynamic from 'next/dynamic';
 import type { ComponentSize } from './lib/constants';
 import PricingCard from './examples/PricingCard';
 import PricingPage from './examples/PricingPage';
-import ArticleCard from '@/components/ArticleCard';
-import { mockData as articleCardMockData } from './data/ArticleCard.mockData';
-import { mockData as insightsPageMockData } from './data/Insights.mockData';
-import { mockData as teamPageMockData } from './data/Team.mockData';
-
-const InsightsClient = dynamic(() => import('@/app/insights/ui/InsightsClient')) as ComponentType<Record<string, unknown>>;
-const Team = dynamic(() => import('@/app/team/page')) as ComponentType<Record<string, unknown>>;
 import {
   formatChildrenSection,
   formatCustomInstructionsSection,
@@ -213,73 +205,6 @@ export const registry: RegistryItem[] = [
   // Each entry has its own data/<ComponentName>.mockData.ts file.
   // To add a new component, run discovery → analyze in the playground UI.
   // ---------------------------------------------------------------------------
-  {
-    id: 'components',
-    label: 'Components',
-    children: [
-      {
-        id: 'article-card',
-        label: 'Article Card',
-        Component: ArticleCard as unknown as ComponentType<Record<string, unknown>>,
-        props: articleCardMockData as Record<string, unknown>,
-        sourcePath: 'src/components/ArticleCard.tsx',
-        size: 'default' as ComponentSize,
-        propsInterface: `interface ArticleCardProps {
-  post: InsightPost;
-  category?: InsightCategory;
-  variant?: "minimal" | "expanded";
-  className?: string;
-  onClick?: () => void;
-}`,
-      },
-      {
-        id: 'insights-client',
-        label: 'Insights',
-        Component: InsightsClient as unknown as ComponentType<Record<string, unknown>>,
-        props: insightsPageMockData as Record<string, unknown>,
-        sourcePath: 'src/app/insights/ui/InsightsClient.tsx',
-        size: 'laptop' as ComponentSize,
-        propsInterface: `interface InsightsClientProps {
-  data: {
-    categories: { name: string; image?: string }[];
-    posts: {
-      id: number;
-      title: string;
-      subtitle?: string;
-      category: string;
-      author?: string;
-      authorAvatar?: string;
-      date?: string;
-      image?: string;
-      slug: string;
-      tier?: "FREE" | "PRO";
-    }[];
-    recentEssays: {
-      id: number;
-      title: string;
-      subtitle?: string;
-      category: string;
-      author?: string;
-      authorAvatar?: string;
-      date?: string;
-      image?: string;
-      slug: string;
-      tier?: "FREE" | "PRO";
-    }[];
-  };
-}`,
-      },
-      {
-        id: 'team',
-        label: 'Team',
-        Component: Team as unknown as ComponentType<Record<string, unknown>>,
-        props: teamPageMockData as Record<string, unknown>,
-        sourcePath: 'src/app/team/page.tsx',
-        size: 'laptop' as ComponentSize,
-        propsInterface: `interface TeamPageProps {}`,
-      },
-    ],
-  },
 ];
 
 // ---------------------------------------------------------------------------
