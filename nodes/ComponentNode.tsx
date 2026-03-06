@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useState, useRef, useEffect } from 'react';
-import { useNodeId } from '@xyflow/react';
+import { useNodeId, useReactFlow } from '@xyflow/react';
 import { Monitor, Smartphone, ArrowUpRight, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { flatRegistry, resolveRegistryItem } from '../registry';
@@ -24,6 +24,8 @@ import {
 interface ComponentNodeProps {
   data: {
     componentId: string;
+    /** Persisted across reloads — reflects the last user-chosen size */
+    size?: ComponentSize;
   };
   selected?: boolean;
 }
@@ -87,11 +89,13 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   const handleWheel = useScrollCapture(scrollContainerRef);
 
   const nodeId = useNodeId();
+  const { updateNodeData } = useReactFlow();
   const isInteractive = !!selected;
 
   const { share: handleShare, state: shareState } = useTunnelShare(componentId);
 
-  const [size, setSize] = useState<ComponentSize>(registryItem?.size || 'default');
+  // Prefer the persisted size from node data (survives reload), then registry default
+  const [size, setSize] = useState<ComponentSize>(data.size || registryItem?.size || 'default');
 
   useEffect(() => {
     const on  = () => setIsGlobalGenerating(true);
@@ -108,8 +112,11 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
 
   const handleSizeChange = (newSize: ComponentSize) => {
     setSize(newSize);
+    // Persist size in node data so it survives reload and is readable by child iterations
+    if (nodeId) updateNodeData(nodeId, { size: newSize });
+    // Broadcast using nodeId so each iteration can track its own parent
     window.dispatchEvent(new CustomEvent(COMPONENT_SIZE_CHANGE_EVENT, {
-      detail: { componentId, size: newSize },
+      detail: { nodeId, size: newSize },
     }));
   };
 
@@ -184,7 +191,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
           {isLargeComponent ? (
             <div
               ref={scrollContainerRef}
-              className={`bg-gray-100 overflow-auto ${isInteractive ? 'nodrag nowheel nopan' : ''}`}
+              className={`bg-gray-100 overflow-x-hidden overflow-y-auto ${isInteractive ? 'nodrag nowheel nopan' : ''}`}
               style={{ width: displayDims.width, height: displayDims.height }}
               onWheel={isInteractive ? handleWheel : undefined}
             >

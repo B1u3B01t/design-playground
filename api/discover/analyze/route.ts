@@ -2,13 +2,9 @@ import { NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { ComponentType } from 'react';
-import {
-  DISCOVERY_MANIFEST_FILENAME,
-  DISCOVERED_DIR_NAME,
-  DISCOVERED_INDEX_FILENAME,
-} from '../../../lib/constants';
+import { DISCOVERY_MANIFEST_FILENAME } from '../../../lib/constants';
 import { discoveryAnalyzePrompt } from '../../../prompts/discovery-analyze.prompt';
+import { fetchPropsSnapshot } from '../../../lib/props-fetchers.server';
 
 /**
  * Discovery Analyze API — prepares a single discovered component
@@ -38,15 +34,10 @@ function resolvePlaygroundDir(): string {
 
 const PLAYGROUND_DIR = resolvePlaygroundDir();
 const DISCOVERY_JSON_PATH = path.join(PLAYGROUND_DIR, DISCOVERY_MANIFEST_FILENAME);
-const DISCOVERED_DIR = path.join(PLAYGROUND_DIR, DISCOVERED_DIR_NAME);
-const DISCOVERED_INDEX_PATH = path.join(DISCOVERED_DIR, DISCOVERED_INDEX_FILENAME);
+const DATA_DIR = path.join(PLAYGROUND_DIR, 'data');
 
 // Track in-progress analyses to prevent duplicates
 const analyzingIds = new Set<string>();
-
-// ---------------------------------------------------------------------------
-// Index regeneration (mirrors iterations/route.ts pattern)
-// ---------------------------------------------------------------------------
 
 interface DiscoveryEntry {
   id: string;
@@ -59,79 +50,6 @@ interface DiscoveryEntry {
     componentName?: string;
     [key: string]: unknown;
   };
-}
-
-function regenerateDiscoveredIndex(): void {
-  console.log(`${LOG_PREFIX} Regenerating discovered/index.ts...`);
-
-  if (!fs.existsSync(DISCOVERED_DIR)) {
-    fs.mkdirSync(DISCOVERED_DIR, { recursive: true });
-    console.log(`${LOG_PREFIX} Created discovered directory: ${DISCOVERED_DIR}`);
-  }
-
-  let entries: DiscoveryEntry[] = [];
-  try {
-    if (fs.existsSync(DISCOVERY_JSON_PATH)) {
-      const data = JSON.parse(fs.readFileSync(DISCOVERY_JSON_PATH, 'utf-8'));
-      entries = (data.entries || []).filter(
-        (e: DiscoveryEntry) => e.status === 'added' && e.analysis?.discoveredFilename,
-      );
-    }
-  } catch { /* ignore parse errors */ }
-
-  // Filter to entries whose wrapper file actually exists
-  const validEntries = entries.filter((e) => {
-    const exists = fs.existsSync(path.join(DISCOVERED_DIR, e.analysis!.discoveredFilename!));
-    if (!exists) {
-      console.warn(`${LOG_PREFIX} Wrapper file missing for "${e.id}": ${e.analysis!.discoveredFilename}`);
-    }
-    return exists;
-  });
-
-  console.log(`${LOG_PREFIX} Found ${validEntries.length} valid discovered components`);
-
-  if (validEntries.length === 0) {
-    const content = `// Auto-generated index for discovered components
-import { ComponentType } from 'react';
-import dynamic from 'next/dynamic';
-
-export const discoveredComponents: Record<string, ComponentType<any>> = {};
-
-export function getDiscoveredComponent(id: string): ComponentType<any> | undefined {
-  return discoveredComponents[id];
-}
-`;
-    fs.writeFileSync(DISCOVERED_INDEX_PATH, content, 'utf-8');
-    console.log(`${LOG_PREFIX} Wrote empty discovered/index.ts`);
-    return;
-  }
-
-  const mapEntries: string[] = [];
-
-  for (const entry of validEntries) {
-    const filename = entry.analysis!.discoveredFilename!;
-    const moduleName = filename.replace('.tsx', '');
-    mapEntries.push(`  '${entry.id}': dynamic(() => import('./${moduleName}')),`);
-    console.log(`${LOG_PREFIX}   Registered: '${entry.id}' → ${filename}`);
-  }
-
-  const content = `// Auto-generated index for discovered components
-// This file maps discovery entry IDs to their wrapper components
-
-import { ComponentType } from 'react';
-import dynamic from 'next/dynamic';
-
-export const discoveredComponents: Record<string, ComponentType<any>> = {
-${mapEntries.join('\n')}
-};
-
-export function getDiscoveredComponent(id: string): ComponentType<any> | undefined {
-  return discoveredComponents[id];
-}
-`;
-
-  fs.writeFileSync(DISCOVERED_INDEX_PATH, content, 'utf-8');
-  console.log(`${LOG_PREFIX} Wrote discovered/index.ts with ${validEntries.length} entries`);
 }
 
 // ---------------------------------------------------------------------------
@@ -171,13 +89,25 @@ export async function POST(req: Request) {
     );
   }
 
-  // Ensure discovered directory exists
-  if (!fs.existsSync(DISCOVERED_DIR)) {
-    fs.mkdirSync(DISCOVERED_DIR, { recursive: true });
-    console.log(`${LOG_PREFIX} Created discovered directory`);
+  // Ensure data directory exists
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    console.log(`${LOG_PREFIX} Created data directory`);
   }
 
   const playgroundRelPath = path.relative(process.cwd(), PLAYGROUND_DIR).replace(/\\/g, '/');
+
+  // Try to fetch a real-data snapshot so the agent can use live values for mock props.
+  let propsSnapshot: Record<string, unknown> | undefined;
+  try {
+    const snapshot = await fetchPropsSnapshot(id);
+    if (snapshot) {
+      propsSnapshot = snapshot;
+      console.log(`${LOG_PREFIX} Got real props snapshot for "${id}" — injecting into prompt`);
+    }
+  } catch (e) {
+    console.warn(`${LOG_PREFIX} Props snapshot fetch failed for "${id}" — continuing without it:`, e);
+  }
 
   const prompt = discoveryAnalyzePrompt({
     id,
@@ -185,6 +115,7 @@ export async function POST(req: Request) {
     componentPath,
     type,
     playgroundDir: playgroundRelPath,
+    propsSnapshot,
   });
 
   console.log(`${LOG_PREFIX} Generated analysis prompt (${prompt.length} chars)`);
@@ -243,23 +174,16 @@ export async function POST(req: Request) {
         analyzingIds.delete(id);
 
         if (code === 0) {
-          // Check if wrapper file was created
+          // Check if the mock data file was created
           const cleanName = name.replace(/\s+/g, '');
-          const expectedFile = path.join(DISCOVERED_DIR, `${cleanName}.discovered.tsx`);
-          const wrapperExists = fs.existsSync(expectedFile);
-          console.log(`${LOG_PREFIX} Expected wrapper: ${expectedFile} — exists=${wrapperExists}`);
+          const expectedDataFile = path.join(DATA_DIR, `${cleanName}.mockData.ts`);
+          const mockDataExists = fs.existsSync(expectedDataFile);
+          console.log(`${LOG_PREFIX} Expected mock data file: ${expectedDataFile} — exists=${mockDataExists}`);
 
-          // List all files in discovered dir
-          if (fs.existsSync(DISCOVERED_DIR)) {
-            const files = fs.readdirSync(DISCOVERED_DIR);
-            console.log(`${LOG_PREFIX} Discovered dir contents: [${files.join(', ')}]`);
-          }
-
-          // Regenerate discovered/index.ts
-          try {
-            regenerateDiscoveredIndex();
-          } catch (e) {
-            console.error(`${LOG_PREFIX} Error regenerating index:`, e);
+          // List all files in data dir
+          if (fs.existsSync(DATA_DIR)) {
+            const files = fs.readdirSync(DATA_DIR);
+            console.log(`${LOG_PREFIX} Data dir contents: [${files.join(', ')}]`);
           }
 
           // Read updated discovery.json to return the entry
@@ -346,13 +270,12 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ success: false, error: `Entry "${id}" not found` }, { status: 404 });
     }
 
-    // Delete wrapper file if it exists
-    if (entry.analysis?.discoveredFilename) {
-      const wrapperPath = path.join(DISCOVERED_DIR, entry.analysis.discoveredFilename);
-      if (fs.existsSync(wrapperPath)) {
-        fs.unlinkSync(wrapperPath);
-        console.log(`${LOG_PREFIX} Deleted wrapper file: ${entry.analysis.discoveredFilename}`);
-      }
+    // Delete mock data file if it exists
+    const cleanName = (entry.name as string).replace(/\s+/g, '');
+    const mockDataPath = path.join(DATA_DIR, `${cleanName}.mockData.ts`);
+    if (fs.existsSync(mockDataPath)) {
+      fs.unlinkSync(mockDataPath);
+      console.log(`${LOG_PREFIX} Deleted mock data file: ${cleanName}.mockData.ts`);
     }
 
     // Reset entry status
@@ -361,8 +284,6 @@ export async function DELETE(req: Request) {
 
     fs.writeFileSync(DISCOVERY_JSON_PATH, JSON.stringify(data, null, 2) + '\n', 'utf-8');
     console.log(`${LOG_PREFIX} Reset entry "${id}" to discovered`);
-
-    regenerateDiscoveredIndex();
 
     return NextResponse.json({ success: true });
   } catch (error) {

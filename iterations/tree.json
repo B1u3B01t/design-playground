@@ -1,6 +1,9 @@
 {
   "version": 1,
   "entries": {
-    "ArticleCard.iteration-1.tsx": { "parent": "article-card" }
+    "Team.iteration-1.tsx": { "parent": "team" },
+    "Team.iteration-2.tsx": { "parent": "team" },
+    "Team.iteration-3.tsx": { "parent": "team" },
+    "Team.iteration-4.tsx": { "parent": "Team.iteration-3.tsx" }
   }
 }

@@ -1,0 +1,546 @@
+{
+  "version": 1,
+  "scannedAt": "2026-03-06T00:00:00.000Z",
+  "entries": [
+    {
+      "id": "home-page",
+      "name": "Home",
+      "path": "src/app/page.tsx",
+      "type": "page",
+      "route": "/",
+      "description": "The main marketing homepage featuring a hero, AI interaction previews, social proof, and a PRO access call-to-action.",
+      "status": "discovered"
+    },
+    {
+      "id": "browse-page",
+      "name": "Browse",
+      "path": "src/app/browse/page.tsx",
+      "type": "page",
+      "route": "/browse",
+      "description": "A rich gallery view of AI interaction cards with filters, modes, and pattern group navigation.",
+      "status": "discovered"
+    },
+    {
+      "id": "browse-detail-page",
+      "name": "Browse Detail",
+      "path": "src/app/browse/[slug]/page.tsx",
+      "type": "page",
+      "route": "/browse/[slug]",
+      "description": "A full-screen interaction detail view with a large video, tags, download controls, and similar examples grid.",
+      "status": "discovered"
+    },
+    {
+      "id": "insights-page",
+      "name": "Insights",
+      "path": "src/app/insights/page.tsx",
+      "type": "page",
+      "route": "/insights",
+      "description": "An editorial insights listing page with large article cards, categories, and author metadata.",
+      "status": "added",
+      "analysis": {
+        "showcasePath": "src/app/insights/ui/InsightsClient.tsx",
+        "componentName": "InsightsClient",
+        "registryId": "insights-client",
+        "propsInterface": "interface InsightsClientProps { data: { categories: { name: string; image?: string }[]; posts: { id: number; title: string; subtitle?: string; category: string; author?: string; authorAvatar?: string; date?: string; image?: string; slug: string; tier?: \"FREE\" | \"PRO\" }[]; recentEssays: { id: number; title: string; subtitle?: string; category: string; author?: string; authorAvatar?: string; date?: string; image?: string; slug: string; tier?: \"FREE\" | \"PRO\" }[] } }",
+        "size": "laptop"
+      }
+    },
+    {
+      "id": "insight-article-page",
+      "name": "Insight Article",
+      "path": "src/app/insights/[slug]/page.tsx",
+      "type": "page",
+      "route": "/insights/[slug]",
+      "description": "A longform article layout with hero imagery, typographic content, author info, and related reading.",
+      "status": "discovered"
+    },
+    {
+      "id": "insight-editor-page",
+      "name": "Insight Editor",
+      "path": "src/app/insights/[slug]/edit/page.tsx",
+      "type": "page",
+      "route": "/insights/[slug]/edit",
+      "description": "An admin insight editing page that loads a rich text editor with embeds and structured fields.",
+      "status": "discovered"
+    },
+    {
+      "id": "team-page",
+      "name": "Team",
+      "path": "src/app/team/page.tsx",
+      "type": "page",
+      "route": "/team",
+      "description": "A grid of team member cards with avatars, roles, and bios in a clean card layout.",
+      "status": "added",
+      "analysis": {
+        "showcasePath": "src/app/team/page.tsx",
+        "componentName": "Team",
+        "registryId": "team",
+        "propsInterface": "interface TeamPageProps {}",
+        "size": "laptop"
+      }
+    },
+    {
+      "id": "reset-password-page",
+      "name": "Reset Password",
+      "path": "src/app/reset-password/page.tsx",
+      "type": "page",
+      "route": "/reset-password",
+      "description": "A focused form page for resetting a password with validation messages and supporting illustration.",
+      "status": "discovered"
+    },
+    {
+      "id": "forgot-password-page",
+      "name": "Forgot Password",
+      "path": "src/app/forgot-password/page.tsx",
+      "type": "page",
+      "route": "/forgot-password",
+      "description": "A minimal email capture form for requesting a password reset with supportive copy and illustration.",
+      "status": "discovered"
+    },
+    {
+      "id": "login-page",
+      "name": "Login",
+      "path": "src/app/login/page.tsx",
+      "type": "page",
+      "route": "/login",
+      "description": "A split-layout login experience with Google sign-in, magic link, password form, and astronaut artwork.",
+      "status": "discovered"
+    },
+    {
+      "id": "signup-page",
+      "name": "Signup",
+      "path": "src/app/signup/page.tsx",
+      "type": "page",
+      "route": "/signup",
+      "description": "A two-step signup and plan selection flow with marketing copy, plan cards, and testimonials.",
+      "status": "discovered"
+    },
+    {
+      "id": "collection-page",
+      "name": "Collection",
+      "path": "src/app/collection/page.tsx",
+      "type": "page",
+      "route": "/collection",
+      "description": "A dashboard of user collections showing stacked preview cards, item counts, and create controls.",
+      "status": "discovered"
+    },
+    {
+      "id": "collection-detail-page",
+      "name": "Collection Detail",
+      "path": "src/app/collection/[slug]/page.tsx",
+      "type": "page",
+      "route": "/collection/[slug]",
+      "description": "A curated collection view with a hero title, curator profile chip, share controls, and interaction grid.",
+      "status": "discovered"
+    },
+    {
+      "id": "apps-page",
+      "name": "Apps",
+      "path": "src/app/apps/page.tsx",
+      "type": "page",
+      "route": "/apps",
+      "description": "A categorized list of product names linking into per-app interaction galleries.",
+      "status": "discovered"
+    },
+    {
+      "id": "app-detail-page",
+      "name": "App Detail",
+      "path": "src/app/apps/[slug]/page.tsx",
+      "type": "page",
+      "route": "/apps/[slug]",
+      "description": "An app overview page with logo, pattern chips, and a grid of AI interaction videos for that product.",
+      "status": "discovered"
+    },
+    {
+      "id": "patterns-page",
+      "name": "Patterns",
+      "path": "src/app/patterns/page.tsx",
+      "type": "page",
+      "route": "/patterns",
+      "description": "An AI pattern explorer with staged sections, principle groupings, and interactive pattern cards.",
+      "status": "discovered"
+    },
+    {
+      "id": "pattern-detail-page",
+      "name": "Pattern Detail",
+      "path": "src/app/patterns/[slug]/page.tsx",
+      "type": "page",
+      "route": "/patterns/[slug]",
+      "description": "A detailed pattern article page with rich markdown content, breadcrumbs, and PRO call-to-action.",
+      "status": "discovered"
+    },
+    {
+      "id": "patterns-pdf-page",
+      "name": "Patterns PDF",
+      "path": "src/app/patternspdf/page.tsx",
+      "type": "page",
+      "route": "/patternspdf",
+      "description": "A simple lead-capture page embedding a ConvertKit form to deliver the AI UX Patterns PDF.",
+      "status": "discovered"
+    },
+    {
+      "id": "glossary-page",
+      "name": "Glossary",
+      "path": "src/app/glossary/page.tsx",
+      "type": "page",
+      "route": "/glossary",
+      "description": "A long AI UX glossary with term sections, definitions, and example callouts separated by dividers.",
+      "status": "discovered"
+    },
+    {
+      "id": "pricing-page",
+      "name": "Pricing",
+      "path": "src/app/pricing/page.tsx",
+      "type": "page",
+      "route": "/pricing",
+      "description": "A three-column pricing layout with billing toggle, PRO feature bullets, testimonials, and FAQ.",
+      "status": "discovered"
+    },
+    {
+      "id": "products-page",
+      "name": "Products",
+      "path": "src/app/products/page.tsx",
+      "type": "page",
+      "route": "/products",
+      "description": "A dark studio page showcasing multiple product agent cards with bold typography and imagery.",
+      "status": "discovered"
+    },
+    {
+      "id": "privacy-page",
+      "name": "Privacy",
+      "path": "src/app/privacy/page.tsx",
+      "type": "page",
+      "route": "/privacy",
+      "description": "A long-form privacy policy page styled with prose typography inside a centered content column.",
+      "status": "discovered"
+    },
+    {
+      "id": "manifesto-page",
+      "name": "Manifesto",
+      "path": "src/app/manifesto/page.tsx",
+      "type": "page",
+      "route": "/manifesto",
+      "description": "A full-viewport scrolling manifesto with large typographic statements on separate snap sections.",
+      "status": "discovered"
+    },
+    {
+      "id": "community-page",
+      "name": "Community",
+      "path": "src/app/community/page.tsx",
+      "type": "page",
+      "route": "/community",
+      "description": "A community blog index with category chips and article cards for AI UX stories.",
+      "status": "discovered"
+    },
+    {
+      "id": "community-article-page",
+      "name": "Community Article",
+      "path": "src/app/community/[slug]/page.tsx",
+      "type": "page",
+      "route": "/community/[slug]",
+      "description": "A community blog detail layout with hero, rich content, author panel, and related posts list.",
+      "status": "discovered"
+    },
+    {
+      "id": "changelog-page",
+      "name": "Changelog",
+      "path": "src/app/changelog/page.tsx",
+      "type": "page",
+      "route": "/changelog",
+      "description": "A vertical changelog timeline of cards summarizing product updates and features.",
+      "status": "discovered"
+    },
+    {
+      "id": "categories-page",
+      "name": "Categories",
+      "path": "src/app/categories/page.tsx",
+      "type": "page",
+      "route": "/categories",
+      "description": "A category hub page with large typographic section titles and lists of filter links.",
+      "status": "discovered"
+    },
+    {
+      "id": "category-detail-page",
+      "name": "Category Detail",
+      "path": "src/app/categories/[slug]/page.tsx",
+      "type": "page",
+      "route": "/categories/[slug]",
+      "description": "A category collection page with a descriptive intro card and a grid of AI interactions by category.",
+      "status": "discovered"
+    },
+    {
+      "id": "bundle-invite-page",
+      "name": "Bundle Invite",
+      "path": "src/app/bundle/invite/page.tsx",
+      "type": "page",
+      "route": "/bundle/invite",
+      "description": "A personalized bundle invitation page with gradient hero, bundle items list, and CTAs.",
+      "status": "discovered"
+    },
+    {
+      "id": "rewind-2025-page",
+      "name": "2025",
+      "path": "src/app/2025/page.tsx",
+      "type": "page",
+      "route": "/2025",
+      "description": "An immersive full-screen 2025 rewind experience with animated slides, charts, and video content.",
+      "status": "discovered"
+    },
+    {
+      "id": "bite-detail-card",
+      "name": "Bite Detail Card",
+      "path": "src/components/BiteDetailCard.tsx",
+      "type": "component",
+      "description": "An interaction detail panel with embedded video player, metadata chips, save controls, and related grid.",
+      "status": "discovered"
+    },
+    {
+      "id": "bites-grid",
+      "name": "Bites Grid",
+      "path": "src/components/BitesGrid.tsx",
+      "type": "component",
+      "description": "A responsive grid of interaction thumbnails with hover autoplay, new badges, and context menu actions.",
+      "status": "discovered"
+    },
+    {
+      "id": "bunny-stream-video",
+      "name": "Bunny Stream Video",
+      "path": "src/components/BunnyStreamVideo.tsx",
+      "type": "component",
+      "description": "A streamlined video element wrapper configured for Bunny Stream previews with poster support.",
+      "status": "discovered"
+    },
+    {
+      "id": "exit-intent-modal",
+      "name": "Exit Intent Modal",
+      "path": "src/components/ExitIntentModal.tsx",
+      "type": "component",
+      "description": "A newsletter capture dialog with headline, rating row, and embedded ConvertKit form.",
+      "status": "discovered"
+    },
+    {
+      "id": "subscribe-banner",
+      "name": "Subscribe Banner",
+      "path": "src/components/SubscribeBanner.tsx",
+      "type": "component",
+      "description": "A flexible subscription banner with background imagery, pill label, email form, and rating row.",
+      "status": "discovered"
+    },
+    {
+      "id": "canvas-embed-view",
+      "name": "Canvas Embed View",
+      "path": "src/components/editor/extensions/canvas-embed-view.tsx",
+      "type": "component",
+      "description": "A rich editor node view rendering an iframe preview with controls for URL, variant, and responsive heights.",
+      "status": "discovered"
+    },
+    {
+      "id": "insight-editor",
+      "name": "Insight Editor",
+      "path": "src/components/editor/InsightEditor.tsx",
+      "type": "component",
+      "description": "A tiptap-based insight editor with toolbar, embeds, and spacious content area styling.",
+      "status": "discovered"
+    },
+    {
+      "id": "editor-toolbar",
+      "name": "Editor Toolbar",
+      "path": "src/components/editor/EditorToolbar.tsx",
+      "type": "component",
+      "description": "A dense editor toolbar with icon buttons for formatting, lists, links, images, and embeds.",
+      "status": "discovered"
+    },
+    {
+      "id": "navbar",
+      "name": "Navbar",
+      "path": "src/components/Navbar.tsx",
+      "type": "component",
+      "description": "A responsive top navigation bar with animated tab background, search, collections, and auth controls.",
+      "status": "discovered"
+    },
+    {
+      "id": "tiny-footer",
+      "name": "Tiny Footer",
+      "path": "src/components/TinyFooter.tsx",
+      "type": "component",
+      "description": "A compact fixed footer bar with branding copy and small navigation links.",
+      "status": "discovered"
+    },
+    {
+      "id": "subscription-expiring-banner",
+      "name": "Subscription Expiring Banner",
+      "path": "src/components/SubscriptionExpiringBanner.tsx",
+      "type": "component",
+      "description": "A narrow notification banner showing remaining PRO days with a CTA to renew.",
+      "status": "discovered"
+    },
+    {
+      "id": "carousel",
+      "name": "Carousel",
+      "path": "src/components/Carousel.tsx",
+      "type": "component",
+      "description": "A full-screen overlay carousel wrapper that animates between detail cards with keyboard navigation.",
+      "status": "discovered"
+    },
+    {
+      "id": "google-one-tap",
+      "name": "Google One Tap",
+      "path": "src/components/GoogleOneTap.tsx",
+      "type": "component",
+      "description": "An invisible helper component that manages Google One Tap sign-in prompts.",
+      "status": "discovered"
+    },
+    {
+      "id": "bunny-stream-player",
+      "name": "Bunny Stream Player",
+      "path": "src/components/BunnyStreamPlayer.tsx",
+      "type": "component",
+      "description": "An iframe-based Bunny Stream player component styled to fill its container.",
+      "status": "discovered"
+    },
+    {
+      "id": "conditional-footer",
+      "name": "Conditional Footer",
+      "path": "src/components/Footer/ConditionalFooter.tsx",
+      "type": "component",
+      "description": "A wrapper that renders either the main footer or tiny footer depending on route and auth state.",
+      "status": "discovered"
+    },
+    {
+      "id": "conditional-navbar",
+      "name": "Conditional Navbar",
+      "path": "src/components/ConditionalNavbar.tsx",
+      "type": "component",
+      "description": "A wrapper that conditionally hides the main navbar for immersive routes like the 2025 rewind.",
+      "status": "discovered"
+    },
+    {
+      "id": "unified-subscribe-banner",
+      "name": "Unified Subscribe",
+      "path": "src/components/UnifiedSubscribe.tsx",
+      "type": "component",
+      "description": "A unified newsletter banner with value props, email form, and rating row in full and sidebar variants.",
+      "status": "discovered"
+    },
+    {
+      "id": "footer",
+      "name": "Footer",
+      "path": "src/components/Footer/Footer.tsx",
+      "type": "component",
+      "description": "A structured footer with logo, column navigation hover highlights, social icons, and legal links.",
+      "status": "discovered"
+    },
+    {
+      "id": "article-card",
+      "name": "Article Card",
+      "path": "src/components/ArticleCard.tsx",
+      "type": "component",
+      "description": "A responsive insight article card with thumbnail, category, badges, and meta text.",
+      "status": "added",
+      "analysis": {
+        "showcasePath": "src/components/ArticleCard.tsx",
+        "componentName": "ArticleCard",
+        "registryId": "article-card",
+        "discoveredFilename": "ArticleCard.discovered.tsx",
+        "propsInterface": "interface ArticleCardProps { post: InsightPost; category?: InsightCategory; variant?: \"minimal\" | \"expanded\"; className?: string; onClick?: () => void; }",
+        "size": "default"
+      }
+    },
+    {
+      "id": "workshop-banner",
+      "name": "Workshop Banner",
+      "path": "src/components/WorkshopBanner.tsx",
+      "type": "component",
+      "description": "A floating gradient banner advertising a workshop with copy and external link.",
+      "status": "discovered"
+    },
+    {
+      "id": "search-command",
+      "name": "Search Command",
+      "path": "src/components/SearchCommand.tsx",
+      "type": "component",
+      "description": "A command palette dialog for searching interactions with thumbnails and pattern chips.",
+      "status": "discovered"
+    },
+    {
+      "id": "referral-discount-banner",
+      "name": "Referral Discount Banner",
+      "path": "src/components/ReferralDiscountBanner.tsx",
+      "type": "component",
+      "description": "A shadcn banner component highlighting an applied referral discount code.",
+      "status": "discovered"
+    },
+    {
+      "id": "pro-cta",
+      "name": "Pro CTA",
+      "path": "src/components/ProCTA.tsx",
+      "type": "component",
+      "description": "A testimonial-driven call-to-action card inviting users to upgrade to PRO.",
+      "status": "discovered"
+    },
+    {
+      "id": "playground-fab",
+      "name": "Playground Fab",
+      "path": "src/components/PlaygroundFab.tsx",
+      "type": "component",
+      "description": "A floating action button that opens the playground, styled as a circular P icon.",
+      "status": "discovered"
+    },
+    {
+      "id": "mobile-navigation",
+      "name": "Mobile Navigation",
+      "path": "src/components/MobileNavigation.tsx",
+      "type": "component",
+      "description": "A mobile dropdown navigation chip that surfaces primary pages and more links.",
+      "status": "discovered"
+    },
+    {
+      "id": "mixpanel-provider",
+      "name": "Mixpanel Provider",
+      "path": "src/components/MixpanelProvider.tsx",
+      "type": "component",
+      "description": "A provider component wiring route changes and user identity into Mixpanel tracking.",
+      "status": "discovered"
+    },
+    {
+      "id": "large-article-card",
+      "name": "Large Article Card",
+      "path": "src/components/LargeArticleCard.tsx",
+      "type": "component",
+      "description": "A large hero-style article card with full-width image, category, subtitle, and PRO badge.",
+      "status": "discovered"
+    },
+    {
+      "id": "insight-badge",
+      "name": "Insight Badge",
+      "path": "src/components/InsightBadge.tsx",
+      "type": "component",
+      "description": "A pill-shaped badge component for labeling insight cards with short uppercase labels.",
+      "status": "discovered"
+    },
+    {
+      "id": "home-navbar",
+      "name": "Home Navbar",
+      "path": "src/components/HomeNavbar.tsx",
+      "type": "component",
+      "description": "A lightweight homepage-specific navbar with logo, gallery link, and join button.",
+      "status": "discovered"
+    },
+    {
+      "id": "embed-iframe",
+      "name": "Embed Iframe",
+      "path": "src/components/EmbedIframe.tsx",
+      "type": "component",
+      "description": "A responsive iframe wrapper that adjusts height based on viewport and postMessage resize events.",
+      "status": "discovered"
+    },
+    {
+      "id": "convertkit-embed",
+      "name": "Convert Kit Embed",
+      "path": "src/components/ConvertKitEmbed.tsx",
+      "type": "component",
+      "description": "An embeddable ConvertKit form container that injects the provider script into the DOM.",
+      "status": "discovered"
+    }
+  ]
+}

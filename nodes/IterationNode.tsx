@@ -4,8 +4,9 @@ import { memo, useState, Suspense, useMemo, useRef, useEffect } from 'react';
 import { useReactFlow } from '@xyflow/react';
 import { Check, Trash2, Loader2, ArrowUpRight, ChevronRight } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
-import { flatRegistry, resolveRegistryItem, generateAdoptPrompt } from '../registry';
+import { resolveRegistryItem, generateAdoptPrompt } from '../registry';
 import { getIterationComponent } from '../iterations';
+import { CancelGenerationButton } from './shared/IterateDialogParts';
 import {
   COMPONENT_SIZE_CHANGE_EVENT,
   GENERATION_START_EVENT,
@@ -30,6 +31,10 @@ interface IterationNodeProps {
     filename: string;
     description: string;
     parentNodeId: string;
+    /** Registry ID inherited from the parent node at creation time */
+    registryId?: string;
+    /** Size of the parent ComponentNode at the time this iteration was created */
+    parentSize?: ComponentSize;
     hasChildren?: boolean;
     isCollapsed?: boolean;
     onDelete?: (filename: string) => void;
@@ -49,17 +54,11 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
 
   const IterationComponent = useMemo(() => getIterationComponent(data.filename), [data.filename]);
 
-  const registryId = useMemo(() => {
-    const possibleIds = [
-      data.componentName.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, ''),
-      `${data.componentName.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '')}-expanded`,
-      `${data.componentName.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '')}-minimal`,
-    ];
-    for (const regId of possibleIds) {
-      if (flatRegistry[regId]) return regId;
-    }
-    return possibleIds[0];
-  }, [data.componentName]);
+  const registryId = useMemo(
+    () => data.registryId
+      ?? data.componentName.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, ''),
+    [data.registryId, data.componentName],
+  );
 
   const iterationSlug = useMemo(() => data.filename.replace(/\.tsx$/, ''), [data.filename]);
   const { share: handleShare, state: shareState } = useTunnelShare(iterationSlug);
@@ -68,15 +67,18 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
   const staticProps = useMemo(() => resolveRegistryItem(registryId)?.props || {}, [registryId]);
   const effectiveProps = (resolvedProps ?? staticProps) as Record<string, unknown>;
 
-  const [size, setSize] = useState<ComponentSize>(() => resolveRegistryItem(registryId)?.size || 'default');
+  // Use parent's size at creation time, then fall back to registry default
+  const [size, setSize] = useState<ComponentSize>(
+    () => data.parentSize || resolveRegistryItem(registryId)?.size || 'default',
+  );
 
   useEffect(() => {
-    const handleSizeChange = (e: CustomEvent<{ componentId: string; size: ComponentSize }>) => {
-      if (e.detail.componentId === registryId) setSize(e.detail.size);
+    const handleSizeChange = (e: CustomEvent<{ nodeId: string; size: ComponentSize }>) => {
+      if (e.detail.nodeId === data.parentNodeId) setSize(e.detail.size);
     };
     window.addEventListener(COMPONENT_SIZE_CHANGE_EVENT, handleSizeChange as EventListener);
     return () => window.removeEventListener(COMPONENT_SIZE_CHANGE_EVENT, handleSizeChange as EventListener);
-  }, [registryId]);
+  }, [data.parentNodeId]);
 
   useEffect(() => {
     const on  = () => setIsGlobalGenerating(true);
@@ -199,7 +201,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
           {isLargeComponent ? (
             <div
               ref={scrollContainerRef}
-              className={`bg-gray-100 overflow-auto ${isInteractive ? 'nodrag nowheel nopan' : ''}`}
+              className={`bg-gray-100 overflow-x-hidden overflow-y-auto ${isInteractive ? 'nodrag nowheel nopan' : ''}`}
               style={{ width: displayDims.width, height: displayDims.height }}
               onWheel={isInteractive ? handleWheel : undefined}
             >
@@ -263,14 +265,18 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
 
         {/* Right-side vertical action toolbar — always in DOM, invisible when not selected */}
         <div className={`absolute top-0 left-full pl-2 flex flex-col items-center gap-2 nodrag transition-opacity ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-            {/* Iterate */}
-            <IterateDialog
-              componentId={registryId}
-              componentName={data.componentName}
-              parentNodeId={id}
-              sourceFilename={data.filename}
-              isGlobalGenerating={isGlobalGenerating}
-            />
+            {/* Iterate or cancel */}
+            {isGlobalGenerating ? (
+              <CancelGenerationButton />
+            ) : (
+              <IterateDialog
+                componentId={registryId}
+                componentName={data.componentName}
+                parentNodeId={id}
+                sourceFilename={data.filename}
+                isGlobalGenerating={isGlobalGenerating}
+              />
+            )}
 
             {/* Use this (adopt) */}
             <Tooltip>

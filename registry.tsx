@@ -1,7 +1,15 @@
 import { ComponentType } from 'react';
+import dynamic from 'next/dynamic';
 import type { ComponentSize } from './lib/constants';
 import PricingCard from './examples/PricingCard';
 import PricingPage from './examples/PricingPage';
+import ArticleCard from '@/components/ArticleCard';
+import { mockData as articleCardMockData } from './data/ArticleCard.mockData';
+import { mockData as insightsPageMockData } from './data/Insights.mockData';
+import { mockData as teamPageMockData } from './data/Team.mockData';
+
+const InsightsClient = dynamic(() => import('@/app/insights/ui/InsightsClient')) as ComponentType<Record<string, unknown>>;
+const Team = dynamic(() => import('@/app/team/page')) as ComponentType<Record<string, unknown>>;
 import {
   formatChildrenSection,
   formatCustomInstructionsSection,
@@ -200,6 +208,78 @@ export const registry: RegistryItem[] = [
       },
     ],
   },
+  // ---------------------------------------------------------------------------
+  // Discovered components — added via the playground discovery flow.
+  // Each entry has its own data/<ComponentName>.mockData.ts file.
+  // To add a new component, run discovery → analyze in the playground UI.
+  // ---------------------------------------------------------------------------
+  {
+    id: 'components',
+    label: 'Components',
+    children: [
+      {
+        id: 'article-card',
+        label: 'Article Card',
+        Component: ArticleCard as unknown as ComponentType<Record<string, unknown>>,
+        props: articleCardMockData as Record<string, unknown>,
+        sourcePath: 'src/components/ArticleCard.tsx',
+        size: 'default' as ComponentSize,
+        propsInterface: `interface ArticleCardProps {
+  post: InsightPost;
+  category?: InsightCategory;
+  variant?: "minimal" | "expanded";
+  className?: string;
+  onClick?: () => void;
+}`,
+      },
+      {
+        id: 'insights-client',
+        label: 'Insights',
+        Component: InsightsClient as unknown as ComponentType<Record<string, unknown>>,
+        props: insightsPageMockData as Record<string, unknown>,
+        sourcePath: 'src/app/insights/ui/InsightsClient.tsx',
+        size: 'laptop' as ComponentSize,
+        propsInterface: `interface InsightsClientProps {
+  data: {
+    categories: { name: string; image?: string }[];
+    posts: {
+      id: number;
+      title: string;
+      subtitle?: string;
+      category: string;
+      author?: string;
+      authorAvatar?: string;
+      date?: string;
+      image?: string;
+      slug: string;
+      tier?: "FREE" | "PRO";
+    }[];
+    recentEssays: {
+      id: number;
+      title: string;
+      subtitle?: string;
+      category: string;
+      author?: string;
+      authorAvatar?: string;
+      date?: string;
+      image?: string;
+      slug: string;
+      tier?: "FREE" | "PRO";
+    }[];
+  };
+}`,
+      },
+      {
+        id: 'team',
+        label: 'Team',
+        Component: Team as unknown as ComponentType<Record<string, unknown>>,
+        props: teamPageMockData as Record<string, unknown>,
+        sourcePath: 'src/app/team/page.tsx',
+        size: 'laptop' as ComponentSize,
+        propsInterface: `interface TeamPageProps {}`,
+      },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -223,54 +303,15 @@ export function flattenRegistry(
 export const flatRegistry = flattenRegistry(registry);
 
 // ---------------------------------------------------------------------------
-// Discovered component resolution
+// Registry resolution
 // ---------------------------------------------------------------------------
 
-import { getDiscoveredComponent } from './discovered';
-import { discoveredProps } from './discovered/props';
-import discoveryData from './discovery.json';
-
-interface DiscoveryEntry {
-  id: string;
-  name: string;
-  path: string;
-  type: string;
-  status: string;
-  analysis?: {
-    propsInterface: string;
-    [key: string]: unknown;
-  };
-}
-
-const discoveryMap = new Map<string, DiscoveryEntry>(
-  (discoveryData as { entries: DiscoveryEntry[] }).entries.map((e) => [e.id, e]),
-);
-
 /**
- * Resolve a component by ID, checking both the static registry
- * and discovered components.
+ * Resolve a component by ID from the flat registry.
+ * All components — examples and discovered — live in the registry tree above.
  */
 export function resolveRegistryItem(componentId: string): RegistryLeafItem | null {
-  const staticItem = flatRegistry[componentId];
-  if (staticItem) return staticItem;
-
-  const DiscoveredComponent = getDiscoveredComponent(componentId);
-  if (DiscoveredComponent) {
-    const entry = discoveryMap.get(componentId);
-    return {
-      id: componentId,
-      label: entry?.name ?? componentId
-        .split('-')
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' '),
-      Component: DiscoveredComponent as unknown as ComponentType<Record<string, unknown>>,
-      props: discoveredProps[componentId] ?? {},
-      sourcePath: entry?.path ?? '',
-      propsInterface: entry?.analysis?.propsInterface ?? '',
-    };
-  }
-
-  return null;
+  return flatRegistry[componentId] ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -371,7 +412,7 @@ export function generateAdoptPrompt(
   componentId: string,
   iterationFilename: string
 ): string {
-  const item = flatRegistry[componentId];
+  const item = resolveRegistryItem(componentId);
   const originalPath = item?.sourcePath || `src/components/${iterationFilename.split('.iteration')[0]}.tsx`;
   const iterationPath = `src/app/playground/iterations/${iterationFilename}`;
 

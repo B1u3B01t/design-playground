@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Check, Loader2, Plus, RefreshCw, Search, FileText, Layers } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Check, Loader2, Plus, RefreshCw, Search, FileText, Layers, X } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
+  DialogClose,
   DialogHeader,
   DialogTitle,
   DialogDescription,
@@ -34,7 +35,8 @@ export interface DiscoveryEntry {
 interface DiscoveryModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onComponentAdded?: () => void;
+  addingIds: Set<string>;
+  onAdd: (entry: DiscoveryEntry) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -56,12 +58,13 @@ function formatBreadcrumb(filePath: string): string {
 
 function DiscoveryCard({
   entry,
+  isAdding,
   onAdd,
 }: {
   entry: DiscoveryEntry;
+  isAdding: boolean;
   onAdd: (entry: DiscoveryEntry) => void;
 }) {
-  const isAdding = entry.status === 'adding';
   const isAdded = entry.status === 'added';
 
   return (
@@ -147,7 +150,8 @@ function SectionHeader({
 export default function DiscoveryModal({
   open,
   onOpenChange,
-  onComponentAdded,
+  addingIds,
+  onAdd,
 }: DiscoveryModalProps) {
   const [entries, setEntries] = useState<DiscoveryEntry[]>([]);
   const [search, setSearch] = useState('');
@@ -195,51 +199,20 @@ export default function DiscoveryModal({
     }
   };
 
-  const handleAdd = async (entry: DiscoveryEntry) => {
-    setEntries((prev) =>
-      prev.map((e) => (e.id === entry.id ? { ...e, status: 'adding' as const } : e)),
-    );
-
-    try {
-      const res = await fetch('/playground/api/discover/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: entry.id,
-          path: entry.path,
-          name: entry.name,
-          type: entry.type,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (data.success && data.entry) {
-        setEntries((prev) =>
-          prev.map((e) => (e.id === entry.id ? data.entry : e)),
-        );
-        onComponentAdded?.();
-      } else {
-        setEntries((prev) =>
-          prev.map((e) =>
-            e.id === entry.id ? { ...e, status: 'discovered' as const } : e,
-          ),
-        );
-        setError(data.error || `Failed to add "${entry.name}"`);
-      }
-    } catch {
-      setEntries((prev) =>
-        prev.map((e) =>
-          e.id === entry.id ? { ...e, status: 'discovered' as const } : e,
-        ),
-      );
-      setError(`Failed to add "${entry.name}"`);
-    }
-  };
+  // Merge server entries with the parent's addingIds for display
+  const mergedEntries = useMemo(
+    () =>
+      entries.map((e) =>
+        addingIds.has(e.id) && e.status !== 'added'
+          ? { ...e, status: 'adding' as const }
+          : e,
+      ),
+    [entries, addingIds],
+  );
 
   // Filter
   const lowerSearch = search.toLowerCase();
-  const filtered = entries.filter(
+  const filtered = mergedEntries.filter(
     (e) =>
       e.name.toLowerCase().includes(lowerSearch) ||
       e.description?.toLowerCase().includes(lowerSearch),
@@ -251,20 +224,26 @@ export default function DiscoveryModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl max-h-[85vh] flex flex-col overflow-hidden !rounded-2xl !p-0">
+      <DialogContent showCloseButton={false} className="sm:max-w-xl max-h-[85vh] flex flex-col overflow-hidden !rounded-2xl !p-0">
         {/* Header area */}
         <div className="px-6 pt-6 pb-4 space-y-4">
           <DialogHeader>
             <div className="flex items-center justify-between">
               <DialogTitle className="!text-base">Add to Playground</DialogTitle>
-              <button
-                onClick={handleRefresh}
-                disabled={isRefreshing}
-                className="p-2 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-all disabled:opacity-50"
-                aria-label="Rescan project"
-              >
-                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={handleRefresh}
+                  disabled={isRefreshing}
+                  className="p-1.5 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-all disabled:opacity-50"
+                  aria-label="Rescan project"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                </button>
+                <DialogClose className="p-1.5 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-all">
+                  <X className="w-4 h-4" />
+                  <span className="sr-only">Close</span>
+                </DialogClose>
+              </div>
             </div>
             <DialogDescription>
               {isRefreshing
@@ -327,7 +306,12 @@ export default function DiscoveryModal({
                   <SectionHeader icon={FileText} label="Pages" count={pages.length} />
                   <div className="space-y-2">
                     {pages.map((entry) => (
-                      <DiscoveryCard key={entry.id} entry={entry} onAdd={handleAdd} />
+                      <DiscoveryCard
+                        key={entry.id}
+                        entry={entry}
+                        isAdding={addingIds.has(entry.id)}
+                        onAdd={onAdd}
+                      />
                     ))}
                   </div>
                 </div>
@@ -339,7 +323,12 @@ export default function DiscoveryModal({
                   <SectionHeader icon={Layers} label="Components" count={components.length} />
                   <div className="space-y-2">
                     {components.map((entry) => (
-                      <DiscoveryCard key={entry.id} entry={entry} onAdd={handleAdd} />
+                      <DiscoveryCard
+                        key={entry.id}
+                        entry={entry}
+                        isAdding={addingIds.has(entry.id)}
+                        onAdd={onAdd}
+                      />
                     ))}
                   </div>
                 </div>

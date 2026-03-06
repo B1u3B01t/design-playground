@@ -6,13 +6,12 @@ import { toast } from 'sonner';
 import PlaygroundSidebar from './PlaygroundSidebar';
 import PlaygroundCanvas from './PlaygroundCanvas';
 import PlaygroundHeader from './PlaygroundHeader';
-import { PlaygroundToaster } from './ui/sonner';
-import DiscoveryModal from './DiscoveryModal';
-import './playground-global.css';
+import DiscoveryModal, { type DiscoveryEntry } from './DiscoveryModal';
 
 export default function PlaygroundClient() {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
+  const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
   const hasScanTriggered = useRef(false);
 
   // Auto-scan on first visit
@@ -68,10 +67,58 @@ export default function PlaygroundClient() {
     })();
   }, []);
 
-  // Notify sidebar to refresh when a component is added
-  const handleComponentAdded = useCallback(() => {
+  // Notify sidebar to refresh discovered components
+  const notifySidebar = useCallback(() => {
     window.dispatchEvent(new CustomEvent('playground:discovery-updated'));
   }, []);
+
+  // Add a component — runs at the PlaygroundClient level so it persists across modal open/close
+  const handleAddComponent = useCallback(async (entry: DiscoveryEntry) => {
+    setAddingIds((prev) => new Set(prev).add(entry.id));
+
+    const toastId = toast.loading(`Setting up "${entry.name}"…`, {
+      duration: Infinity,
+    });
+
+    try {
+      const res = await fetch('/playground/api/discover/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: entry.id,
+          path: entry.path,
+          name: entry.name,
+          type: entry.type,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success && data.entry) {
+        toast.success(`"${entry.name}" added to playground`, {
+          id: toastId,
+          duration: 4000,
+        });
+        notifySidebar();
+      } else {
+        toast.error(data.error || `Failed to add "${entry.name}"`, {
+          id: toastId,
+          duration: 5000,
+        });
+      }
+    } catch {
+      toast.error(`Failed to add "${entry.name}"`, {
+        id: toastId,
+        duration: 5000,
+      });
+    } finally {
+      setAddingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(entry.id);
+        return next;
+      });
+    }
+  }, [notifySidebar]);
 
   return (
     <ReactFlowProvider>
@@ -124,10 +171,10 @@ export default function PlaygroundClient() {
       <DiscoveryModal
         open={discoveryOpen}
         onOpenChange={setDiscoveryOpen}
-        onComponentAdded={handleComponentAdded}
+        addingIds={addingIds}
+        onAdd={handleAddComponent}
       />
 
-      <PlaygroundToaster />
     </ReactFlowProvider>
   );
 }
