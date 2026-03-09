@@ -60,6 +60,37 @@ export default function PlaygroundClient() {
               duration: 4000,
             });
           }
+        } else if (data.status === 'scanning') {
+          // A scan was already running (e.g. from a previous session) — join it with a toast
+          const scanToastId = toast.loading('Scanning your project for components…', {
+            duration: Infinity,
+          });
+
+          const poll = async () => {
+            try {
+              const r = await fetch('/playground/api/discover');
+              const d = await r.json();
+              if (d.status === 'complete' && d.entries) {
+                const pages = d.entries.filter((e: { type: string }) => e.type === 'page');
+                const components = d.entries.filter((e: { type: string }) => e.type === 'component');
+                toast.success(
+                  `Found ${pages.length} page${pages.length !== 1 ? 's' : ''} and ${components.length} component${components.length !== 1 ? 's' : ''}`,
+                  {
+                    id: scanToastId,
+                    duration: 5000,
+                    action: { label: 'View', onClick: () => setDiscoveryOpen(true) },
+                  },
+                );
+              } else if (d.status === 'scanning') {
+                setTimeout(poll, 2500);
+              } else {
+                toast.dismiss(scanToastId);
+              }
+            } catch {
+              toast.dismiss(scanToastId);
+            }
+          };
+          setTimeout(poll, 2500);
         }
       } catch {
         // Silently fail — discovery is optional

@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Check, Loader2, Plus, RefreshCw, Search, FileText, Layers, X } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
@@ -157,7 +158,9 @@ export default function DiscoveryModal({
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchEntries = useCallback(async () => {
     setIsLoading(true);
@@ -165,9 +168,13 @@ export default function DiscoveryModal({
     try {
       const res = await fetch('/playground/api/discover');
       const data = await res.json();
-      if (data.status === 'complete' && data.entries) {
+      if (data.status === 'scanning') {
+        setIsScanning(true);
+      } else if (data.status === 'complete' && data.entries) {
+        setIsScanning(false);
         setEntries(data.entries);
       } else if (data.status === 'not_scanned') {
+        setIsScanning(false);
         setEntries([]);
       }
     } catch {
@@ -181,11 +188,66 @@ export default function DiscoveryModal({
     if (open) fetchEntries();
   }, [open, fetchEntries]);
 
+  // Poll while a scan is in progress
+  useEffect(() => {
+    if (!isScanning || !open) {
+      if (pollRef.current) {
+        clearTimeout(pollRef.current);
+        pollRef.current = null;
+      }
+      return;
+    }
+
+    const poll = async () => {
+      try {
+        const res = await fetch('/playground/api/discover');
+        const data = await res.json();
+        if (data.status === 'complete' && data.entries) {
+          setIsScanning(false);
+          setEntries(data.entries);
+          const pages = data.entries.filter((e: DiscoveryEntry) => e.type === 'page');
+          const components = data.entries.filter((e: DiscoveryEntry) => e.type === 'component');
+          toast.success(
+            `Found ${pages.length} page${pages.length !== 1 ? 's' : ''} and ${components.length} component${components.length !== 1 ? 's' : ''}`,
+            { duration: 4000 },
+          );
+        } else if (data.status === 'scanning') {
+          pollRef.current = setTimeout(poll, 2500);
+        } else {
+          setIsScanning(false);
+        }
+      } catch {
+        setIsScanning(false);
+      }
+    };
+
+    pollRef.current = setTimeout(poll, 2500);
+
+    return () => {
+      if (pollRef.current) {
+        clearTimeout(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [isScanning, open]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearTimeout(pollRef.current);
+    };
+  }, []);
+
   const handleRefresh = async () => {
     setIsRefreshing(true);
     setError(null);
     try {
       const res = await fetch('/playground/api/discover', { method: 'POST' });
+      if (res.status === 409) {
+        // A scan is already running — switch to scanning state and poll
+        setIsScanning(true);
+        return;
+      }
       const data = await res.json();
       if (data.success && data.entries) {
         setEntries(data.entries);
@@ -220,7 +282,7 @@ export default function DiscoveryModal({
 
   const pages = filtered.filter((e) => e.type === 'page');
   const components = filtered.filter((e) => e.type === 'component');
-  const isEmpty = entries.length === 0 && !isLoading;
+  const isEmpty = entries.length === 0 && !isLoading && !isScanning;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -233,11 +295,11 @@ export default function DiscoveryModal({
               <div className="flex items-center gap-1">
                 <button
                   onClick={handleRefresh}
-                  disabled={isRefreshing}
+                  disabled={isRefreshing || isScanning}
                   className="p-1.5 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-all disabled:opacity-50"
                   aria-label="Rescan project"
                 >
-                  <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-4 h-4 ${isRefreshing || isScanning ? 'animate-spin' : ''}`} />
                 </button>
                 <DialogClose className="p-1.5 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-all">
                   <X className="w-4 h-4" />
@@ -246,7 +308,7 @@ export default function DiscoveryModal({
               </div>
             </div>
             <DialogDescription>
-              {isRefreshing
+              {isRefreshing || isScanning
                 ? 'Scanning your project…'
                 : entries.length > 0
                   ? `Found ${pages.length} page${pages.length !== 1 ? 's' : ''} and ${components.length} component${components.length !== 1 ? 's' : ''} in your project`
@@ -280,6 +342,17 @@ export default function DiscoveryModal({
             <div className="flex flex-col items-center justify-center py-16 gap-3">
               <Loader2 className="w-6 h-6 text-stone-300 animate-spin" />
               <p className="text-[13px] text-stone-400">Loading components…</p>
+            </div>
+          ) : isScanning || isRefreshing ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <div className="relative flex items-center justify-center w-10 h-10">
+                <div className="absolute inset-0 rounded-full bg-stone-100 animate-pulse" />
+                <Loader2 className="w-5 h-5 text-stone-400 animate-spin relative" />
+              </div>
+              <p className="text-[13px] font-medium text-stone-600">Scanning your project…</p>
+              <p className="text-[12px] text-stone-400 text-center max-w-[240px] leading-relaxed">
+                The AI agent is discovering components and pages — this usually takes under a minute
+              </p>
             </div>
           ) : isEmpty ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
@@ -347,7 +420,7 @@ export default function DiscoveryModal({
         </div>
 
         {/* Footer */}
-        {!isEmpty && !isLoading && (
+        {!isEmpty && !isLoading && !isScanning && !isRefreshing && (
           <div className="px-6 py-3 border-t border-stone-100 bg-stone-50/50">
             <p className="text-[11px] text-stone-400 text-center select-none">
               Click Add to analyze and prepare a component for the playground
