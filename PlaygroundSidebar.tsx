@@ -1,9 +1,13 @@
 'use client';
 
 import { useState, DragEvent } from 'react';
-import { ChevronRight, ChevronDown, GripVertical, ChevronLeft } from 'lucide-react';
+import { ChevronRight, ChevronDown, GripVertical, ChevronLeft, Plus } from 'lucide-react';
 import { registry, RegistryItem, isGroup, isLeaf } from './registry';
 import { DND_DATA_KEY } from './lib/constants';
+
+// ---------------------------------------------------------------------------
+// Tree node
+// ---------------------------------------------------------------------------
 
 interface TreeNodeProps {
   item: RegistryItem;
@@ -61,35 +65,30 @@ function TreeNode({ item, depth = 0 }: TreeNodeProps) {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Main sidebar
+// ---------------------------------------------------------------------------
+
 interface PlaygroundSidebarProps {
   onCollapse: () => void;
+  onOpenDiscovery: () => void;
 }
 
-export default function PlaygroundSidebar({ onCollapse }: PlaygroundSidebarProps) {
+export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery }: PlaygroundSidebarProps) {
   const [search, setSearch] = useState('');
 
   const filterItems = (items: RegistryItem[], query: string): RegistryItem[] => {
     if (!query.trim()) return items;
-
     const lowerQuery = query.toLowerCase();
-
     return items
       .map((item) => {
         if (isGroup(item)) {
           const filteredChildren = filterItems(item.children, query);
-          if (filteredChildren.length > 0) {
-            return { ...item, children: filteredChildren };
-          }
-          if (item.label.toLowerCase().includes(lowerQuery)) {
-            return item;
-          }
+          if (filteredChildren.length > 0) return { ...item, children: filteredChildren };
+          if (item.label.toLowerCase().includes(lowerQuery)) return item;
           return null;
         }
-
-        if (isLeaf(item) && item.label.toLowerCase().includes(lowerQuery)) {
-          return item;
-        }
-
+        if (isLeaf(item) && item.label.toLowerCase().includes(lowerQuery)) return item;
         return null;
       })
       .filter((item): item is RegistryItem => item !== null);
@@ -98,10 +97,8 @@ export default function PlaygroundSidebar({ onCollapse }: PlaygroundSidebarProps
   const filteredRegistry = filterItems(registry, search);
 
   return (
-    <aside
-      className="w-52 h-full bg-white rounded-xl border border-stone-200/80 flex flex-col overflow-hidden"
-    >
-      {/* Header row: label + collapse button */}
+    <aside className="w-52 h-full bg-white rounded-xl border border-stone-200/80 flex flex-col overflow-hidden">
+      {/* Header */}
       <div className="flex items-center justify-between px-3 pt-3 pb-2 flex-shrink-0">
         <div className="flex items-center gap-1.5">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-stone-400">
@@ -111,13 +108,22 @@ export default function PlaygroundSidebar({ onCollapse }: PlaygroundSidebarProps
             Components
           </span>
         </div>
-        <button
-          onClick={onCollapse}
-          className="p-0.5 rounded-md text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
-          aria-label="Collapse sidebar"
-        >
-          <ChevronLeft className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={onOpenDiscovery}
+            className="p-0.5 rounded-md text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
+            aria-label="Add components"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={onCollapse}
+            className="p-0.5 rounded-md text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
+            aria-label="Collapse sidebar"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -131,7 +137,7 @@ export default function PlaygroundSidebar({ onCollapse }: PlaygroundSidebarProps
         />
       </div>
 
-      {/* Component tree — scrollable */}
+      {/* Component tree */}
       <div className="flex-1 overflow-y-auto px-1.5 min-h-0">
         {filteredRegistry.length > 0 ? (
           filteredRegistry.map((item) => <TreeNode key={item.id} item={item} />)

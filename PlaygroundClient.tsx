@@ -1,14 +1,163 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
+import { toast } from 'sonner';
 import PlaygroundSidebar from './PlaygroundSidebar';
 import PlaygroundCanvas from './PlaygroundCanvas';
 import PlaygroundHeader from './PlaygroundHeader';
-import { PlaygroundToaster } from './ui/sonner';
+import DiscoveryModal, { type DiscoveryEntry } from './DiscoveryModal';
 
 export default function PlaygroundClient() {
   const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [discoveryOpen, setDiscoveryOpen] = useState(false);
+  const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
+  const hasScanTriggered = useRef(false);
+  const scanPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (scanPollRef.current) clearTimeout(scanPollRef.current);
+    };
+  }, []);
+
+  // Auto-scan on first visit
+  useEffect(() => {
+    if (hasScanTriggered.current) return;
+    hasScanTriggered.current = true;
+
+    (async () => {
+      try {
+        const res = await fetch('/playground/api/discover');
+        const data = await res.json();
+
+        if (data.status === 'not_scanned') {
+          const scanToastId = toast.loading('Scanning your project for components…', {
+            duration: Infinity,
+          });
+
+          try {
+            const scanRes = await fetch('/playground/api/discover', { method: 'POST' });
+            const scanData = await scanRes.json();
+
+            if (scanData.success && scanData.entries) {
+              const pages = scanData.entries.filter((e: { type: string }) => e.type === 'page');
+              const components = scanData.entries.filter((e: { type: string }) => e.type === 'component');
+
+              toast.success(
+                `Found ${pages.length} page${pages.length !== 1 ? 's' : ''} and ${components.length} component${components.length !== 1 ? 's' : ''}`,
+                {
+                  id: scanToastId,
+                  duration: 5000,
+                  action: {
+                    label: 'View',
+                    onClick: () => setDiscoveryOpen(true),
+                  },
+                },
+              );
+            } else {
+              toast.error(scanData.error || 'Scan failed', {
+                id: scanToastId,
+                duration: 4000,
+              });
+            }
+          } catch {
+            toast.error('Failed to scan project', {
+              id: scanToastId,
+              duration: 4000,
+            });
+          }
+        } else if (data.status === 'scanning') {
+          // A scan was already running (e.g. from a previous session) — join it with a toast
+          const scanToastId = toast.loading('Scanning your project for components…', {
+            duration: Infinity,
+          });
+
+          const poll = async () => {
+            try {
+              const r = await fetch('/playground/api/discover');
+              const d = await r.json();
+              if (d.status === 'complete' && d.entries) {
+                const pages = d.entries.filter((e: { type: string }) => e.type === 'page');
+                const components = d.entries.filter((e: { type: string }) => e.type === 'component');
+                toast.success(
+                  `Found ${pages.length} page${pages.length !== 1 ? 's' : ''} and ${components.length} component${components.length !== 1 ? 's' : ''}`,
+                  {
+                    id: scanToastId,
+                    duration: 5000,
+                    action: { label: 'View', onClick: () => setDiscoveryOpen(true) },
+                  },
+                );
+              } else if (d.status === 'scanning') {
+                scanPollRef.current = setTimeout(poll, 2500);
+              } else {
+                toast.dismiss(scanToastId);
+              }
+            } catch {
+              toast.dismiss(scanToastId);
+            }
+          };
+          scanPollRef.current = setTimeout(poll, 2500);
+        }
+      } catch {
+        // Silently fail — discovery is optional
+      }
+    })();
+  }, []);
+
+  // Notify sidebar to refresh discovered components
+  const notifySidebar = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('playground:discovery-updated'));
+  }, []);
+
+  // Add a component — runs at the PlaygroundClient level so it persists across modal open/close
+  const handleAddComponent = useCallback(async (entry: DiscoveryEntry) => {
+    setAddingIds((prev) => new Set(prev).add(entry.id));
+
+    const toastId = toast.loading(`Setting up "${entry.name}"…`, {
+      duration: Infinity,
+    });
+
+    try {
+      const res = await fetch('/playground/api/discover/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: entry.id,
+          path: entry.path,
+          name: entry.name,
+          type: entry.type,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success && data.entry) {
+        toast.success(`"${entry.name}" added to playground`, {
+          id: toastId,
+          duration: 4000,
+        });
+        notifySidebar();
+      } else {
+        toast.error(data.error || `Failed to add "${entry.name}"`, {
+          id: toastId,
+          duration: 5000,
+        });
+      }
+    } catch {
+      toast.error(`Failed to add "${entry.name}"`, {
+        id: toastId,
+        duration: 5000,
+      });
+    } finally {
+      setAddingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(entry.id);
+        return next;
+      });
+    }
+  }, [notifySidebar]);
 
   return (
     <ReactFlowProvider>
@@ -27,7 +176,10 @@ export default function PlaygroundClient() {
               sidebarVisible ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 -translate-x-4 pointer-events-none'
             }`}
           >
-            <PlaygroundSidebar onCollapse={() => setSidebarVisible(false)} />
+            <PlaygroundSidebar
+              onCollapse={() => setSidebarVisible(false)}
+              onOpenDiscovery={() => setDiscoveryOpen(true)}
+            />
           </div>
 
           {/* Sidebar reveal button — shown only when sidebar is hidden */}
@@ -53,7 +205,15 @@ export default function PlaygroundClient() {
           </div>
         </div>
       </div>
-      <PlaygroundToaster />
+
+      {/* Discovery modal */}
+      <DiscoveryModal
+        open={discoveryOpen}
+        onOpenChange={setDiscoveryOpen}
+        addingIds={addingIds}
+        onAdd={handleAddComponent}
+      />
+
     </ReactFlowProvider>
   );
 }

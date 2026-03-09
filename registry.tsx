@@ -200,6 +200,16 @@ export const registry: RegistryItem[] = [
       },
     ],
   },
+  // ---------------------------------------------------------------------------
+  // Discovered components — added via the playground discovery flow.
+  // Each entry has its own data/<ComponentName>.mockData.ts file.
+  // To add a new component, run discovery → analyze in the playground UI.
+  // ---------------------------------------------------------------------------
+  {
+    id: 'components',
+    label: 'Components',
+    children: [],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -223,6 +233,18 @@ export function flattenRegistry(
 export const flatRegistry = flattenRegistry(registry);
 
 // ---------------------------------------------------------------------------
+// Registry resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve a component by ID from the flat registry.
+ * All components — examples and discovered — live in the registry tree above.
+ */
+export function resolveRegistryItem(componentId: string): RegistryLeafItem | null {
+  return flatRegistry[componentId] ?? null;
+}
+
+// ---------------------------------------------------------------------------
 // Prompt generator
 // ---------------------------------------------------------------------------
 
@@ -233,7 +255,7 @@ export function generateIterationPrompt(
   customInstructions?: string,
   skillPrompt?: string,
 ): string {
-  const item = flatRegistry[componentId];
+  const item = resolveRegistryItem(componentId);
   if (!item) return '';
 
   const componentName = item.label.replace(/\s*\(.*\)/, '');
@@ -271,7 +293,7 @@ export function generateIterationFromIterationPrompt(
   customInstructions?: string,
   skillPrompt?: string,
 ): string {
-  const item = flatRegistry[componentId];
+  const item = resolveRegistryItem(componentId);
   if (!item) return '';
 
   const componentName = item.label.replace(/\s*\(.*\)/, '');
@@ -320,7 +342,7 @@ export function generateAdoptPrompt(
   componentId: string,
   iterationFilename: string
 ): string {
-  const item = flatRegistry[componentId];
+  const item = resolveRegistryItem(componentId);
   const originalPath = item?.sourcePath || `src/components/${iterationFilename.split('.iteration')[0]}.tsx`;
   const iterationPath = `src/app/playground/iterations/${iterationFilename}`;
 

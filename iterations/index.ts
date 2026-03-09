@@ -3,8 +3,6 @@
 
 import { ComponentType } from 'react';
 
-// No iterations currently registered
-
 // Map of filename to component
 export const iterationComponents: Record<string, ComponentType<any>> = {};
 

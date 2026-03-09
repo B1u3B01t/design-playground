@@ -13,6 +13,10 @@ iterations/*.iteration-*.tsx
 
 previews/
 
+# Discovery manifest — AI-generated per-project, not tracked
+discovery.json
+data/*.mockData.ts
+
 # ============================================================================
 # FRAMEWORK FILES (tracked in git)
 # ============================================================================

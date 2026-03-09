@@ -264,6 +264,17 @@ export default function IterateDialog({
     if (!parentNodeId) return;
     if (isFromIteration && startNumber === null) return;
 
+    if (!generatedPrompt) {
+      window.dispatchEvent(new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+        detail: {
+          componentId,
+          parentNodeId,
+          error: `Component "${componentId}" is not registered. Add it to the registry before iterating.`,
+        },
+      }));
+      return;
+    }
+
     window.dispatchEvent(
       new CustomEvent<GenerationStartPayload>(GENERATION_START_EVENT, {
         detail: { componentId, componentName, parentNodeId, iterationCount },
