@@ -205,6 +205,11 @@ export const registry: RegistryItem[] = [
   // Each entry has its own data/<ComponentName>.mockData.ts file.
   // To add a new component, run discovery → analyze in the playground UI.
   // ---------------------------------------------------------------------------
+  {
+    id: 'components',
+    label: 'Components',
+    children: [],
+  },
 ];
 
 // ---------------------------------------------------------------------------

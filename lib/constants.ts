@@ -172,7 +172,7 @@ export const DEPTH_OPTIONS: { key: 'shell' | '1-level' | 'all'; label: string }[
 ];
 
 /** Default instructions used when the iterate chat is empty or drag-to-iterate is used */
-export const DEFAULT_EMPTY_ITERATION_INSTRUCTIONS = 'use inline css instead of tailwind. make the layout prfession, elements should not clash.';
+export const DEFAULT_EMPTY_ITERATION_INSTRUCTIONS = 'use inline css instead of tailwind. make the layout professional, elements should not clash.';
 
 // ---------------------------------------------------------------------------
 // Fallback AI Models
@@ -309,12 +309,6 @@ export const DISCOVERY_LOCKFILE_FILENAME = 'discovery.lock';
 
 /** Filename for the discovery manifest */
 export const DISCOVERY_MANIFEST_FILENAME = 'discovery.json';
-
-/** Filename for the discovered components index */
-export const DISCOVERED_INDEX_FILENAME = 'index.ts';
-
-/** Directory name for discovered component wrappers */
-export const DISCOVERED_DIR_NAME = 'discovered';
 
 /** Regex pattern to validate iteration filenames (prevents directory traversal) */
 export const ITERATION_FILENAME_PATTERN = /^[A-Za-z0-9]+\.iteration-\d+\.tsx$/;

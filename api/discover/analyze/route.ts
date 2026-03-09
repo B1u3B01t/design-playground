@@ -15,6 +15,8 @@ import { fetchPropsSnapshot } from '../../../lib/props-fetchers.server';
  */
 
 const LOG_PREFIX = '[Playground][analyze]';
+const DEBUG = process.env.NODE_ENV !== 'production';
+const log = (...args: unknown[]) => { if (DEBUG) console.log(LOG_PREFIX, ...args); };
 
 // ---------------------------------------------------------------------------
 // Path resolution
@@ -78,8 +80,8 @@ export async function POST(req: Request) {
   const { id, name, type, model } = body;
   const componentPath = body.path;
 
-  console.log(`${LOG_PREFIX} POST — analyzing component "${name}" (id=${id}, type=${type})`);
-  console.log(`${LOG_PREFIX}   Source: ${componentPath}`);
+  log(` POST — analyzing component "${name}" (id=${id}, type=${type})`);
+  log(`   Source: ${componentPath}`);
 
   if (analyzingIds.has(id)) {
     console.warn(`${LOG_PREFIX} Analysis already in progress for "${name}" — rejecting`);
@@ -92,7 +94,7 @@ export async function POST(req: Request) {
   // Ensure data directory exists
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    console.log(`${LOG_PREFIX} Created data directory`);
+    log(` Created data directory`);
   }
 
   const playgroundRelPath = path.relative(process.cwd(), PLAYGROUND_DIR).replace(/\\/g, '/');
@@ -103,7 +105,7 @@ export async function POST(req: Request) {
     const snapshot = await fetchPropsSnapshot(id);
     if (snapshot) {
       propsSnapshot = snapshot;
-      console.log(`${LOG_PREFIX} Got real props snapshot for "${id}" — injecting into prompt`);
+      log(` Got real props snapshot for "${id}" — injecting into prompt`);
     }
   } catch (e) {
     console.warn(`${LOG_PREFIX} Props snapshot fetch failed for "${id}" — continuing without it:`, e);
@@ -118,18 +120,18 @@ export async function POST(req: Request) {
     propsSnapshot,
   });
 
-  console.log(`${LOG_PREFIX} Generated analysis prompt (${prompt.length} chars)`);
+  log(` Generated analysis prompt (${prompt.length} chars)`);
 
   analyzingIds.add(id);
 
   const args = ['agent', '--print', '--force'];
   if (model) {
     args.push('--model', model);
-    console.log(`${LOG_PREFIX} Using model: ${model}`);
+    log(` Using model: ${model}`);
   }
 
   const startTime = Date.now();
-  console.log(`${LOG_PREFIX} Spawning: cursor ${args.join(' ')}`);
+  log(` Spawning: cursor ${args.join(' ')}`);
 
   return new Promise<NextResponse>((resolve) => {
     try {
@@ -139,7 +141,7 @@ export async function POST(req: Request) {
         env: { ...process.env },
       });
 
-      console.log(`${LOG_PREFIX} Agent process started — PID=${agentProcess.pid}`);
+      log(` Agent process started — PID=${agentProcess.pid}`);
 
       let stdout = '';
       let stderr = '';
@@ -149,7 +151,7 @@ export async function POST(req: Request) {
         stdout += chunk;
         const lines = chunk.trim().split('\n');
         for (const line of lines) {
-          if (line.trim()) console.log(`${LOG_PREFIX} [stdout] ${line}`);
+          if (line.trim()) log(` [stdout] ${line}`);
         }
       });
 
@@ -158,18 +160,18 @@ export async function POST(req: Request) {
         stderr += chunk;
         const lines = chunk.trim().split('\n');
         for (const line of lines) {
-          if (line.trim()) console.log(`${LOG_PREFIX} [stderr] ${line}`);
+          if (line.trim()) log(` [stderr] ${line}`);
         }
       });
 
       agentProcess.stdin?.write(prompt);
       agentProcess.stdin?.end();
-      console.log(`${LOG_PREFIX} Prompt written to stdin and closed`);
+      log(` Prompt written to stdin and closed`);
 
       agentProcess.on('close', (code) => {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`${LOG_PREFIX} Agent exited — code=${code}, elapsed=${elapsed}s`);
-        console.log(`${LOG_PREFIX}   stdout: ${stdout.length} chars, stderr: ${stderr.length} chars`);
+        log(` Agent exited — code=${code}, elapsed=${elapsed}s`);
+        log(`   stdout: ${stdout.length} chars, stderr: ${stderr.length} chars`);
 
         analyzingIds.delete(id);
 
@@ -178,12 +180,12 @@ export async function POST(req: Request) {
           const cleanName = name.replace(/\s+/g, '');
           const expectedDataFile = path.join(DATA_DIR, `${cleanName}.mockData.ts`);
           const mockDataExists = fs.existsSync(expectedDataFile);
-          console.log(`${LOG_PREFIX} Expected mock data file: ${expectedDataFile} — exists=${mockDataExists}`);
+          log(` Expected mock data file: ${expectedDataFile} — exists=${mockDataExists}`);
 
           // List all files in data dir
           if (fs.existsSync(DATA_DIR)) {
             const files = fs.readdirSync(DATA_DIR);
-            console.log(`${LOG_PREFIX} Data dir contents: [${files.join(', ')}]`);
+            log(` Data dir contents: [${files.join(', ')}]`);
           }
 
           // Read updated discovery.json to return the entry
@@ -192,7 +194,7 @@ export async function POST(req: Request) {
             const entry = (data.entries || []).find((e: DiscoveryEntry) => e.id === id);
 
             if (entry) {
-              console.log(`${LOG_PREFIX} Updated entry for "${name}" — status=${entry.status}, analysis=${JSON.stringify(entry.analysis || {})}`);
+              log(` Updated entry for "${name}" — status=${entry.status}, analysis=${JSON.stringify(entry.analysis || {})}`);
             } else {
               console.warn(`${LOG_PREFIX} Entry "${id}" not found in discovery.json after analysis`);
             }
@@ -255,7 +257,7 @@ export async function DELETE(req: Request) {
   }
 
   const { id } = body;
-  console.log(`${LOG_PREFIX} DELETE — removing discovered component "${id}"`);
+  log(` DELETE — removing discovered component "${id}"`);
 
   try {
     if (!fs.existsSync(DISCOVERY_JSON_PATH)) {
@@ -275,7 +277,7 @@ export async function DELETE(req: Request) {
     const mockDataPath = path.join(DATA_DIR, `${cleanName}.mockData.ts`);
     if (fs.existsSync(mockDataPath)) {
       fs.unlinkSync(mockDataPath);
-      console.log(`${LOG_PREFIX} Deleted mock data file: ${cleanName}.mockData.ts`);
+      log(` Deleted mock data file: ${cleanName}.mockData.ts`);
     }
 
     // Reset entry status
@@ -283,7 +285,7 @@ export async function DELETE(req: Request) {
     delete entry.analysis;
 
     fs.writeFileSync(DISCOVERY_JSON_PATH, JSON.stringify(data, null, 2) + '\n', 'utf-8');
-    console.log(`${LOG_PREFIX} Reset entry "${id}" to discovered`);
+    log(` Reset entry "${id}" to discovered`);
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -18,6 +18,8 @@ import { discoveryPrompt } from '../../prompts/discovery.prompt';
  */
 
 const LOG_PREFIX = '[Playground][discover]';
+const DEBUG = process.env.NODE_ENV !== 'production';
+const log = (...args: unknown[]) => { if (DEBUG) console.log(LOG_PREFIX, ...args); };
 
 // ---------------------------------------------------------------------------
 // Path resolution
@@ -40,8 +42,8 @@ const DISCOVERY_JSON_PATH = path.join(PLAYGROUND_DIR, DISCOVERY_MANIFEST_FILENAM
 const TEMP_DIR = path.join(process.cwd(), TEMP_DIR_RELATIVE);
 const LOCKFILE_PATH = path.join(TEMP_DIR, DISCOVERY_LOCKFILE_FILENAME);
 
-console.log(`${LOG_PREFIX} Playground dir resolved to: ${PLAYGROUND_DIR}`);
-console.log(`${LOG_PREFIX} Discovery JSON path: ${DISCOVERY_JSON_PATH}`);
+log(` Playground dir resolved to: ${PLAYGROUND_DIR}`);
+log(` Discovery JSON path: ${DISCOVERY_JSON_PATH}`);
 
 // ---------------------------------------------------------------------------
 // Global state
@@ -69,14 +71,14 @@ function writeLockfile(pid: number) {
   ensureTempDir();
   const data: LockfileData = { pid, startTime: Date.now() };
   fs.writeFileSync(LOCKFILE_PATH, JSON.stringify(data), 'utf-8');
-  console.log(`${LOG_PREFIX} Wrote lockfile for PID=${pid}`);
+  log(` Wrote lockfile for PID=${pid}`);
 }
 
 function removeLockfile() {
   try {
     if (fs.existsSync(LOCKFILE_PATH)) {
       fs.unlinkSync(LOCKFILE_PATH);
-      console.log(`${LOG_PREFIX} Removed lockfile`);
+      log(` Removed lockfile`);
     }
   } catch { /* ignore */ }
 }
@@ -93,7 +95,7 @@ function cleanupOrphanedProcess() {
         try { process.kill(data.pid, 'SIGKILL'); } catch { /* already dead */ }
       }, 2000);
     } catch {
-      console.log(`${LOG_PREFIX} Orphaned process PID=${data.pid} already dead, cleaning up lockfile`);
+      log(` Orphaned process PID=${data.pid} already dead, cleaning up lockfile`);
     }
     removeLockfile();
   } catch {
@@ -101,7 +103,10 @@ function cleanupOrphanedProcess() {
   }
 }
 
-cleanupOrphanedProcess();
+// Only run at dev-server startup, not during build
+if (typeof globalThis !== 'undefined' && process.env.NODE_ENV !== 'production') {
+  cleanupOrphanedProcess();
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -113,7 +118,7 @@ function readDiscoveryJson(): Record<string, unknown> | null {
       const raw = fs.readFileSync(DISCOVERY_JSON_PATH, 'utf-8');
       const data = JSON.parse(raw);
       const entryCount = Array.isArray(data?.entries) ? data.entries.length : 0;
-      console.log(`${LOG_PREFIX} Read discovery.json — ${entryCount} entries, scanned at ${data?.scannedAt || 'unknown'}`);
+      log(` Read discovery.json — ${entryCount} entries, scanned at ${data?.scannedAt || 'unknown'}`);
       return data;
     }
   } catch (e) {
@@ -132,20 +137,20 @@ function getPlaygroundRelativePath(): string {
 // ---------------------------------------------------------------------------
 
 export async function GET() {
-  console.log(`${LOG_PREFIX} GET request — isScanning=${isScanning}, discoveryExists=${fs.existsSync(DISCOVERY_JSON_PATH)}`);
+  log(` GET request — isScanning=${isScanning}, discoveryExists=${fs.existsSync(DISCOVERY_JSON_PATH)}`);
 
   if (isScanning) {
-    console.log(`${LOG_PREFIX} Returning status=scanning`);
+    log(` Returning status=scanning`);
     return NextResponse.json({ status: 'scanning' });
   }
 
   const data = readDiscoveryJson();
   if (data) {
-    console.log(`${LOG_PREFIX} Returning cached discovery`);
+    log(` Returning cached discovery`);
     return NextResponse.json({ status: 'complete', ...data });
   }
 
-  console.log(`${LOG_PREFIX} No discovery.json found — returning not_scanned`);
+  log(` No discovery.json found — returning not_scanned`);
   return NextResponse.json({ status: 'not_scanned' });
 }
 
@@ -154,7 +159,7 @@ export async function GET() {
 // ---------------------------------------------------------------------------
 
 export async function POST(req: Request) {
-  console.log(`${LOG_PREFIX} POST request — starting discovery scan`);
+  log(` POST request — starting discovery scan`);
 
   if (isScanning) {
     console.warn(`${LOG_PREFIX} Scan already in progress — rejecting`);
@@ -177,7 +182,7 @@ export async function POST(req: Request) {
     .map((e) => e.id);
 
   if (preserveIds.length > 0) {
-    console.log(`${LOG_PREFIX} Preserving ${preserveIds.length} already-added entries: ${preserveIds.join(', ')}`);
+    log(` Preserving ${preserveIds.length} already-added entries: ${preserveIds.join(', ')}`);
   }
 
   const playgroundRelPath = getPlaygroundRelativePath();
@@ -186,19 +191,19 @@ export async function POST(req: Request) {
     existingEntryIds: preserveIds.length > 0 ? preserveIds : undefined,
   });
 
-  console.log(`${LOG_PREFIX} Generated discovery prompt (${prompt.length} chars)`);
-  console.log(`${LOG_PREFIX} Playground relative path: ${playgroundRelPath}`);
+  log(` Generated discovery prompt (${prompt.length} chars)`);
+  log(` Playground relative path: ${playgroundRelPath}`);
 
   isScanning = true;
 
   const args = ['agent', '--print', '--force'];
   if (model) {
     args.push('--model', model);
-    console.log(`${LOG_PREFIX} Using model: ${model}`);
+    log(` Using model: ${model}`);
   }
 
   const startTime = Date.now();
-  console.log(`${LOG_PREFIX} Spawning: cursor ${args.join(' ')}`);
+  log(` Spawning: cursor ${args.join(' ')}`);
 
   return new Promise<NextResponse>((resolve) => {
     try {
@@ -210,7 +215,7 @@ export async function POST(req: Request) {
 
       if (currentProcess.pid) {
         writeLockfile(currentProcess.pid);
-        console.log(`${LOG_PREFIX} Agent process started — PID=${currentProcess.pid}`);
+        log(` Agent process started — PID=${currentProcess.pid}`);
       }
 
       let stdout = '';
@@ -221,7 +226,7 @@ export async function POST(req: Request) {
         stdout += chunk;
         const lines = chunk.trim().split('\n');
         for (const line of lines) {
-          if (line.trim()) console.log(`${LOG_PREFIX} [stdout] ${line}`);
+          if (line.trim()) log(` [stdout] ${line}`);
         }
       });
 
@@ -230,17 +235,17 @@ export async function POST(req: Request) {
         stderr += chunk;
         const lines = chunk.trim().split('\n');
         for (const line of lines) {
-          if (line.trim()) console.log(`${LOG_PREFIX} [stderr] ${line}`);
+          if (line.trim()) log(` [stderr] ${line}`);
         }
       });
 
       currentProcess.stdin?.write(prompt);
       currentProcess.stdin?.end();
-      console.log(`${LOG_PREFIX} Prompt written to stdin and closed`);
+      log(` Prompt written to stdin and closed`);
 
       currentProcess.on('close', (code) => {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`${LOG_PREFIX} Agent exited — code=${code}, elapsed=${elapsed}s, stdout=${stdout.length} chars, stderr=${stderr.length} chars`);
+        log(` Agent exited — code=${code}, elapsed=${elapsed}s, stdout=${stdout.length} chars, stderr=${stderr.length} chars`);
 
         removeLockfile();
         isScanning = false;
@@ -250,7 +255,7 @@ export async function POST(req: Request) {
           const data = readDiscoveryJson();
           if (data) {
             const entries = (data as { entries?: unknown[] }).entries;
-            console.log(`${LOG_PREFIX} Scan complete — ${Array.isArray(entries) ? entries.length : 0} entries discovered`);
+            log(` Scan complete — ${Array.isArray(entries) ? entries.length : 0} entries discovered`);
             resolve(NextResponse.json({ success: true, status: 'complete', ...data }));
           } else {
             console.error(`${LOG_PREFIX} Agent completed but discovery.json was not created`);
@@ -298,7 +303,7 @@ export async function POST(req: Request) {
 // ---------------------------------------------------------------------------
 
 export async function DELETE() {
-  console.log(`${LOG_PREFIX} DELETE request — cancelling scan`);
+  log(` DELETE request — cancelling scan`);
 
   if (!isScanning || !currentProcess) {
     console.warn(`${LOG_PREFIX} No scan running to cancel`);
@@ -309,11 +314,11 @@ export async function DELETE() {
   }
 
   try {
-    console.log(`${LOG_PREFIX} Sending SIGTERM to PID=${currentProcess.pid}`);
+    log(` Sending SIGTERM to PID=${currentProcess.pid}`);
     currentProcess.kill('SIGTERM');
     setTimeout(() => {
       if (currentProcess && !currentProcess.killed) {
-        console.log(`${LOG_PREFIX} Force killing PID=${currentProcess.pid}`);
+        log(` Force killing PID=${currentProcess.pid}`);
         currentProcess.kill('SIGKILL');
       }
     }, 2000);

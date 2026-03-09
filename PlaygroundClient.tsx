@@ -13,6 +13,14 @@ export default function PlaygroundClient() {
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
   const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
   const hasScanTriggered = useRef(false);
+  const scanPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (scanPollRef.current) clearTimeout(scanPollRef.current);
+    };
+  }, []);
 
   // Auto-scan on first visit
   useEffect(() => {
@@ -82,7 +90,7 @@ export default function PlaygroundClient() {
                   },
                 );
               } else if (d.status === 'scanning') {
-                setTimeout(poll, 2500);
+                scanPollRef.current = setTimeout(poll, 2500);
               } else {
                 toast.dismiss(scanToastId);
               }
@@ -90,7 +98,7 @@ export default function PlaygroundClient() {
               toast.dismiss(scanToastId);
             }
           };
-          setTimeout(poll, 2500);
+          scanPollRef.current = setTimeout(poll, 2500);
         }
       } catch {
         // Silently fail — discovery is optional
