@@ -4,7 +4,7 @@ import { memo, useState, useRef, useEffect } from 'react';
 import { useNodeId, useReactFlow } from '@xyflow/react';
 import { Monitor, Smartphone, ArrowUpRight, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
-import { flatRegistry, resolveRegistryItem } from '../registry';
+import { resolveRegistryItem } from '../registry';
 import { CancelGenerationButton } from './shared/IterateDialogParts';
 import IterateDialog from './shared/IterateDialog';
 

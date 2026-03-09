@@ -279,9 +279,12 @@ export default function DiscoveryModal({
       e.name.toLowerCase().includes(lowerSearch) ||
       e.description?.toLowerCase().includes(lowerSearch),
   );
-
-  const pages = filtered.filter((e) => e.type === 'page');
-  const components = filtered.filter((e) => e.type === 'component');
+  // Total counts across all discovered entries
+  const pages = mergedEntries.filter((e) => e.type === 'page');
+  const components = mergedEntries.filter((e) => e.type === 'component');
+  // Filtered lists for display based on search
+  const filteredPages = filtered.filter((e) => e.type === 'page');
+  const filteredComponents = filtered.filter((e) => e.type === 'component');
   const isEmpty = entries.length === 0 && !isLoading && !isScanning;
 
   return (
@@ -374,11 +377,11 @@ export default function DiscoveryModal({
           ) : (
             <>
               {/* Pages section */}
-              {pages.length > 0 && (
+              {filteredPages.length > 0 && (
                 <div>
-                  <SectionHeader icon={FileText} label="Pages" count={pages.length} />
+                  <SectionHeader icon={FileText} label="Pages" count={filteredPages.length} />
                   <div className="space-y-2">
-                    {pages.map((entry) => (
+                    {filteredPages.map((entry) => (
                       <DiscoveryCard
                         key={entry.id}
                         entry={entry}
@@ -391,11 +394,11 @@ export default function DiscoveryModal({
               )}
 
               {/* Components section */}
-              {components.length > 0 && (
+              {filteredComponents.length > 0 && (
                 <div>
-                  <SectionHeader icon={Layers} label="Components" count={components.length} />
+                  <SectionHeader icon={Layers} label="Components" count={filteredComponents.length} />
                   <div className="space-y-2">
-                    {components.map((entry) => (
+                    {filteredComponents.map((entry) => (
                       <DiscoveryCard
                         key={entry.id}
                         entry={entry}
