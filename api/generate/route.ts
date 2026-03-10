@@ -118,18 +118,22 @@ export async function POST(req: Request) {
       componentId?: string;
       iterationCount?: number;
       model?: string;
+      mode?: 'ask' | 'iterate';
     } | null;
 
-    if (!body || !body.prompt || !body.componentId) {
+    if (!body || !body.prompt) {
       return NextResponse.json(
-        { success: false, error: 'Missing required fields. Ensure `prompt` and `componentId` are provided.' },
+        { success: false, error: 'Missing required fields. Ensure `prompt` is provided.' },
         { status: 400 }
       );
     }
 
     const { prompt, model } = body;
+    const isAskMode = body.mode === 'ask';
     // Sanitize componentId for use in file paths (prevent path traversal)
-    const componentId = String(body.componentId).replace(/[^A-Za-z0-9-_]/g, '_').slice(0, 200) || 'component';
+    const componentId = body.componentId
+      ? String(body.componentId).replace(/[^A-Za-z0-9-_]/g, '_').slice(0, 200)
+      : 'ask';
     const timestamp = Date.now();
     const generationId = `${componentId}-${timestamp}`;
 
@@ -156,7 +160,9 @@ export async function POST(req: Request) {
     isGenerating = true;
 
     // Build cursor agent command arguments
-    const args = ['agent', '--print', '--force'];
+    const args = isAskMode
+      ? ['agent', '--print']
+      : ['agent', '--print', '--force'];
     if (model) {
       args.push('--model', model);
     }
@@ -176,10 +182,12 @@ export async function POST(req: Request) {
         }
 
         let stderr = '';
+        let stdout = '';
 
         // Stream stdout to log file (non-blocking)
         currentProcess.stdout?.on('data', (data: Buffer) => {
           currentLogStream?.write(data);
+          if (isAskMode) stdout += data.toString();
         });
 
         // Stream stderr to log file (non-blocking)
@@ -207,6 +215,7 @@ export async function POST(req: Request) {
               success: true,
               generationId,
               message: 'Generation completed successfully',
+              ...(isAskMode ? { output: stdout } : {}),
             }));
           } else {
             resolve(NextResponse.json(

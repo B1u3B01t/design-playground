@@ -398,11 +398,14 @@ function InlineReference({
 type InlineReferenceInputProps = {
   placeholder?: string
   className?: string
+  /** Called when Enter is pressed without Shift and no trigger dropdown is active */
+  onSubmit?: () => void
 } & Omit<React.ComponentProps<"div">, "contentEditable" | "role">
 
 function InlineReferenceInput({
   placeholder,
   className,
+  onSubmit,
   ...props
 }: InlineReferenceInputProps) {
   const {
@@ -502,6 +505,13 @@ function InlineReferenceInput({
         }
       }
 
+      // Enter without Shift submits (when no trigger dropdown is open)
+      if (e.key === "Enter" && !e.shiftKey && onSubmit) {
+        e.preventDefault()
+        onSubmit()
+        return
+      }
+
       // Handle backspace into pill
       if (e.key === "Backspace") {
         const selection = window.getSelection()
@@ -549,6 +559,7 @@ function InlineReferenceInput({
       setTriggerState,
       setSegments,
       checkEmpty,
+      onSubmit,
     ]
   )
 

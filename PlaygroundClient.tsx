@@ -7,6 +7,7 @@ import PlaygroundSidebar from './PlaygroundSidebar';
 import PlaygroundCanvas from './PlaygroundCanvas';
 import PlaygroundHeader from './PlaygroundHeader';
 import DiscoveryModal, { type DiscoveryEntry } from './DiscoveryModal';
+import CursorChat from './CursorChat';
 
 export default function PlaygroundClient() {
   const [sidebarVisible, setSidebarVisible] = useState(true);
@@ -205,6 +206,9 @@ export default function PlaygroundClient() {
           </div>
         </div>
       </div>
+
+      {/* Floating cursor chat */}
+      <CursorChat />
 
       {/* Discovery modal */}
       <DiscoveryModal
