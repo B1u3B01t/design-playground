@@ -40,6 +40,12 @@ export const PLAYGROUND_CLEAR_EVENT = 'playground:clear-requested';
 /** Fired when drag-to-iterate releases (triggers toast + generation) */
 export const DRAG_ITERATE_EVENT = 'playground:drag-iterate';
 
+/** Fired when cursor chat activates/deactivates (so canvas can intercept clicks) */
+export const CURSOR_CHAT_ACTIVE_EVENT = 'playground:cursor-chat-active';
+
+/** Fired when a node is clicked while cursor chat is active */
+export const CURSOR_CHAT_NODE_SELECTED_EVENT = 'playground:cursor-chat-node-selected';
+
 // ---------------------------------------------------------------------------
 // localStorage Keys
 // ---------------------------------------------------------------------------
@@ -160,6 +166,9 @@ export const ITERATION_COUNT_OPTIONS = [1, 2, 3, 4] as const;
 
 /** Default number of iterations to generate */
 export const DEFAULT_ITERATION_COUNT = 3;
+
+/** Default iteration count for cursor chat */
+export const DEFAULT_CURSOR_CHAT_ITERATION_COUNT = 3;
 
 /** Default iteration depth */
 export const DEFAULT_DEPTH: 'shell' | '1-level' | 'all' = 'shell';
@@ -397,6 +406,15 @@ export interface GenerationErrorPayload {
   componentId: string;
   parentNodeId: string;
   error: string;
+}
+
+/** Payload for CURSOR_CHAT_NODE_SELECTED_EVENT */
+export interface CursorChatNodeSelectedPayload {
+  componentId: string;
+  componentName: string;
+  nodeId: string;
+  sourceFilename?: string;
+  isIterationNode: boolean;
 }
 
 /** Payload for DRAG_ITERATE_EVENT */

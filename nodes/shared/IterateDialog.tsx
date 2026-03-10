@@ -31,12 +31,12 @@ import {
   DEFAULT_COMPONENT_NODE_HEIGHT,
   DEFAULT_ITERATION_NODE_WIDTH,
   DEFAULT_ITERATION_NODE_HEIGHT,
-  DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
   type GenerationStartPayload,
   type GenerationCompletePayload,
   type GenerationErrorPayload,
   type DragIteratePayload,
 } from '../../lib/constants';
+import { derivePromptParts } from '../../lib/prompt-utils';
 import {
   ModelDropdown,
   useAvailableModels,
@@ -128,65 +128,11 @@ export default function IterateDialog({
     return map;
   }, [skills]);
 
-  const getDefaultSkillPrompt = useCallback(
-    (skillMap: Map<string, PlaygroundSkill>): string | undefined => {
-      if (skillMap.size === 0) return undefined;
-      const DEFAULT_SKILL_IDS = ['design-variations', 'frontend-design'] as const;
-      const parts: string[] = [];
-      for (const id of DEFAULT_SKILL_IDS) {
-        const skill = skillMap.get(id);
-        const body = skill?.systemPrompt?.trim();
-        if (body) parts.push(body);
-      }
-      if (!parts.length) return undefined;
-      return parts.join('\n\n');
-    },
-    [],
-  );
-
   // Derive freeform instructions + skill prompt from inline reference segments
-  const { customInstructionsText, skillPrompt } = useMemo(() => {
-    const hasSegments = !!segments && segments.length > 0;
-
-    const textParts: string[] = [];
-    const skillSections: string[] = [];
-
-    if (hasSegments) {
-      for (const segment of segments) {
-        if (segment.type === 'text') {
-          const trimmed = segment.value.trim();
-          if (trimmed) {
-            textParts.push(trimmed);
-          }
-        } else if (segment.type === 'reference') {
-          const skill = skillsById.get(segment.value);
-          if (skill?.systemPrompt) {
-            skillSections.push(skill.systemPrompt);
-          }
-        }
-      }
-    }
-
-    let customInstructionsText =
-      textParts.join('\n').trim() || undefined;
-
-    let skillPromptText =
-      skillSections.join('\n\n').trim() || undefined;
-
-    // When the inline reference area is empty (no text, no explicit skills),
-    // automatically apply the default design skills.
-    if (!hasSegments && !skillPromptText) {
-      skillPromptText = getDefaultSkillPrompt(skillsById);
-    }
-
-    // When the inline reference is completely empty, also add a default
-    // instruction line at the end of the prompt.
-    if (!hasSegments && !customInstructionsText) {
-      customInstructionsText = DEFAULT_EMPTY_ITERATION_INSTRUCTIONS;
-    }
-
-    return { customInstructionsText, skillPrompt: skillPromptText };
-  }, [segments, skillsById, getDefaultSkillPrompt]);
+  const { customInstructionsText, skillPrompt } = useMemo(
+    () => derivePromptParts(segments, skillsById),
+    [segments, skillsById],
+  );
 
   // Fetch max iteration number when panel opens (iteration-from-iteration)
   useEffect(() => {
@@ -654,6 +600,7 @@ export default function IterateDialog({
                       ? 'Describe how you want to iterate, then type / to add a skill…'
                       : 'Describe what to explore, then type / to add a skill…'
                   }
+                  onSubmit={canRun ? handleRunWithCursor : undefined}
                   className="min-h-[96px] text-sm bg-white rounded-xl border border-stone-200 outline-none text-stone-800 placeholder:text-stone-400"
                 />
 

@@ -80,10 +80,13 @@ import {
   TREE_COLUMN_WIDTH,
   DRAG_GHOST_GAP,
   DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
+  CURSOR_CHAT_ACTIVE_EVENT,
+  CURSOR_CHAT_NODE_SELECTED_EVENT,
   type GenerationStartPayload,
   type GenerationCompletePayload,
   type GenerationErrorPayload,
   type DragIteratePayload,
+  type CursorChatNodeSelectedPayload,
 } from './lib/constants';
 import type { PlaygroundSkill } from './skills';
 
@@ -205,6 +208,9 @@ export default function PlaygroundCanvas() {
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Track whether cursor chat is active (to intercept node clicks)
+  const cursorChatActiveRef = useRef(false);
+
   // Node ID counter as a ref (survives re-renders, initialized from localStorage)
   const nodeIdCounterRef = useRef<number>(initialState?.nodeIdCounter || 0);
   const getNodeId = useCallback(() => `node_${++nodeIdCounterRef.current}`, []);
@@ -1024,6 +1030,40 @@ export default function PlaygroundCanvas() {
     // No-op: clicking the pane does not change fullscreen state
   }, []);
 
+  // Listen for cursor chat active/inactive events
+  useEffect(() => {
+    const handleCursorChatActive = (e: Event) => {
+      const { active } = (e as CustomEvent<{ active: boolean }>).detail;
+      cursorChatActiveRef.current = active;
+    };
+    window.addEventListener(CURSOR_CHAT_ACTIVE_EVENT, handleCursorChatActive);
+    return () => window.removeEventListener(CURSOR_CHAT_ACTIVE_EVENT, handleCursorChatActive);
+  }, []);
+
+  // Handle node click — emit selection event when cursor chat is active
+  const handleNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    if (!cursorChatActiveRef.current) return;
+    if (node.type === 'skeleton' || node.type === 'drag-ghost') return;
+
+    const data = node.data as Record<string, unknown>;
+    const componentId = (data.componentId as string) || '';
+    const componentName = (data.componentName as string) || (data.label as string) || componentId;
+    const isIterationNode = node.type === 'iteration';
+    const sourceFilename = isIterationNode ? (data.filename as string) : undefined;
+
+    window.dispatchEvent(
+      new CustomEvent<CursorChatNodeSelectedPayload>(CURSOR_CHAT_NODE_SELECTED_EVENT, {
+        detail: {
+          componentId,
+          componentName,
+          nodeId: node.id,
+          sourceFilename,
+          isIterationNode,
+        },
+      }),
+    );
+  }, []);
+
   // Handle node deletion - check for children first
   const onNodesDelete = useCallback(async (deletedNodes: Node[]) => {
     for (const node of deletedNodes) {
@@ -1443,6 +1483,7 @@ export default function PlaygroundCanvas() {
           onDragOver={onDragOver}
           onDrop={onDrop}
           onPaneClick={handlePaneClick}
+          onNodeClick={handleNodeClick}
           nodeTypes={nodeTypes}
           fitView
           className="bg-gray-50"
