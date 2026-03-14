@@ -13,6 +13,7 @@ import {
   type ModelOption,
   type GenerationErrorPayload,
 } from '../../lib/constants';
+import { useModelSettingsStore } from '../../lib/model-settings-store';
 
 // Re-export ModelOption for consumers
 export type { ModelOption } from '../../lib/constants';
@@ -73,7 +74,7 @@ export function saveSelectedModel(model: string) {
 // ---------------------------------------------------------------------------
 
 export function useAvailableModels() {
-  const [models, setModels] = useState<ModelOption[]>(() => {
+  const [allModels, setAllModels] = useState<ModelOption[]>(() => {
     // Try localStorage first, then fallback
     return loadStoredModels() || FALLBACK_MODELS;
   });
@@ -94,7 +95,7 @@ export function useAvailableModels() {
           throw new Error(data?.error || 'Failed to fetch models');
         }
         if (Array.isArray(data.models) && data.models.length > 0) {
-          setModels(data.models);
+          setAllModels(data.models);
           saveModelsToStorage(data.models, data.source);
         } else {
           throw new Error('No models returned from API');
@@ -102,7 +103,7 @@ export function useAvailableModels() {
       } catch (error) {
         console.error('[Models] Failed to fetch models:', error);
         const fallbackModels = loadStoredModels() || FALLBACK_MODELS;
-        setModels(fallbackModels);
+        setAllModels(fallbackModels);
         saveModelsToStorage(fallbackModels, 'fallback');
         // Keep using localStorage/fallback models
       }
@@ -112,7 +113,13 @@ export function useAvailableModels() {
     fetchModels();
   }, []);
 
-  return { models, isLoading };
+  // Filter by enabled models from settings (subscribes to store for reactivity)
+  const enabledModels = useModelSettingsStore((s) => s.enabledModels);
+  const models = enabledModels.length === 0
+    ? allModels
+    : allModels.filter((m) => enabledModels.includes(m.value));
+
+  return { models, allModels, isLoading };
 }
 
 // ---------------------------------------------------------------------------

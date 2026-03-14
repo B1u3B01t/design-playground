@@ -613,7 +613,7 @@ export default function IterateDialog({
             style={{ fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif' }}
           >
             <div
-              className="w-72 rounded-2xl p-4 flex flex-col gap-3 bg-white"
+              className="w-80 rounded-2xl p-5 flex flex-col gap-4 bg-white"
             >
               {/* Title */}
               <p className="text-sm font-medium text-stone-600">
@@ -674,40 +674,42 @@ export default function IterateDialog({
                 </InlineReferenceContent>
               </InlineReference>
 
-              {/* Controls row: model dropdown + count pills */}
-              <div className="flex items-center justify-between gap-2">
-                {/* Model dropdown — reuse existing component */}
-                <ModelDropdown
-                  model={selectedModel}
-                  onChange={handleModelChange}
-                  models={models}
-                  isLoading={isLoadingModels}
-                />
+              {/* Controls */}
+              <div className="flex flex-col gap-2.5">
+                {/* Model + count row */}
+                <div className="flex items-center justify-between">
+                  <ModelDropdown
+                    model={selectedModel}
+                    onChange={handleModelChange}
+                    models={models}
+                    isLoading={isLoadingModels}
+                  />
 
-                {/* Count pills: 1 2 3 4 */}
-                <div className="flex items-center gap-1 bg-white rounded-full px-2 py-1">
-                  {(ITERATION_COUNT_OPTIONS as readonly number[]).map((n) => (
-                    <button
-                      key={n}
-                      onClick={() => setIterationCount(n)}
-                      className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium transition-colors ${iterationCount === n
-                        ? 'bg-stone-800 text-white'
-                        : 'text-stone-500 hover:text-stone-800'
-                        }`}
-                    >
-                      {n}
-                    </button>
-                  ))}
+                  {/* Count pills: 1 2 3 4 */}
+                  <div className="flex items-center gap-1 bg-stone-50 rounded-full px-2 py-1 border border-stone-100">
+                    {(ITERATION_COUNT_OPTIONS as readonly number[]).map((n) => (
+                      <button
+                        key={n}
+                        onClick={() => setIterationCount(n)}
+                        className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium transition-colors ${iterationCount === n
+                          ? 'bg-stone-800 text-white'
+                          : 'text-stone-500 hover:text-stone-800'
+                          }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
               {/* Footer buttons */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5 pt-1">
                 {/* Copy */}
                 <button
                   onClick={() => handleCopyPrompt(generatedPrompt)}
                   disabled={!generatedPrompt}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-sm font-medium text-stone-500 bg-stone-200 hover:bg-stone-300 transition-colors disabled:opacity-50"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium text-stone-500 bg-stone-100 hover:bg-stone-200 transition-colors disabled:opacity-50"
                 >
                   {copied ? (
                     <>
@@ -726,7 +728,7 @@ export default function IterateDialog({
                 <button
                   onClick={handleRunWithCursor}
                   disabled={!canRun}
-                  className="flex-[2] py-2 rounded-xl text-sm font-semibold text-white bg-stone-900 hover:bg-stone-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-[2] py-2.5 rounded-xl text-sm font-semibold text-white bg-stone-900 hover:bg-stone-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isGlobalGenerating ? 'Generating…' : 'Create variations'}
                 </button>

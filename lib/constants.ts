@@ -28,6 +28,9 @@ export const GENERATION_COMPLETE_EVENT = 'playground:generation-complete';
 /** Fired when generation encounters an error */
 export const GENERATION_ERROR_EVENT = 'playground:generation-error';
 
+/** Fired to pan the canvas to a specific flow position */
+export const PAN_TO_POSITION_EVENT = 'playground:pan-to-position';
+
 /** Fired to trigger auto-arrange of canvas nodes */
 export const PLAYGROUND_AUTO_ARRANGE_EVENT = 'PLAYGROUND_AUTO_ARRANGE';
 
@@ -52,6 +55,9 @@ export const MODELS_STORAGE_KEY = 'playground-ai-models';
 
 /** Key for persisting the user's last selected AI model */
 export const SELECTED_MODEL_STORAGE_KEY = 'playground-selected-model';
+
+/** Key for persisting enabled model selections in settings */
+export const ENABLED_MODELS_STORAGE_KEY = 'playground-model-settings';
 
 // ---------------------------------------------------------------------------
 // Timing Constants
@@ -363,6 +369,29 @@ export const TREE_MANIFEST_FILENAME = 'tree.json';
 export const TREE_COLUMN_WIDTH = 500;
 
 // ---------------------------------------------------------------------------
+// Cursor Chat Constants
+// ---------------------------------------------------------------------------
+
+/** Default iteration count when submitting via cursor chat */
+export const CURSOR_CHAT_DEFAULT_COUNT = 1;
+
+/** Default depth when submitting via cursor chat */
+export const CURSOR_CHAT_DEFAULT_DEPTH = 'all' as const;
+
+/** Payload submitted by the CursorChat component */
+export interface CursorChatSubmitPayload {
+  text: string;
+  skillPrompts: string[];
+  model: string;
+  targetNodeId: string | null;
+  targetComponentId: string | null;
+  targetComponentName: string | null;
+  targetType: 'component' | 'iteration' | null;
+  sourceFilename?: string;
+  canvasPosition: { x: number; y: number };
+}
+
+// ---------------------------------------------------------------------------
 // Generation Event Payload Types
 // ---------------------------------------------------------------------------
 
@@ -377,6 +406,10 @@ export interface GenerationStartPayload {
     rows: number;
     cols: number;
   };
+  /** Model used for this generation (for presence bubbles) */
+  model?: string;
+  /** Flow-space position where the generation was initiated */
+  flowPosition?: { x: number; y: number };
 }
 
 /** Payload for GENERATION_COMPLETE_EVENT */

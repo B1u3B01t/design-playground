@@ -78,15 +78,21 @@ import {
   CANVAS_MIN_ZOOM,
   ITERATION_COLLAPSE_TOGGLE_EVENT,
   PLAYGROUND_CLEAR_EVENT,
+  PAN_TO_POSITION_EVENT,
   TREE_COLUMN_WIDTH,
   DRAG_GHOST_GAP,
   DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
+  CURSOR_CHAT_DEFAULT_COUNT,
+  CURSOR_CHAT_DEFAULT_DEPTH,
   type GenerationStartPayload,
   type GenerationCompletePayload,
   type GenerationErrorPayload,
   type DragIteratePayload,
+  type CursorChatSubmitPayload,
 } from './lib/constants';
 import type { PlaygroundSkill } from './skills';
+import CursorChat from './CursorChat';
+import { toast } from 'sonner';
 
 const nodeTypes = {
   component: ComponentNode,
@@ -244,7 +250,7 @@ export default function PlaygroundCanvas() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialState?.nodes || []);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialState?.edges || []);
-  const { screenToFlowPosition, fitView } = useReactFlow();
+  const { screenToFlowPosition, fitView, setCenter } = useReactFlow();
 
   // Running timer during generation + safety timeout for orphaned skeletons
   useEffect(() => {
@@ -968,7 +974,239 @@ export default function PlaygroundCanvas() {
     return () => window.removeEventListener(DRAG_ITERATE_EVENT, listener);
   }, []);
 
+  // ---------------------------------------------------------------------------
+  // Cursor Chat submit handler + queue
+  // ---------------------------------------------------------------------------
+  const generationQueueRef = useRef<CursorChatSubmitPayload[]>([]);
+
+  const handleCursorChatSubmit = useCallback(async (payload: CursorChatSubmitPayload) => {
+    // If generation already in progress, queue it
+    if (isGenerating) {
+      generationQueueRef.current.push(payload);
+      toast('Queued — will run after current generation', { duration: 3000 });
+      return;
+    }
+
+    const {
+      text,
+      skillPrompts,
+      model: payloadModel,
+      targetNodeId,
+      targetComponentId,
+      targetComponentName,
+      targetType,
+      sourceFilename,
+    } = payload;
+
+    // Combine skill prompts
+    let combinedSkillPrompt: string | undefined;
+    if (skillPrompts.length > 0) {
+      combinedSkillPrompt = skillPrompts.join('\n\n');
+    } else {
+      // Use default skills when no explicit skills selected
+      const defaultPrompt = await loadDefaultSkillPrompt();
+      combinedSkillPrompt = defaultPrompt || undefined;
+    }
+
+    const customInstructions = text || DEFAULT_EMPTY_ITERATION_INSTRUCTIONS;
+
+    if (targetNodeId && targetComponentId && targetComponentName && targetType) {
+      // --- WITH TARGET NODE ---
+      let prompt: string;
+      const componentId = targetComponentId;
+      const componentName = targetComponentName;
+      const iterationCount = CURSOR_CHAT_DEFAULT_COUNT;
+
+      if (targetType === 'iteration' && sourceFilename) {
+        // Iterate from iteration
+        try {
+          const response = await fetch('/playground/api/iterations');
+          let startNumber = 1;
+          if (response.ok) {
+            const { iterations } = await response.json();
+            const componentIterations = iterations.filter(
+              (i: { componentName: string }) => i.componentName === componentName
+            );
+            const maxNumber = componentIterations.reduce(
+              (max: number, i: { iterationNumber: number }) =>
+                Math.max(max, i.iterationNumber),
+              0
+            );
+            startNumber = maxNumber + 1;
+          }
+          prompt = generateIterationFromIterationPrompt(
+            componentId,
+            sourceFilename,
+            iterationCount,
+            startNumber,
+            CURSOR_CHAT_DEFAULT_DEPTH,
+            customInstructions,
+            combinedSkillPrompt,
+          );
+        } catch {
+          prompt = generateIterationPrompt(
+            componentId,
+            iterationCount,
+            CURSOR_CHAT_DEFAULT_DEPTH,
+            customInstructions,
+            combinedSkillPrompt,
+          );
+        }
+      } else {
+        // Component iteration
+        prompt = generateIterationPrompt(
+          componentId,
+          iterationCount,
+          CURSOR_CHAT_DEFAULT_DEPTH,
+          customInstructions,
+          combinedSkillPrompt,
+        );
+      }
+
+      // Dispatch generation start (creates skeleton nodes)
+      window.dispatchEvent(
+        new CustomEvent<GenerationStartPayload>(GENERATION_START_EVENT, {
+          detail: {
+            componentId,
+            componentName,
+            parentNodeId: targetNodeId,
+            iterationCount,
+            model: payloadModel || undefined,
+            flowPosition: payload.canvasPosition,
+          },
+        }),
+      );
+
+      // Call the generate API
+      try {
+        const response = await fetch('/playground/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt,
+            componentId,
+            iterationCount,
+            model: payloadModel || undefined,
+          }),
+        });
+
+        let data;
+        try {
+          data = await response.json();
+        } catch {
+          window.dispatchEvent(
+            new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+              detail: { componentId, parentNodeId: targetNodeId, error: 'Failed to parse response' },
+            }),
+          );
+          return;
+        }
+
+        if (!response.ok || !data.success) {
+          const error = typeof data?.error === 'string' ? data.error : 'Generation failed';
+          window.dispatchEvent(
+            new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+              detail: { componentId, parentNodeId: targetNodeId, error },
+            }),
+          );
+        } else {
+          window.dispatchEvent(
+            new CustomEvent<GenerationCompletePayload>(GENERATION_COMPLETE_EVENT, {
+              detail: { componentId, parentNodeId: targetNodeId, output: '' },
+            }),
+          );
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        window.dispatchEvent(
+          new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+            detail: { componentId, parentNodeId: targetNodeId, error: msg },
+          }),
+        );
+      }
+    } else {
+      // --- FREEFORM (no target) ---
+      // Manage isGenerating directly — do NOT dispatch GENERATION_START_EVENT
+      // because the event handler requires a valid parentNodeId to find a parent node.
+      const freeformInfo: GenerationInfo = {
+        componentId: 'cursor-chat-freeform',
+        componentName: 'Freeform',
+        parentNodeId: '',
+        iterationCount: 0,
+        skeletonNodeIds: [],
+        startTime: Date.now(),
+      };
+      generationInfoRef.current = freeformInfo;
+      setIsGenerating(true);
+      setGenerationInfo(freeformInfo);
+
+      try {
+        const response = await fetch('/playground/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: customInstructions,
+            componentId: 'cursor-chat-freeform',
+            iterationCount: 0,
+            model: payloadModel || undefined,
+          }),
+        });
+
+        const data = await response.json().catch(() => ({ success: false }));
+        if (!response.ok || !data.success) {
+          console.error('[CursorChat] Freeform generation failed:', data?.error);
+        }
+      } catch (err) {
+        console.error('[CursorChat] Freeform generation error:', err);
+      } finally {
+        generationInfoRef.current = null;
+        setIsGenerating(false);
+        setGenerationInfo(null);
+
+        // Drain queue
+        setTimeout(() => {
+          if (generationQueueRef.current.length > 0) {
+            const next = generationQueueRef.current.shift()!;
+            handleCursorChatSubmit(next);
+          }
+        }, POST_GENERATION_SCAN_DELAY + 500);
+      }
+    }
+  }, [isGenerating, setIsGenerating, setGenerationInfo, scanForIterations]);
+
+  // Also drain queue after normal generation completes
+  // (hook into generation complete/error to check queue)
+  useEffect(() => {
+    const drainQueue = () => {
+      setTimeout(() => {
+        if (generationQueueRef.current.length > 0) {
+          const next = generationQueueRef.current.shift()!;
+          handleCursorChatSubmit(next);
+        }
+      }, POST_GENERATION_SCAN_DELAY + 500);
+    };
+
+    window.addEventListener(GENERATION_COMPLETE_EVENT, drainQueue);
+    window.addEventListener(GENERATION_ERROR_EVENT, drainQueue);
+    return () => {
+      window.removeEventListener(GENERATION_COMPLETE_EVENT, drainQueue);
+      window.removeEventListener(GENERATION_ERROR_EVENT, drainQueue);
+    };
+  }, [handleCursorChatSubmit]);
+
   // Fullscreen fitView behavior is no longer used; nodes open in a new tab instead
+
+  // Pan-to-position event listener (for presence bubble clicks)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ x: number; y: number }>).detail;
+      if (detail?.x != null && detail?.y != null) {
+        setCenter(detail.x, detail.y, { duration: 400, zoom: 1 });
+      }
+    };
+    window.addEventListener(PAN_TO_POSITION_EVENT, handler);
+    return () => window.removeEventListener(PAN_TO_POSITION_EVENT, handler);
+  }, [setCenter]);
 
   const onConnect = useCallback(
     (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
@@ -1463,6 +1701,9 @@ export default function PlaygroundCanvas() {
           color={BACKGROUND_COLOR}
         />
       </ReactFlow>
+
+      {/* Cursor Chat overlay */}
+      <CursorChat isGenerating={isGenerating} onSubmit={handleCursorChatSubmit} />
 
       {/* Clear canvas confirmation dialog */}
       <AlertDialog open={showClearDialog} onOpenChange={setShowClearDialog}>
