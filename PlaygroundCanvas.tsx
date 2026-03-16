@@ -52,7 +52,6 @@ import {
   POLL_INTERVAL,
   POLL_DURATION,
   ITERATION_HORIZONTAL_SPACING,
-  ITERATION_VERTICAL_OFFSET,
   ARRANGE_START_X,
   ARRANGE_START_Y,
   ARRANGE_VERTICAL_GAP,
@@ -538,6 +537,15 @@ export default function PlaygroundCanvas() {
         const nodeId = getNodeId();
         pendingNodesByFilename.set(iter.filename, nodeId);
         
+        const parentSize = (sourceNode?.data?.size as string | undefined) as import('./lib/constants').ComponentSize | undefined;
+
+        // Inherit the registry ID from the parent node so we never have to
+        // guess it from the component name in the iteration file comment.
+        // ComponentNode stores it as `componentId`; IterationNode stores it as `registryId`.
+        const inheritedRegistryId =
+          (sourceNode?.data?.componentId as string | undefined) ??
+          (sourceNode?.data?.registryId as string | undefined);
+
         newNodes.push({
           id: nodeId,
           type: 'iteration',
@@ -548,6 +556,8 @@ export default function PlaygroundCanvas() {
             filename: iter.filename,
             description: iter.description,
             parentNodeId: sourceNodeId,
+            parentSize,
+            registryId: inheritedRegistryId,
             onDelete: handleIterationDelete,
             onAdopt: handleIterationAdopt,
           },
@@ -690,8 +700,17 @@ export default function PlaygroundCanvas() {
             y: parentNode.position.y + targetRow * (cellH + gap),
           };
         } else {
-          // Default layout: centered horizontally below parent
-          position = calculateIterationPosition(parentNode, i, iterationCount);
+          // Dialog flow: center iterations horizontally below the parent,
+          // using actual measured node dimensions so nodes never overlap.
+          const GAP_H = 40;
+          const GAP_V = 60;
+          const parentCenterX = parentNode.position.x + cellW / 2;
+          const totalSpan = iterationCount * cellW + (iterationCount - 1) * GAP_H;
+          const startX = parentCenterX - totalSpan / 2;
+          position = {
+            x: startX + (i - 1) * (cellW + GAP_H),
+            y: parentNode.position.y + cellH + GAP_V,
+          };
         }
 
         const nodeId = getNodeId();
@@ -862,7 +881,7 @@ export default function PlaygroundCanvas() {
       window.removeEventListener(GENERATION_ERROR_EVENT, handleGenerationError as EventListener);
     };
     // Using refs for nodes and generationInfo so we don't need them in deps
-  }, [calculateIterationPosition, getNodeId, setNodes, setEdges, scanForIterations]);
+  }, [getNodeId, setNodes, setEdges, scanForIterations]);
 
   // ---------------------------------------------------------------------------
   // Drag-to-iterate handler
@@ -932,6 +951,20 @@ export default function PlaygroundCanvas() {
           DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
           defaultSkillPrompt || undefined,
         );
+      }
+
+      // Guard: prompt must be non-empty before we proceed
+      if (!prompt) {
+        window.dispatchEvent(
+          new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+            detail: {
+              componentId,
+              parentNodeId,
+              error: `Component "${componentId}" is not registered. Add it to the registry or re-run discovery before iterating.`,
+            },
+          }),
+        );
+        return;
       }
 
       // Dispatch generation start (creates skeleton nodes in grid layout)

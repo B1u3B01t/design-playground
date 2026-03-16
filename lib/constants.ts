@@ -142,9 +142,9 @@ export interface SizeConfigEntry {
 /** Viewport presets for previewing components at different device sizes */
 export const SIZE_CONFIG: Record<ComponentSize, SizeConfigEntry> = {
   default: { width: 0, height: 0, scale: 1, label: 'Auto' },
-  laptop:  { width: 1280, height: 720, scale: 0.6, label: 'Laptop' },
+  laptop:  { width: 1440, height: 900, scale: 0.6, label: 'Laptop' },
   tablet:  { width: 768, height: 1024, scale: 0.5, label: 'Tablet' },
-  mobile:  { width: 375, height: 812, scale: 0.7, label: 'Mobile' },
+  mobile:  { width: 393, height: 852, scale: 0.7, label: 'Mobile' },
 };
 
 /** Calculate display dimensions (scaled) for a given size preset */
@@ -324,6 +324,12 @@ export const TEMP_DIR_RELATIVE = '.playground-temp';
 
 /** Filename for the generation lockfile */
 export const GENERATION_LOCKFILE_FILENAME = 'generation.lock';
+
+/** Filename for the discovery scan lockfile */
+export const DISCOVERY_LOCKFILE_FILENAME = 'discovery.lock';
+
+/** Filename for the discovery manifest */
+export const DISCOVERY_MANIFEST_FILENAME = 'discovery.json';
 
 /** Regex pattern to validate iteration filenames (prevents directory traversal) */
 export const ITERATION_FILENAME_PATTERN = /^[A-Za-z0-9]+\.iteration-\d+\.tsx$/;
