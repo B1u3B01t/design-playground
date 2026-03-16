@@ -14,6 +14,7 @@
  *   customInstructionsSection: Optional custom instructions block provided by the user.
  */
 import { fillTemplate } from './utility';
+import { FILE_REGISTRATION_INSTRUCTIONS, PROPS_CONSTRAINT } from './shared-sections';
 
 const prompt = `
 {{skillSection}}
@@ -35,35 +36,25 @@ INSTRUCTIONS
 1. Read the generation guide: src/app/playground/docs/ITERATION-GUIDE.md
 2. Read the source component at the path above
 3. Understand its structure, props interface, and current design
-4. Generate {{iterationCount}} **compatible** variations (you may change both layout and visual design)
+4. Generate {{iterationCount}} **compatible** variations numbered {{iterationNumbersList}} (you may change both layout and visual design)
 5. For EACH variation you create:
-   - Save it as: src/app/playground/iterations/{{cleanComponentName}}.iteration-{n}.tsx
-   - Include the required metadata comment block with @iteration, @parent, optional @sourceIteration, and @description
-   - Immediately register that file in: src/app/playground/iterations/index.ts (map key MUST include ".tsx")
-   - Immediately add a matching entry to: src/app/playground/iterations/tree.json with parent set to "{{componentId}}"
+{{iterationSavesBlock}}
+${FILE_REGISTRATION_INSTRUCTIONS}
 
-{{customInstructionsSection}}CRITICAL REQUIREMENTS
-- **Props interface**: Keep it IDENTICAL to the original component (no added/removed/renamed props, no type changes).
-- **Iteration depth**: Follow the requested depth (Shell only, 1 level deep, or All levels).
-- **Tree manifest**: Update src/app/playground/iterations/tree.json for every new iteration file.
-- **Registry index**: Register every iteration in src/app/playground/iterations/index.ts with a ".tsx" map key.
+IMPORTANT
+- Iteration numbers MUST be {{iterationNumbersList}} — do NOT reuse existing iteration numbers
+{{customInstructionsSection}}
+CRITICAL REQUIREMENTS
+${PROPS_CONSTRAINT}
 
 CREATIVE LAYOUT & THEME FREEDOM
 - Explore bold, unconventional layouts: asymmetric grids, overlapping elements, unusual spacing, and creative alignments.
-- Feel free to iterate on visual design (colors, typography, spacing, badges, backgrounds) while staying within the existing Tailwind configuration.
+- {{stylingConstraint}}
 - Each iteration must be structurally and/or visually distinct from the original and from other iterations.
 
-QUALITY CHECKLIST (FOR EACH ITERATION)
-- [ ] Props interface unchanged from original
-- [ ] All imports resolve correctly with no TypeScript errors
-- [ ] Metadata comment included with correct @iteration/@parent (and @sourceIteration when applicable)
-- [ ] File named correctly: ComponentName.iteration-{n}.tsx
-- [ ] Uses only allowed Tailwind classes already present in the codebase
+{{qualityChecklist}}
 - [ ] Layout and/or visual design is meaningfully different and creatively structured
 - [ ] Iteration is distinct from all other iterations
-- [ ] Registered in iterations/index.ts with a ".tsx" key
-- [ ] Entry added/updated in iterations/tree.json with correct parent
-- [ ] @sourceIteration set when derived from another iteration
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -80,6 +71,10 @@ export interface IterationPromptVars {
   cleanComponentName: string;
   componentId: string;
   customInstructionsSection?: string;
+  stylingConstraint: string;
+  qualityChecklist: string;
+  iterationNumbersList: string;
+  iterationSavesBlock: string;
 }
 
 export function iterationPrompt(vars: IterationPromptVars): string {

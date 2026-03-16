@@ -1,5 +1,6 @@
 import { ComponentType } from 'react';
-import type { ComponentSize } from './lib/constants';
+import type { ComponentSize, CursorChatSubmitPayload, StylingMode } from './lib/constants';
+import { DEFAULT_STYLING_MODE } from './lib/constants';
 import PricingCard from './examples/PricingCard';
 import PricingPage from './examples/PricingPage';
 import {
@@ -10,6 +11,12 @@ import {
 import { iterationPrompt } from './prompts/iteration.prompt';
 import { iterationFromIterationPrompt } from './prompts/iteration-from-iteration.prompt';
 import { adoptIterationPrompt } from './prompts/adopt.prompt';
+import {
+  elementIterationPrompt,
+  elementIterationFromIterationPrompt,
+} from './prompts/element-iteration.prompt';
+import { formatElementSelectionsSection } from './prompts/utility';
+import { getStylingConstraint, getStylingQualityItem, getQualityChecklist } from './prompts/shared-sections';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -229,9 +236,11 @@ export const flatRegistry = flattenRegistry(registry);
 export function generateIterationPrompt(
   componentId: string,
   iterationCount: number = 4,
+  startNumber: number = 1,
   depth: 'shell' | '1-level' | 'all' = 'shell',
   customInstructions?: string,
   skillPrompt?: string,
+  stylingMode: StylingMode = DEFAULT_STYLING_MODE,
 ): string {
   const item = flatRegistry[componentId];
   if (!item) return '';
@@ -244,6 +253,15 @@ export function generateIterationPrompt(
   const customInstructionsSection = formatCustomInstructionsSection(customInstructions);
   const skillSection = formatSkillSection(skillPrompt);
 
+  const iterationNumbers = Array.from(
+    { length: iterationCount },
+    (_, i) => startNumber + i,
+  );
+
+  const iterationSavesBlock = iterationNumbers
+    .map((n) => `   - Save as src/app/playground/iterations/${cleanComponentName}.iteration-${n}.tsx`)
+    .join('\n');
+
   return iterationPrompt({
     skillSection,
     componentName,
@@ -255,6 +273,10 @@ export function generateIterationPrompt(
     cleanComponentName,
     componentId,
     customInstructionsSection,
+    stylingConstraint: getStylingConstraint(stylingMode),
+    qualityChecklist: getQualityChecklist(stylingMode),
+    iterationNumbersList: iterationNumbers.join(', '),
+    iterationSavesBlock,
   });
 }
 
@@ -270,6 +292,7 @@ export function generateIterationFromIterationPrompt(
   depth: 'shell' | '1-level' | 'all' = 'shell',
   customInstructions?: string,
   skillPrompt?: string,
+  stylingMode: StylingMode = DEFAULT_STYLING_MODE,
 ): string {
   const item = flatRegistry[componentId];
   if (!item) return '';
@@ -309,6 +332,114 @@ export function generateIterationFromIterationPrompt(
     customInstructionsSection,
     iterationNumbersList: iterationNumbers.join(', '),
     sourceIterationFilename,
+    stylingConstraint: getStylingConstraint(stylingMode),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Element-targeted iteration prompt generator
+// ---------------------------------------------------------------------------
+
+export function generateElementIterationPrompt(
+  componentId: string,
+  startNumber: number,
+  iterationCount: number,
+  depth: 'shell' | '1-level' | 'all' = 'all',
+  elementSelections: CursorChatSubmitPayload['elementSelections'],
+  customInstructions?: string,
+  skillPrompt?: string,
+  stylingMode: StylingMode = DEFAULT_STYLING_MODE,
+): string {
+  const item = flatRegistry[componentId];
+  if (!item) return '';
+
+  const componentName = item.label.replace(/\s*\(.*\)/, '');
+  const cleanComponentName = componentName.replace(/\s+/g, '');
+  const depthLabel = depth === 'shell' ? 'Shell only' : depth === '1-level' ? '1 level deep' : 'All levels';
+
+  const childrenSection = formatChildrenSection(item.children);
+  const customInstructionsSection = formatCustomInstructionsSection(customInstructions);
+  const skillSection = formatSkillSection(skillPrompt);
+  const elementSelectionsSection = formatElementSelectionsSection(elementSelections);
+
+  const iterationNumbers = Array.from(
+    { length: iterationCount },
+    (_, i) => startNumber + i,
+  );
+
+  const iterationSavesBlock = iterationNumbers
+    .map((n) => `   - Save as src/app/playground/iterations/${cleanComponentName}.iteration-${n}.tsx`)
+    .join('\n');
+
+  return elementIterationPrompt({
+    skillSection,
+    componentName,
+    sourcePath: item.sourcePath,
+    depthLabel,
+    childrenSection,
+    propsInterface: item.propsInterface,
+    cleanComponentName,
+    componentId,
+    customInstructionsSection,
+    elementSelectionsSection,
+    iterationCount: String(iterationCount),
+    iterationNumbersList: iterationNumbers.join(', '),
+    iterationSavesBlock,
+    stylingQualityItem: getStylingQualityItem(stylingMode),
+  });
+}
+
+export function generateElementIterationFromIterationPrompt(
+  componentId: string,
+  sourceIterationFilename: string,
+  startNumber: number,
+  iterationCount: number,
+  depth: 'shell' | '1-level' | 'all' = 'all',
+  elementSelections: CursorChatSubmitPayload['elementSelections'],
+  customInstructions?: string,
+  skillPrompt?: string,
+  stylingMode: StylingMode = DEFAULT_STYLING_MODE,
+): string {
+  const item = flatRegistry[componentId];
+  if (!item) return '';
+
+  const componentName = item.label.replace(/\s*\(.*\)/, '');
+  const cleanComponentName = componentName.replace(/\s+/g, '');
+  const depthLabel = depth === 'shell' ? 'Shell only' : depth === '1-level' ? '1 level deep' : 'All levels';
+  const iterationSourcePath = `src/app/playground/iterations/${sourceIterationFilename}`;
+
+  const childrenSection = formatChildrenSection(item.children);
+  const customInstructionsSection = formatCustomInstructionsSection(customInstructions);
+  const skillSection = formatSkillSection(skillPrompt);
+  const elementSelectionsSection = formatElementSelectionsSection(elementSelections);
+
+  const iterationNumbers = Array.from(
+    { length: iterationCount },
+    (_, i) => startNumber + i,
+  );
+
+  const iterationSavesBlock = iterationNumbers
+    .map((n) => `   - Save as src/app/playground/iterations/${cleanComponentName}.iteration-${n}.tsx`)
+    .join('\n');
+
+  return elementIterationFromIterationPrompt({
+    skillSection,
+    componentName,
+    sourcePath: item.sourcePath,
+    iterationSourcePath,
+    depthLabel,
+    childrenSection,
+    propsInterface: item.propsInterface,
+    cleanComponentName,
+    componentId,
+    customInstructionsSection,
+    elementSelectionsSection,
+    iterationCount: String(iterationCount),
+    iterationNumbersList: iterationNumbers.join(', '),
+    iterationSavesBlock,
+    treeParent: sourceIterationFilename,
+    sourceIterationFilename,
+    stylingQualityItem: getStylingQualityItem(stylingMode),
   });
 }
 

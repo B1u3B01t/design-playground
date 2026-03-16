@@ -5,6 +5,7 @@ import { useReactFlow, useOnViewportChange } from '@xyflow/react';
 import type { Node } from '@xyflow/react';
 import { loadSelectedModel, saveSelectedModel } from '../nodes/shared/IterateDialogParts';
 import type { ModelOption } from '../nodes/shared/IterateDialogParts';
+import { flatRegistry } from '../registry';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -186,7 +187,7 @@ export function useCursorChat(models: ModelOption[]) {
           return {
             nodeId: node.id,
             componentId: (node.data.componentId as string) || '',
-            componentName: (node.data.componentId as string) || '',
+            componentName: flatRegistry[(node.data.componentId as string)]?.label || (node.data.componentId as string) || '',
             type: 'component',
           };
         } else {

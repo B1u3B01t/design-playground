@@ -47,7 +47,8 @@ INSTRUCTIONS
 {{iterationSavesBlock}}
    - Immediately register that file in: src/app/playground/iterations/index.ts
    - Immediately add a matching entry to: src/app/playground/iterations/tree.json with parent set to "{{treeParent}}"
-{{customInstructionsSection}}IMPORTANT
+{{customInstructionsSection}}
+IMPORTANT
 - Use the BASE ITERATION as your starting point, NOT the original component
 - Each new variation should diverge from the base iteration in meaningful ways
 - Iteration numbers MUST be {{iterationNumbersList}} (continuing from existing iterations)
@@ -55,7 +56,7 @@ INSTRUCTIONS
 
 CONSTRAINTS
 - Keep props interface identical
-- Use only existing Tailwind classes
+- {{stylingConstraint}}
 - Include metadata comment in each file (with correct @iteration number AND @sourceIteration)
 - Make each iteration meaningfully different from the base and from each other
 
@@ -79,6 +80,7 @@ export interface IterationFromIterationPromptVars {
   customInstructionsSection?: string;
   iterationNumbersList: string;
   sourceIterationFilename: string;
+  stylingConstraint: string;
 }
 
 export function iterationFromIterationPrompt(

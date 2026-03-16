@@ -178,7 +178,22 @@ export const DEPTH_OPTIONS: { key: 'shell' | '1-level' | 'all'; label: string }[
 ];
 
 /** Default instructions used when the iterate chat is empty or drag-to-iterate is used */
-export const DEFAULT_EMPTY_ITERATION_INSTRUCTIONS = 'use inline css instead of tailwind. make the layout prfession, elements should not clash.';
+export const DEFAULT_EMPTY_ITERATION_INSTRUCTIONS = 'make the layout professional and polished. elements should not overlap or clash.';
+
+// ---------------------------------------------------------------------------
+// Styling Mode
+// ---------------------------------------------------------------------------
+
+export type StylingMode = 'tailwind' | 'inline-css';
+
+/** Default styling mode when no skill overrides it */
+export const DEFAULT_STYLING_MODE: StylingMode = 'tailwind';
+
+/** Styling mode options (for future UI dropdown) */
+export const STYLING_MODE_OPTIONS: { key: StylingMode; label: string }[] = [
+  { key: 'tailwind', label: 'Design System (Tailwind)' },
+  { key: 'inline-css', label: 'Creative (Inline CSS)' },
+];
 
 // ---------------------------------------------------------------------------
 // Fallback AI Models
@@ -373,7 +388,7 @@ export const TREE_COLUMN_WIDTH = 500;
 // ---------------------------------------------------------------------------
 
 /** Default iteration count when submitting via cursor chat */
-export const CURSOR_CHAT_DEFAULT_COUNT = 1;
+export const CURSOR_CHAT_DEFAULT_COUNT = 3;
 
 /** Default depth when submitting via cursor chat */
 export const CURSOR_CHAT_DEFAULT_DEPTH = 'all' as const;
@@ -382,13 +397,25 @@ export const CURSOR_CHAT_DEFAULT_DEPTH = 'all' as const;
 export interface CursorChatSubmitPayload {
   text: string;
   skillPrompts: string[];
+  skillIds: string[];
   model: string;
   targetNodeId: string | null;
   targetComponentId: string | null;
   targetComponentName: string | null;
   targetType: 'component' | 'iteration' | null;
   sourceFilename?: string;
+  iterationCount?: number;
   canvasPosition: { x: number; y: number };
+  elementSelections?: {
+    tagName: string;
+    displayName: string;
+    textContent: string;
+    cssSelector: string;
+    htmlSource: string;
+    ancestorComponents: string[];
+    nodeId: string;
+    componentName: string;
+  }[];
 }
 
 // ---------------------------------------------------------------------------

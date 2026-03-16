@@ -15,7 +15,8 @@ import type { PlaygroundSkill } from './skills';
 import { useAvailableModels } from './nodes/shared/IterateDialogParts';
 import { useCursorChat } from './hooks/useCursorChat';
 import { getModelIcon } from './lib/model-icons';
-import type { CursorChatSubmitPayload } from './lib/constants';
+import { ITERATION_COUNT_OPTIONS, CURSOR_CHAT_DEFAULT_COUNT, type CursorChatSubmitPayload } from './lib/constants';
+import type { SelectedElement } from './lib/element-context';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -24,6 +25,9 @@ import type { CursorChatSubmitPayload } from './lib/constants';
 interface CursorChatProps {
   isGenerating: boolean;
   onSubmit: (payload: CursorChatSubmitPayload) => Promise<void>;
+  selectedElements?: SelectedElement[];
+  onRemoveElement?: (index: number) => void;
+  onClearElements?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -43,9 +47,10 @@ function BracketIcon() {
 // CursorChat Component
 // ---------------------------------------------------------------------------
 
-export default function CursorChat({ isGenerating, onSubmit }: CursorChatProps) {
+export default function CursorChat({ isGenerating, onSubmit, selectedElements, onRemoveElement, onClearElements }: CursorChatProps) {
   const [segments, setSegments] = useState<Segment[]>([]);
   const [skills, setSkills] = useState<PlaygroundSkill[]>([]);
+  const [iterationCount, setIterationCount] = useState(CURSOR_CHAT_DEFAULT_COUNT);
   const inlineRefContainerRef = useRef<HTMLDivElement | null>(null);
 
   const { models, isLoading: isLoadingModels } = useAvailableModels();
@@ -57,6 +62,7 @@ export default function CursorChat({ isGenerating, onSubmit }: CursorChatProps) 
     flowPosition,
     containerRef,
     modeRef,
+    activate,
     deactivate,
     place,
     unplace,
@@ -119,49 +125,93 @@ export default function CursorChat({ isGenerating, onSubmit }: CursorChatProps) 
     }
   }, [mode, getInputEl]);
 
+  // Auto-open cursor chat when elements are selected while chat is inactive
+  const prevElementCountRef = useRef(0);
+  useEffect(() => {
+    const prevCount = prevElementCountRef.current;
+    const curCount = selectedElements?.length ?? 0;
+    prevElementCountRef.current = curCount;
+
+    // Only trigger when going from 0 to >0 elements
+    if (prevCount === 0 && curCount > 0 && modeRef.current === 'inactive') {
+      // Place the chat near the first selected element
+      const firstEl = selectedElements![0].element;
+      const rect = firstEl.getBoundingClientRect();
+      const clickX = rect.right + 8;
+      const clickY = rect.top;
+
+      // Resolve the hit node from the element
+      const hitNode = hitTestNode(rect.left + rect.width / 2, rect.top + rect.height / 2);
+
+      // Activate then immediately place
+      activate();
+      // Use rAF to ensure activate's state update has flushed
+      requestAnimationFrame(() => {
+        place(clickX, clickY, hitNode);
+      });
+    }
+  }, [selectedElements, modeRef, activate, place, hitTestNode]);
+
   // Extract text and skill prompts from segments
   const extractPayload = useCallback(() => {
     const textParts: string[] = [];
     const skillPrompts: string[] = [];
+    const skillIds: string[] = [];
 
     for (const segment of segments) {
       if (segment.type === 'text') {
         const trimmed = segment.value.trim();
         if (trimmed) textParts.push(trimmed);
       } else if (segment.type === 'reference') {
+        skillIds.push(segment.value);
         const skill = skillsById.get(segment.value);
         if (skill?.systemPrompt) skillPrompts.push(skill.systemPrompt);
       }
     }
 
-    return { text: textParts.join('\n').trim(), skillPrompts };
+    return { text: textParts.join('\n').trim(), skillPrompts, skillIds };
   }, [segments, skillsById]);
 
   // Submit handler
   const handleSubmit = useCallback(async () => {
-    const { text, skillPrompts } = extractPayload();
+    const { text, skillPrompts, skillIds } = extractPayload();
     if (!text && skillPrompts.length === 0) return;
 
     const payload: CursorChatSubmitPayload = {
       text,
       skillPrompts,
+      skillIds,
       model,
       targetNodeId: targetNode?.nodeId ?? null,
       targetComponentId: targetNode?.componentId ?? null,
       targetComponentName: targetNode?.componentName ?? null,
       targetType: targetNode?.type ?? null,
       sourceFilename: targetNode?.sourceFilename,
+      iterationCount,
       canvasPosition: flowPosition ?? { x: 0, y: 0 },
+      elementSelections: selectedElements && selectedElements.length > 0
+        ? selectedElements.map((sel) => ({
+            tagName: sel.context.tagName,
+            displayName: sel.context.displayName,
+            textContent: sel.context.textContent,
+            cssSelector: sel.context.cssSelector,
+            htmlSource: sel.context.htmlSource,
+            ancestorComponents: sel.context.ancestorComponents,
+            nodeId: sel.nodeId,
+            componentName: sel.componentName,
+          }))
+        : undefined,
     };
 
     // Clear and deactivate
     setSegments([]);
     const el = getInputEl();
     if (el) el.textContent = '';
+    onClearElements?.();
     deactivate();
 
     await onSubmit(payload);
-  }, [extractPayload, model, targetNode, flowPosition, deactivate, onSubmit, getInputEl]);
+  }, [extractPayload, model, iterationCount, targetNode, flowPosition, deactivate, onSubmit, getInputEl, selectedElements, onClearElements]);
 
   // Keyboard handling
   useEffect(() => {
@@ -181,6 +231,7 @@ export default function CursorChat({ isGenerating, onSubmit }: CursorChatProps) 
           setSegments([]);
           const el = getInputEl();
           if (el) el.textContent = '';
+          onClearElements?.();
           deactivate();
         }
         return;
@@ -205,7 +256,7 @@ export default function CursorChat({ isGenerating, onSubmit }: CursorChatProps) 
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [mode, modeRef, deactivate, unplace, cycleModel, handleSubmit, getInputEl]);
+  }, [mode, modeRef, deactivate, unplace, cycleModel, handleSubmit, getInputEl, onClearElements]);
 
   // Click handler for placement
   useEffect(() => {
@@ -282,7 +333,8 @@ export default function CursorChat({ isGenerating, onSubmit }: CursorChatProps) 
           position: 'absolute',
           top: '20px',
           left: '22px',
-          width: isPeek ? '260px' : '240px',
+          width: isPeek ? '260px' : undefined,
+          minWidth: isPeek ? undefined : '240px',
           opacity: isPeek ? 0.85 : 1,
           background: 'rgba(255, 255, 255, 0.97)',
           backdropFilter: 'blur(20px)',
@@ -296,7 +348,7 @@ export default function CursorChat({ isGenerating, onSubmit }: CursorChatProps) 
         }}
       >
         {/* Element chip — placed mode + target only */}
-        {isPlaced && targetNode && (
+        {isPlaced && targetNode && (!selectedElements || selectedElements.length === 0) && (
           <div
             className="flex items-center gap-1 px-1.5 py-px mb-1 self-start select-none"
             style={{
@@ -310,6 +362,46 @@ export default function CursorChat({ isGenerating, onSubmit }: CursorChatProps) 
           >
             <BracketIcon />
             <span>{targetNode.componentName}</span>
+          </div>
+        )}
+
+        {/* Selected element chips */}
+        {selectedElements && selectedElements.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1 mb-1">
+            {selectedElements.map((sel, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-1 px-1.5 py-px select-none group"
+                style={{
+                  background: 'rgb(239, 246, 255)',
+                  border: '1px solid rgb(147, 197, 253)',
+                  borderRadius: '12px',
+                  color: 'rgb(59, 130, 246)',
+                  fontSize: '9px',
+                  fontWeight: 500,
+                }}
+              >
+                <BracketIcon />
+                <span>&lt;{sel.context.tagName}&gt; {sel.componentName}</span>
+                {onRemoveElement && (
+                  <button
+                    onClick={() => onRemoveElement(i)}
+                    className="ml-0.5 hover:text-red-500 transition-colors pointer-events-auto"
+                    style={{ lineHeight: 1 }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+            {selectedElements.length >= 2 && onClearElements && (
+              <button
+                onClick={onClearElements}
+                className="px-1.5 py-px text-[9px] text-stone-400 hover:text-stone-600 transition-colors pointer-events-auto select-none"
+              >
+                × clear
+              </button>
+            )}
           </div>
         )}
 
@@ -378,19 +470,36 @@ export default function CursorChat({ isGenerating, onSubmit }: CursorChatProps) 
 
         {/* Footer — placed mode only */}
         {isPlaced && (
-          <div className="flex items-center justify-between mt-1 pt-1">
+          <div className="flex items-center justify-between mt-1 pt-1 gap-2 whitespace-nowrap">
             <button
               onClick={cycleModel}
-              className="inline-flex items-center gap-1 px-1.5 py-px text-[9px] font-medium select-none transition-colors hover:bg-stone-100"
+              className="inline-flex items-center gap-1 px-1.5 py-px text-[9px] font-medium select-none transition-colors hover:bg-stone-100 whitespace-nowrap"
               style={{
                 background: 'transparent',
                 borderRadius: '6px',
                 color: 'rgb(87, 83, 78)',
               }}
             >
-              @{modelLabel}
+              {modelLabel}
               <span style={{ opacity: 0.5 }}>Shift+Tab</span>
             </button>
+            
+            
+            <div className="flex items-center gap-0.5 bg-stone-50 rounded-full px-1 py-0.2 border border-stone-100">
+              {(ITERATION_COUNT_OPTIONS as readonly number[]).map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setIterationCount(n)}
+                  className={`w-5 h-5 flex items-center justify-center rounded-full text-[8px] font-medium transition-colors ${
+                    iterationCount === n
+                      ? 'bg-stone-800 text-white'
+                      : 'text-stone-500 hover:text-stone-800'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
             <button
               onClick={handleSubmit}
               className="flex items-center justify-center transition-colors hover:bg-stone-300"

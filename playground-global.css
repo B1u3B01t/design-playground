@@ -225,39 +225,64 @@
 
 .presence-bubble {
   position: relative;
-  width: 40px;
-  height: 40px;
+  width: 30px;
+  height: 30px;
   flex-shrink: 0;
   cursor: pointer;
   transition: transform 0.15s ease;
 }
 
 .presence-bubble:hover {
-  transform: scale(1.1);
+  transform: scale(1.08);
 }
 
 .presence-bubble-face {
-  width: 100%;
-  height: 100%;
-  border-radius: 50% 50% 50% 5px;
+  position: relative;
+  z-index: 1;
+  width: calc(100% - 6px);
+  height: calc(100% - 6px);
+  margin: 3px;
+  border-radius: 50% 50% 50% 3px;
   background: #1c1917;
   background-size: 60%;
   background-position: center;
   background-repeat: no-repeat;
-  outline: 3px solid rgba(255, 255, 255, 0.9);
   box-shadow:
-    0 4px 14px rgba(0, 0, 0, 0.3),
-    inset 0 -4px 8px 0 rgba(0, 0, 0, 0.15),
-    inset 0 4px 6px 0 rgba(255, 255, 255, 0.08);
+    0 1px 4px rgba(0, 0, 0, 0.18),
+    inset 0 -2px 4px 0 rgba(0, 0, 0, 0.12);
 }
 
+/* Idle state: subtle border */
+.presence-bubble:not(:has(.presence-bubble-spinner)) .presence-bubble-face {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border-radius: 50% 50% 50% 4px;
+  outline: 2px solid rgba(255, 255, 255, 0.9);
+}
+
+/* Spinning gradient ring behind the face */
 .presence-bubble-spinner {
   position: absolute;
-  inset: -3px;
-  border: 2px solid transparent;
-  border-top-color: white;
-  border-radius: 50%;
-  animation: presence-spin 0.8s linear infinite;
+  inset: 0;
+  border-radius: 50% 50% 50% 3px;
+  overflow: hidden;
+  background: rgba(120, 113, 108, 0.3);
+}
+
+.presence-bubble-spinner::before {
+  content: '';
+  position: absolute;
+  inset: -50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    transparent 40%,
+    rgba(168, 162, 158, 0.6) 60%,
+    rgba(255, 255, 255, 0.85) 80%,
+    #ffffff 100%
+  );
+  animation: presence-spin 0.9s linear infinite;
 }
 
 @keyframes presence-spin {
@@ -266,14 +291,14 @@
 
 .presence-bubble-dot {
   position: absolute;
-  bottom: -2px;
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: 0px;
+  right: 0px;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: #22c55e;
   border: 1.5px solid white;
+  z-index: 2;
 }
 
 /* Inline-reference placeholder — rendered as ::before so it naturally
@@ -283,5 +308,13 @@
   color: var(--muted-foreground);
   pointer-events: none;
   user-select: none;
+}
+
+/* Element selection mode — override all cursors when Alt is held */
+.element-select-mode,
+.element-select-mode *,
+.element-select-mode .react-flow__node,
+.element-select-mode .react-flow__node * {
+  cursor: crosshair !important;
 }
 

@@ -39,3 +39,51 @@ ${skillPrompt.trim()}
 `;
 }
 
+export function formatElementSelectionsSection(
+  elements?: {
+    tagName: string;
+    displayName: string;
+    textContent: string;
+    cssSelector: string;
+    htmlSource: string;
+    ancestorComponents: string[];
+    nodeId: string;
+    componentName: string;
+  }[],
+): string {
+  if (!elements || elements.length === 0) return '';
+
+  const lines: string[] = [
+    'TARGETED ELEMENTS',
+    '══════════════════',
+    '',
+  ];
+
+  for (let i = 0; i < elements.length; i++) {
+    const el = elements[i];
+    lines.push(`Element ${i + 1}: <${el.tagName}> in ${el.componentName}`);
+
+    if (el.textContent) {
+      lines.push(`- Text: "${el.textContent}"`);
+    }
+
+    if (el.cssSelector) {
+      lines.push(`- Selector: ${el.cssSelector}`);
+    }
+
+    if (el.htmlSource) {
+      lines.push(`- HTML: ${el.htmlSource}`);
+    }
+
+    if (el.ancestorComponents.length > 0) {
+      lines.push(`- Component ancestry: ${el.ancestorComponents.join(' > ')}`);
+    }
+
+    lines.push('');
+  }
+
+  lines.push('Focus your changes on these specific elements while keeping the rest of the component intact.');
+
+  return lines.join('\n');
+}
+

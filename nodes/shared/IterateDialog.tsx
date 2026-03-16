@@ -188,9 +188,9 @@ export default function IterateDialog({
     return { customInstructionsText, skillPrompt: skillPromptText };
   }, [segments, skillsById, getDefaultSkillPrompt]);
 
-  // Fetch max iteration number when panel opens (iteration-from-iteration)
+  // Fetch max iteration number when panel opens
   useEffect(() => {
-    if (!open || !isFromIteration) {
+    if (!open) {
       setStartNumber(null);
       return;
     }
@@ -202,7 +202,8 @@ export default function IterateDialog({
         const { iterations } = (await response.json()) as {
           iterations: { filename: string; componentName: string; iterationNumber: number }[];
         };
-        const componentIterations = iterations.filter(i => i.componentName === componentName);
+        const cleanName = componentName.replace(/\s+/g, '');
+        const componentIterations = iterations.filter(i => i.componentName === cleanName);
         const maxNumber = componentIterations.reduce((max, i) => Math.max(max, i.iterationNumber), 0);
         setStartNumber(maxNumber + 1);
       } catch {
@@ -212,11 +213,11 @@ export default function IterateDialog({
       }
     };
     fetchMaxIteration();
-  }, [open, isFromIteration, componentName]);
+  }, [open, componentName]);
 
   const generatedPrompt = useMemo(() => {
+    if (startNumber === null) return '';
     if (isFromIteration) {
-      if (startNumber === null) return '';
       return generateIterationFromIterationPrompt(
         componentId,
         sourceFilename!,
@@ -230,6 +231,7 @@ export default function IterateDialog({
     return generateIterationPrompt(
       componentId,
       iterationCount,
+      startNumber,
       depth,
       customInstructionsText,
       skillPrompt,
@@ -257,8 +259,8 @@ export default function IterateDialog({
   }, []);
 
   const handleDefaultCopy = useCallback(async () => {
-    await handleCopyPrompt(generateIterationPrompt(componentId, 4, 'shell', undefined));
-  }, [componentId, handleCopyPrompt]);
+    await handleCopyPrompt(generateIterationPrompt(componentId, 4, startNumber ?? 1, 'shell', undefined));
+  }, [componentId, startNumber, handleCopyPrompt]);
 
   const handleRunWithCursor = async () => {
     if (!parentNodeId) return;

@@ -143,10 +143,10 @@ function createPillElement(
   }
   pill.contentEditable = "false"
   pill.className =
-    "inline-reference-pill inline-flex items-center gap-0.5 rounded-sm bg-accent/50 border border-accent px-1.5 py-0.5 text-sm font-medium align-baseline mx-0.5 select-all whitespace-nowrap"
+    "inline-reference-pill inline-flex items-center gap-0.5 rounded-sm bg-accent/50 border border-accent px-1.5 py-0.5 align-baseline mx-0.5 select-all whitespace-nowrap"
 
   const labelSpan = document.createElement("span")
-  labelSpan.textContent = `${segment.trigger}${segment.label}`
+  labelSpan.textContent = segment.label
   labelSpan.className = "pointer-events-none"
   pill.appendChild(labelSpan)
 
