@@ -223,6 +223,16 @@
    Presence Bubbles (Header)
    --------------------------------------------------------------------------- */
 
+.presence-bubble-stack {
+  display: flex;
+  align-items: center;
+  margin-left: 6px;
+}
+
+.presence-bubble-stack .presence-bubble + .presence-bubble {
+  margin-left: -10px;
+}
+
 .presence-bubble {
   position: relative;
   width: 30px;
@@ -252,13 +262,28 @@
     inset 0 -2px 4px 0 rgba(0, 0, 0, 0.12);
 }
 
-/* Idle state: subtle border */
-.presence-bubble:not(:has(.presence-bubble-spinner)) .presence-bubble-face {
+/* Done state: full-size face with subtle border */
+.presence-bubble[data-status="done"] .presence-bubble-face {
   width: 100%;
   height: 100%;
   margin: 0;
   border-radius: 50% 50% 50% 4px;
   outline: 2px solid rgba(255, 255, 255, 0.9);
+}
+
+/* Queued state: same size as generating but with a static muted ring */
+.presence-bubble[data-status="queued"] .presence-bubble-face {
+  width: calc(100% - 6px);
+  height: calc(100% - 6px);
+  margin: 3px;
+}
+
+.presence-bubble[data-status="queued"]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50% 50% 50% 3px;
+  background: rgba(120, 113, 108, 0.3);
 }
 
 /* Spinning gradient ring behind the face */

@@ -28,6 +28,9 @@ export const GENERATION_COMPLETE_EVENT = 'playground:generation-complete';
 /** Fired when generation encounters an error */
 export const GENERATION_ERROR_EVENT = 'playground:generation-error';
 
+/** Fired when a generation request is queued behind an in-progress generation */
+export const GENERATION_QUEUED_EVENT = 'playground:generation-queued';
+
 /** Fired to pan the canvas to a specific flow position */
 export const PAN_TO_POSITION_EVENT = 'playground:pan-to-position';
 
@@ -457,6 +460,13 @@ export interface GenerationErrorPayload {
   componentId: string;
   parentNodeId: string;
   error: string;
+}
+
+/** Payload for GENERATION_QUEUED_EVENT */
+export interface GenerationQueuedPayload {
+  componentId: string;
+  model: string;
+  flowPosition: { x: number; y: number } | null;
 }
 
 /** Payload for DRAG_ITERATE_EVENT */
