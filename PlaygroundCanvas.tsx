@@ -36,6 +36,8 @@ import DragGhostNode from './nodes/DragGhostNode';
 import {
   generateIterationPrompt,
   generateIterationFromIterationPrompt,
+  generateElementIterationPrompt,
+  generateElementIterationFromIterationPrompt,
 } from './registry';
 import { loadSelectedModel } from './nodes/shared/IterateDialogParts';
 import {
@@ -53,6 +55,7 @@ import {
   ARRANGE_START_X,
   ARRANGE_START_Y,
   ARRANGE_VERTICAL_GAP,
+  ARRANGE_HORIZONTAL_GAP,
   ARRANGE_GROUP_GAP,
   DEFAULT_ITERATION_NODE_WIDTH,
   DEFAULT_ITERATION_NODE_HEIGHT,
@@ -77,15 +80,25 @@ import {
   CANVAS_MIN_ZOOM,
   ITERATION_COLLAPSE_TOGGLE_EVENT,
   PLAYGROUND_CLEAR_EVENT,
+  PAN_TO_POSITION_EVENT,
   TREE_COLUMN_WIDTH,
   DRAG_GHOST_GAP,
   DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
+  DEFAULT_STYLING_MODE,
+  CURSOR_CHAT_DEFAULT_COUNT,
+  CURSOR_CHAT_DEFAULT_DEPTH,
+  type StylingMode,
   type GenerationStartPayload,
   type GenerationCompletePayload,
   type GenerationErrorPayload,
   type DragIteratePayload,
+  type CursorChatSubmitPayload,
 } from './lib/constants';
 import type { PlaygroundSkill } from './skills';
+import CursorChat from './CursorChat';
+import ElementHighlight from './ElementHighlight';
+import { useElementSelection } from './hooks/useElementSelection';
+import { toast } from 'sonner';
 
 const nodeTypes = {
   component: ComponentNode,
@@ -185,6 +198,8 @@ interface GenerationInfo {
   iterationCount: number;
   skeletonNodeIds: string[];
   startTime: number; // Timestamp when generation started
+  /** Skeleton positions for post-generation repositioning (always set) */
+  skeletonPositions?: { x: number; y: number }[];
   /** Grid layout positions for each skeleton node (ordered by variant number) */
   gridPositions?: { x: number; y: number }[];
   /** Parent node cell size so real iteration nodes can match ghost/skeleton sizing */
@@ -243,7 +258,7 @@ export default function PlaygroundCanvas() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialState?.nodes || []);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialState?.edges || []);
-  const { screenToFlowPosition, fitView } = useReactFlow();
+  const { screenToFlowPosition, fitView, setCenter } = useReactFlow();
 
   // Running timer during generation + safety timeout for orphaned skeletons
   useEffect(() => {
@@ -377,6 +392,39 @@ export default function PlaygroundCanvas() {
     return nodesRef.current.find(
       (n) => (n.type === 'iteration') && (n.data.filename as string) === filename,
     );
+  }, []);
+
+  // Calculate position for iteration node
+  const calculateIterationPosition = useCallback((parentNode: Node, iterationNumber: number, totalIterations: number): { x: number; y: number } => {
+    const parentX = parentNode.position.x;
+    const parentY = parentNode.position.y;
+    const parentW = parentNode.measured?.width ?? (parentNode.type === 'component' ? DEFAULT_COMPONENT_NODE_WIDTH : DEFAULT_ITERATION_NODE_WIDTH);
+
+    // Find existing child nodes (iterations + skeletons) of this parent
+    const existingChildren = nodesRef.current.filter(
+      n =>
+        (n.type === 'iteration' || n.type === 'skeleton') &&
+        n.data.parentNodeId === parentNode.id
+    );
+
+    // Place to the right of the parent, or after the rightmost existing child
+    let startX: number;
+    if (existingChildren.length > 0) {
+      const rightmostEdge = Math.max(
+        ...existingChildren.map(n => {
+          const w = n.measured?.width ?? DEFAULT_ITERATION_NODE_WIDTH;
+          return n.position.x + w;
+        })
+      );
+      startX = rightmostEdge + ARRANGE_HORIZONTAL_GAP;
+    } else {
+      startX = parentX + parentW + ARRANGE_HORIZONTAL_GAP;
+    }
+
+    return {
+      x: startX + (iterationNumber - 1) * ITERATION_HORIZONTAL_SPACING,
+      y: parentY,
+    };
   }, []);
 
   // Handle iteration deletion callback
@@ -707,6 +755,7 @@ export default function PlaygroundCanvas() {
         iterationCount,
         skeletonNodeIds,
         startTime: Date.now(),
+        skeletonPositions: skeletonNodes.map(n => ({ x: n.position.x, y: n.position.y })),
         gridPositions: gridLayout
           ? skeletonNodes.map(n => ({ x: n.position.x, y: n.position.y }))
           : undefined,
@@ -733,8 +782,8 @@ export default function PlaygroundCanvas() {
         setLastGenerationDuration(formatted);
       }
 
-      // Capture grid positions before clearing generation state
-      const savedGridPositions = info?.gridPositions;
+      // Capture skeleton positions before clearing generation state
+      const savedPositions = info?.skeletonPositions ?? info?.gridPositions;
       const savedParentNodeId = info?.parentNodeId;
 
       // Remove skeleton nodes
@@ -755,9 +804,9 @@ export default function PlaygroundCanvas() {
         const nodesBefore = new Set(nodesRef.current.map(n => n.id));
         await scanForIterations(false);
 
-        if (savedGridPositions && savedParentNodeId) {
-          // Drag-to-iterate: reposition newly created iteration nodes to match
-          // the grid layout where ghost/skeleton nodes were displayed.
+        if (savedPositions && savedParentNodeId) {
+          // Reposition newly created iteration nodes to match
+          // where skeleton nodes were displayed.
           // Use a short delay to let React process the state update from scanForIterations.
           setTimeout(() => {
             const newNodes = nodesRef.current.filter(
@@ -774,8 +823,8 @@ export default function PlaygroundCanvas() {
               setNodes(nds =>
                 nds.map(n => {
                   const idx = sorted.findIndex(sn => sn.id === n.id);
-                  if (idx !== -1 && idx < savedGridPositions.length) {
-                    return { ...n, position: savedGridPositions[idx] };
+                  if (idx !== -1 && idx < savedPositions.length) {
+                    return { ...n, position: savedPositions[idx] };
                   }
                   return n;
                 }),
@@ -852,22 +901,28 @@ export default function PlaygroundCanvas() {
       let prompt: string;
       const defaultSkillPrompt = await loadDefaultSkillPrompt();
 
+      // Fetch next available iteration number
+      // Compare with spaces stripped since filenames use "PricingCard" not "Pricing Card"
+      const cleanName = componentName.replace(/\s+/g, '');
+      let startNumber = 1;
+      try {
+        const response = await fetch('/playground/api/iterations');
+        if (response.ok) {
+          const { iterations } = await response.json();
+          const componentIterations = iterations.filter(
+            (i: { componentName: string }) => i.componentName === cleanName
+          );
+          const maxNumber = componentIterations.reduce(
+            (max: number, i: { iterationNumber: number }) =>
+              Math.max(max, i.iterationNumber),
+            0
+          );
+          startNumber = maxNumber + 1;
+        }
+      } catch { /* use default */ }
+
       if (sourceFilename) {
         try {
-          const response = await fetch('/playground/api/iterations');
-          let startNumber = 1;
-          if (response.ok) {
-            const { iterations } = await response.json();
-            const componentIterations = iterations.filter(
-              (i: { componentName: string }) => i.componentName === componentName
-            );
-            const maxNumber = componentIterations.reduce(
-              (max: number, i: { iterationNumber: number }) =>
-                Math.max(max, i.iterationNumber),
-              0
-            );
-            startNumber = maxNumber + 1;
-          }
           prompt = generateIterationFromIterationPrompt(
             componentId,
             sourceFilename,
@@ -881,6 +936,7 @@ export default function PlaygroundCanvas() {
           prompt = generateIterationPrompt(
             componentId,
             iterationCount,
+            startNumber,
             'shell',
             DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
             defaultSkillPrompt || undefined,
@@ -890,6 +946,7 @@ export default function PlaygroundCanvas() {
         prompt = generateIterationPrompt(
           componentId,
           iterationCount,
+          startNumber,
           'shell',
           DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
           defaultSkillPrompt || undefined,
@@ -984,7 +1041,269 @@ export default function PlaygroundCanvas() {
     return () => window.removeEventListener(DRAG_ITERATE_EVENT, listener);
   }, []);
 
+  // ---------------------------------------------------------------------------
+  // Cursor Chat submit handler + queue
+  // ---------------------------------------------------------------------------
+  const elementSelection = useElementSelection();
+  const generationQueueRef = useRef<CursorChatSubmitPayload[]>([]);
+
+  const handleCursorChatSubmit = useCallback(async (payload: CursorChatSubmitPayload) => {
+    // If generation already in progress, queue it
+    if (isGenerating) {
+      generationQueueRef.current.push(payload);
+      toast('Queued — will run after current generation', { duration: 3000 });
+      return;
+    }
+
+    const {
+      text,
+      skillPrompts,
+      model: payloadModel,
+      targetNodeId,
+      targetComponentId,
+      targetComponentName,
+      targetType,
+      sourceFilename,
+    } = payload;
+
+    // Combine skill prompts
+    let combinedSkillPrompt: string | undefined;
+    if (skillPrompts.length > 0) {
+      combinedSkillPrompt = skillPrompts.join('\n\n');
+    } else {
+      // Use default skills when no explicit skills selected
+      const defaultPrompt = await loadDefaultSkillPrompt();
+      combinedSkillPrompt = defaultPrompt || undefined;
+    }
+
+    const customInstructions = text || DEFAULT_EMPTY_ITERATION_INSTRUCTIONS;
+    const hasElementSelections = (payload.elementSelections?.length ?? 0) > 0;
+    const stylingMode: StylingMode = payload.skillIds?.includes('no-bound-explore')
+      ? 'inline-css' : DEFAULT_STYLING_MODE;
+
+    if (targetNodeId && targetComponentId && targetComponentName && targetType) {
+      // --- WITH TARGET NODE ---
+      let prompt: string;
+      const componentId = targetComponentId;
+      const componentName = targetComponentName;
+      const iterationCount = payload.iterationCount ?? CURSOR_CHAT_DEFAULT_COUNT;
+
+      // Fetch next available iteration number once for all paths
+      // Compare with spaces stripped since filenames use "PricingCard" not "Pricing Card"
+      const cleanName = componentName.replace(/\s+/g, '');
+      let startNumber = 1;
+      try {
+        const response = await fetch('/playground/api/iterations');
+        if (response.ok) {
+          const { iterations } = await response.json();
+          const componentIterations = iterations.filter(
+            (i: { componentName: string }) => i.componentName === cleanName
+          );
+          const maxNumber = componentIterations.reduce(
+            (max: number, i: { iterationNumber: number }) =>
+              Math.max(max, i.iterationNumber),
+            0
+          );
+          startNumber = maxNumber + 1;
+        }
+      } catch { /* use default */ }
+
+      if (targetType === 'iteration' && sourceFilename) {
+        // Iterate from iteration
+        if (hasElementSelections) {
+          prompt = generateElementIterationFromIterationPrompt(
+            componentId,
+            sourceFilename,
+            startNumber,
+            iterationCount,
+            CURSOR_CHAT_DEFAULT_DEPTH,
+            payload.elementSelections,
+            customInstructions,
+            combinedSkillPrompt,
+            stylingMode,
+          );
+        } else {
+          prompt = generateIterationFromIterationPrompt(
+            componentId,
+            sourceFilename,
+            iterationCount,
+            startNumber,
+            CURSOR_CHAT_DEFAULT_DEPTH,
+            customInstructions,
+            combinedSkillPrompt,
+            stylingMode,
+          );
+        }
+      } else {
+        // Component iteration
+        if (hasElementSelections) {
+          prompt = generateElementIterationPrompt(
+            componentId,
+            startNumber,
+            iterationCount,
+            CURSOR_CHAT_DEFAULT_DEPTH,
+            payload.elementSelections,
+            customInstructions,
+            combinedSkillPrompt,
+            stylingMode,
+          );
+        } else {
+          prompt = generateIterationPrompt(
+            componentId,
+            iterationCount,
+            startNumber,
+            CURSOR_CHAT_DEFAULT_DEPTH,
+            customInstructions,
+            combinedSkillPrompt,
+            stylingMode,
+          );
+        }
+      }
+
+      // Dispatch generation start (creates skeleton nodes)
+      window.dispatchEvent(
+        new CustomEvent<GenerationStartPayload>(GENERATION_START_EVENT, {
+          detail: {
+            componentId,
+            componentName,
+            parentNodeId: targetNodeId,
+            iterationCount,
+            model: payloadModel || undefined,
+            flowPosition: payload.canvasPosition,
+          },
+        }),
+      );
+
+      // Call the generate API
+      try {
+        const response = await fetch('/playground/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt,
+            componentId,
+            iterationCount,
+            model: payloadModel || undefined,
+          }),
+        });
+
+        let data;
+        try {
+          data = await response.json();
+        } catch {
+          window.dispatchEvent(
+            new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+              detail: { componentId, parentNodeId: targetNodeId, error: 'Failed to parse response' },
+            }),
+          );
+          return;
+        }
+
+        if (!response.ok || !data.success) {
+          const error = typeof data?.error === 'string' ? data.error : 'Generation failed';
+          window.dispatchEvent(
+            new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+              detail: { componentId, parentNodeId: targetNodeId, error },
+            }),
+          );
+        } else {
+          window.dispatchEvent(
+            new CustomEvent<GenerationCompletePayload>(GENERATION_COMPLETE_EVENT, {
+              detail: { componentId, parentNodeId: targetNodeId, output: '' },
+            }),
+          );
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        window.dispatchEvent(
+          new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+            detail: { componentId, parentNodeId: targetNodeId, error: msg },
+          }),
+        );
+      }
+    } else {
+      // --- FREEFORM (no target) ---
+      // Manage isGenerating directly — do NOT dispatch GENERATION_START_EVENT
+      // because the event handler requires a valid parentNodeId to find a parent node.
+      const freeformInfo: GenerationInfo = {
+        componentId: 'cursor-chat-freeform',
+        componentName: 'Freeform',
+        parentNodeId: '',
+        iterationCount: 0,
+        skeletonNodeIds: [],
+        startTime: Date.now(),
+      };
+      generationInfoRef.current = freeformInfo;
+      setIsGenerating(true);
+      setGenerationInfo(freeformInfo);
+
+      try {
+        const response = await fetch('/playground/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: customInstructions,
+            componentId: 'cursor-chat-freeform',
+            iterationCount: 0,
+            model: payloadModel || undefined,
+          }),
+        });
+
+        const data = await response.json().catch(() => ({ success: false }));
+        if (!response.ok || !data.success) {
+          console.error('[CursorChat] Freeform generation failed:', data?.error);
+        }
+      } catch (err) {
+        console.error('[CursorChat] Freeform generation error:', err);
+      } finally {
+        generationInfoRef.current = null;
+        setIsGenerating(false);
+        setGenerationInfo(null);
+
+        // Drain queue
+        setTimeout(() => {
+          if (generationQueueRef.current.length > 0) {
+            const next = generationQueueRef.current.shift()!;
+            handleCursorChatSubmit(next);
+          }
+        }, POST_GENERATION_SCAN_DELAY + 500);
+      }
+    }
+  }, [isGenerating, setIsGenerating, setGenerationInfo, scanForIterations]);
+
+  // Also drain queue after normal generation completes
+  // (hook into generation complete/error to check queue)
+  useEffect(() => {
+    const drainQueue = () => {
+      setTimeout(() => {
+        if (generationQueueRef.current.length > 0) {
+          const next = generationQueueRef.current.shift()!;
+          handleCursorChatSubmit(next);
+        }
+      }, POST_GENERATION_SCAN_DELAY + 500);
+    };
+
+    window.addEventListener(GENERATION_COMPLETE_EVENT, drainQueue);
+    window.addEventListener(GENERATION_ERROR_EVENT, drainQueue);
+    return () => {
+      window.removeEventListener(GENERATION_COMPLETE_EVENT, drainQueue);
+      window.removeEventListener(GENERATION_ERROR_EVENT, drainQueue);
+    };
+  }, [handleCursorChatSubmit]);
+
   // Fullscreen fitView behavior is no longer used; nodes open in a new tab instead
+
+  // Pan-to-position event listener (for presence bubble clicks)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ x: number; y: number }>).detail;
+      if (detail?.x != null && detail?.y != null) {
+        setCenter(detail.x, detail.y, { duration: 400, zoom: 1 });
+      }
+    };
+    window.addEventListener(PAN_TO_POSITION_EVENT, handler);
+    return () => window.removeEventListener(PAN_TO_POSITION_EVENT, handler);
+  }, [setCenter]);
 
   const onConnect = useCallback(
     (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
@@ -1479,6 +1798,24 @@ export default function PlaygroundCanvas() {
           color={BACKGROUND_COLOR}
         />
       </ReactFlow>
+
+      {/* Element selection highlights */}
+      <ElementHighlight
+        isAltHeld={elementSelection.isAltHeld}
+        hoveredElement={elementSelection.hoveredElement}
+        hoveredRect={elementSelection.hoveredRect}
+        hoveredInfo={elementSelection.hoveredInfo}
+        selectedElements={elementSelection.selectedElements}
+      />
+
+      {/* Cursor Chat overlay */}
+      <CursorChat
+        isGenerating={isGenerating}
+        onSubmit={handleCursorChatSubmit}
+        selectedElements={elementSelection.selectedElements}
+        onRemoveElement={(idx) => elementSelection.removeElement(idx)}
+        onClearElements={elementSelection.clearSelection}
+      />
 
       {/* Clear canvas confirmation dialog */}
       <AlertDialog open={showClearDialog} onOpenChange={setShowClearDialog}>

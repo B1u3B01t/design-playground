@@ -143,10 +143,10 @@ function createPillElement(
   }
   pill.contentEditable = "false"
   pill.className =
-    "inline-reference-pill inline-flex items-center gap-0.5 rounded-sm bg-accent/50 border border-accent px-1.5 py-0.5 text-sm font-medium align-baseline mx-0.5 select-all whitespace-nowrap"
+    "inline-reference-pill inline-flex items-center gap-0.5 rounded-sm bg-accent/50 border border-accent px-1.5 py-0.5 align-baseline mx-0.5 select-all whitespace-nowrap"
 
   const labelSpan = document.createElement("span")
-  labelSpan.textContent = `${segment.trigger}${segment.label}`
+  labelSpan.textContent = segment.label
   labelSpan.className = "pointer-events-none"
   pill.appendChild(labelSpan)
 
@@ -582,40 +582,32 @@ function InlineReferenceInput({
   const isOpen = triggerState !== null
 
   return (
-    <div className="relative" data-slot="inline-reference-input-wrapper">
-      <div
-        ref={inputRef}
-        data-slot="inline-reference-input"
-        contentEditable
-        suppressContentEditableWarning
-        role="combobox"
-        aria-expanded={isOpen}
-        aria-autocomplete="list"
-        aria-controls={isOpen ? listId : undefined}
-        aria-haspopup="listbox"
-        className={cn(
-          "border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 min-h-[80px] w-full rounded-md border bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
-          "whitespace-pre-wrap wrap-break-word",
-          className
-        )}
-        data-placeholder={placeholder}
-        onInput={handleInput}
-        onKeyDown={handleKeyDown}
-        onPaste={handlePaste}
-        onCompositionStart={handleCompositionStart}
-        onCompositionEnd={handleCompositionEnd}
-        onBlur={handleBlur}
-        {...props}
-      />
-      {isEmpty && placeholder && (
-        <div
-          className="pointer-events-none absolute left-3 top-2 text-muted-foreground text-base md:text-sm select-none"
-          aria-hidden
-        >
-          {placeholder}
-        </div>
+    <div
+      ref={inputRef}
+      data-slot="inline-reference-input"
+      contentEditable
+      suppressContentEditableWarning
+      role="combobox"
+      aria-expanded={isOpen}
+      aria-autocomplete="list"
+      aria-controls={isOpen ? listId : undefined}
+      aria-haspopup="listbox"
+      className={cn(
+        "border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 w-full rounded-md border bg-transparent px-3 py-2 shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50",
+        "whitespace-pre-wrap wrap-break-word",
+        "inline-reference-input",
+        className
       )}
-    </div>
+      data-placeholder={placeholder}
+      data-empty={isEmpty || undefined}
+      onInput={handleInput}
+      onKeyDown={handleKeyDown}
+      onPaste={handlePaste}
+      onCompositionStart={handleCompositionStart}
+      onCompositionEnd={handleCompositionEnd}
+      onBlur={handleBlur}
+      {...props}
+    />
   )
 }
 

@@ -28,6 +28,9 @@ export const GENERATION_COMPLETE_EVENT = 'playground:generation-complete';
 /** Fired when generation encounters an error */
 export const GENERATION_ERROR_EVENT = 'playground:generation-error';
 
+/** Fired to pan the canvas to a specific flow position */
+export const PAN_TO_POSITION_EVENT = 'playground:pan-to-position';
+
 /** Fired to trigger auto-arrange of canvas nodes */
 export const PLAYGROUND_AUTO_ARRANGE_EVENT = 'PLAYGROUND_AUTO_ARRANGE';
 
@@ -52,6 +55,9 @@ export const MODELS_STORAGE_KEY = 'playground-ai-models';
 
 /** Key for persisting the user's last selected AI model */
 export const SELECTED_MODEL_STORAGE_KEY = 'playground-selected-model';
+
+/** Key for persisting enabled model selections in settings */
+export const ENABLED_MODELS_STORAGE_KEY = 'playground-model-settings';
 
 // ---------------------------------------------------------------------------
 // Timing Constants
@@ -172,7 +178,22 @@ export const DEPTH_OPTIONS: { key: 'shell' | '1-level' | 'all'; label: string }[
 ];
 
 /** Default instructions used when the iterate chat is empty or drag-to-iterate is used */
-export const DEFAULT_EMPTY_ITERATION_INSTRUCTIONS = 'use inline css instead of tailwind. make the layout professional, elements should not clash.';
+export const DEFAULT_EMPTY_ITERATION_INSTRUCTIONS = 'make the layout professional and polished. elements should not overlap or clash.';
+
+// ---------------------------------------------------------------------------
+// Styling Mode
+// ---------------------------------------------------------------------------
+
+export type StylingMode = 'tailwind' | 'inline-css';
+
+/** Default styling mode when no skill overrides it */
+export const DEFAULT_STYLING_MODE: StylingMode = 'tailwind';
+
+/** Styling mode options (for future UI dropdown) */
+export const STYLING_MODE_OPTIONS: { key: StylingMode; label: string }[] = [
+  { key: 'tailwind', label: 'Design System (Tailwind)' },
+  { key: 'inline-css', label: 'Creative (Inline CSS)' },
+];
 
 // ---------------------------------------------------------------------------
 // Fallback AI Models
@@ -369,6 +390,41 @@ export const TREE_MANIFEST_FILENAME = 'tree.json';
 export const TREE_COLUMN_WIDTH = 500;
 
 // ---------------------------------------------------------------------------
+// Cursor Chat Constants
+// ---------------------------------------------------------------------------
+
+/** Default iteration count when submitting via cursor chat */
+export const CURSOR_CHAT_DEFAULT_COUNT = 3;
+
+/** Default depth when submitting via cursor chat */
+export const CURSOR_CHAT_DEFAULT_DEPTH = 'all' as const;
+
+/** Payload submitted by the CursorChat component */
+export interface CursorChatSubmitPayload {
+  text: string;
+  skillPrompts: string[];
+  skillIds: string[];
+  model: string;
+  targetNodeId: string | null;
+  targetComponentId: string | null;
+  targetComponentName: string | null;
+  targetType: 'component' | 'iteration' | null;
+  sourceFilename?: string;
+  iterationCount?: number;
+  canvasPosition: { x: number; y: number };
+  elementSelections?: {
+    tagName: string;
+    displayName: string;
+    textContent: string;
+    cssSelector: string;
+    htmlSource: string;
+    ancestorComponents: string[];
+    nodeId: string;
+    componentName: string;
+  }[];
+}
+
+// ---------------------------------------------------------------------------
 // Generation Event Payload Types
 // ---------------------------------------------------------------------------
 
@@ -383,6 +439,10 @@ export interface GenerationStartPayload {
     rows: number;
     cols: number;
   };
+  /** Model used for this generation (for presence bubbles) */
+  model?: string;
+  /** Flow-space position where the generation was initiated */
+  flowPosition?: { x: number; y: number };
 }
 
 /** Payload for GENERATION_COMPLETE_EVENT */

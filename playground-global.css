@@ -168,3 +168,153 @@
 }
 /* stylelint-enable at-rule-no-unknown, csstools/use-nesting */
 
+/* ---------------------------------------------------------------------------
+   Cursor Chat — Bubble + Flip Animation
+   --------------------------------------------------------------------------- */
+
+.cursor-bubble {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  perspective: 200px;
+  flex-shrink: 0;
+}
+
+.bubble-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  border-radius: 50% 50% 50% 6px;
+  background: #1c1917;
+  background-size: 70%;
+  background-position: center;
+  background-repeat: no-repeat;
+  outline: 2.5px solid rgba(255, 255, 255, 0.9);
+  padding-right: 10%;
+  box-shadow:
+    0 3px 10px rgba(0, 0, 0, 0.25),
+    inset 0 -3px 6px 0 rgba(0, 0, 0, 0.12),
+    inset 0 3px 5px 0 rgba(255, 255, 255, 0.08);
+}
+
+.bubble-face--next {
+  transform: rotateY(180deg);
+}
+
+@keyframes flip-out {
+  from { transform: rotateY(0deg); }
+  to   { transform: rotateY(-180deg); }
+}
+
+@keyframes flip-in {
+  from { transform: rotateY(180deg); }
+  to   { transform: rotateY(0deg); }
+}
+
+.cursor-bubble.is-switching .bubble-face--current {
+  animation: flip-out 350ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.cursor-bubble.is-switching .bubble-face--next {
+  animation: flip-in 350ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* ---------------------------------------------------------------------------
+   Presence Bubbles (Header)
+   --------------------------------------------------------------------------- */
+
+.presence-bubble {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.presence-bubble:hover {
+  transform: scale(1.08);
+}
+
+.presence-bubble-face {
+  position: relative;
+  z-index: 1;
+  width: calc(100% - 6px);
+  height: calc(100% - 6px);
+  margin: 3px;
+  border-radius: 50% 50% 50% 3px;
+  background: #1c1917;
+  background-size: 60%;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.18),
+    inset 0 -2px 4px 0 rgba(0, 0, 0, 0.12);
+}
+
+/* Idle state: subtle border */
+.presence-bubble:not(:has(.presence-bubble-spinner)) .presence-bubble-face {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border-radius: 50% 50% 50% 4px;
+  outline: 2px solid rgba(255, 255, 255, 0.9);
+}
+
+/* Spinning gradient ring behind the face */
+.presence-bubble-spinner {
+  position: absolute;
+  inset: 0;
+  border-radius: 50% 50% 50% 3px;
+  overflow: hidden;
+  background: rgba(120, 113, 108, 0.3);
+}
+
+.presence-bubble-spinner::before {
+  content: '';
+  position: absolute;
+  inset: -50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    transparent 40%,
+    rgba(168, 162, 158, 0.6) 60%,
+    rgba(255, 255, 255, 0.85) 80%,
+    #ffffff 100%
+  );
+  animation: presence-spin 0.9s linear infinite;
+}
+
+@keyframes presence-spin {
+  to { transform: rotate(360deg); }
+}
+
+.presence-bubble-dot {
+  position: absolute;
+  bottom: 0px;
+  right: 0px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  border: 1.5px solid white;
+  z-index: 2;
+}
+
+/* Inline-reference placeholder — rendered as ::before so it naturally
+   sits inside the contentEditable's padding box. No JS sync needed. */
+.inline-reference-input[data-empty]::before {
+  content: attr(data-placeholder);
+  color: var(--muted-foreground);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Element selection mode — override all cursors when Alt is held */
+.element-select-mode,
+.element-select-mode *,
+.element-select-mode .react-flow__node,
+.element-select-mode .react-flow__node * {
+  cursor: crosshair !important;
+}
+
