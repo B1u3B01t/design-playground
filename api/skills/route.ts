@@ -2,6 +2,9 @@ import path from 'path';
 import fs from 'fs/promises';
 import { NextResponse } from 'next/server';
 import type { PlaygroundSkill } from '../../skills';
+import { resolvePlaygroundDir } from '../../lib/resolve-playground-dir';
+
+const SKILLS_DIR = path.join(resolvePlaygroundDir(), 'skills');
 
 async function findSkillFiles(dir: string, acc: string[] = []): Promise<string[]> {
   const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -63,7 +66,7 @@ function toLabelFromId(id: string): string {
 
 export async function GET() {
   try {
-    const skillsRoot = path.join(process.cwd(), 'src/app/playground/skills');
+    const skillsRoot = SKILLS_DIR;
     const files = await findSkillFiles(skillsRoot);
 
     const skills: PlaygroundSkill[] = [];

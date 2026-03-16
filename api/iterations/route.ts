@@ -7,42 +7,9 @@ import {
   ITERATION_FILENAME_PARSE_PATTERN,
   TREE_MANIFEST_FILENAME,
 } from '../../lib/constants';
+import { resolvePlaygroundDir } from '../../lib/resolve-playground-dir';
 
-/**
- * Auto-discover the playground iterations directory.
- * Tries common Next.js App Router layouts so the path works
- * regardless of where the user places the playground folder.
- */
-function resolveIterationsDir(): string {
-  const root = process.cwd();
-
-  const candidates = [
-    path.join(root, 'src', 'app', 'playground', 'iterations'),
-    path.join(root, 'app', 'playground', 'iterations'),
-  ];
-
-  for (const dir of candidates) {
-    if (fs.existsSync(dir)) return dir;
-  }
-
-  // Fallback: scan for a playground/iterations with an index.ts
-  for (const base of [path.join(root, 'src'), root]) {
-    const appDir = path.join(base, 'app');
-    if (!fs.existsSync(appDir)) continue;
-    for (const entry of fs.readdirSync(appDir, { withFileTypes: true })) {
-      if (entry.isDirectory()) {
-        const iterDir = path.join(appDir, entry.name, 'iterations');
-        if (fs.existsSync(path.join(iterDir, ITERATIONS_INDEX_FILENAME))) {
-          return iterDir;
-        }
-      }
-    }
-  }
-
-  return candidates[0];
-}
-
-const ITERATIONS_DIR = resolveIterationsDir();
+const ITERATIONS_DIR = path.join(resolvePlaygroundDir(), 'iterations');
 const INDEX_FILE = path.join(ITERATIONS_DIR, ITERATIONS_INDEX_FILENAME);
 const TREE_FILE = path.join(ITERATIONS_DIR, TREE_MANIFEST_FILENAME);
 

@@ -7,6 +7,7 @@ import {
   DISCOVERY_LOCKFILE_FILENAME,
   DISCOVERY_MANIFEST_FILENAME,
 } from '../../lib/constants';
+import { resolvePlaygroundDir } from '../../lib/resolve-playground-dir';
 import { discoveryPrompt } from '../../prompts/discovery.prompt';
 
 /**
@@ -24,18 +25,6 @@ const log = (...args: unknown[]) => { if (DEBUG) console.log(LOG_PREFIX, ...args
 // ---------------------------------------------------------------------------
 // Path resolution
 // ---------------------------------------------------------------------------
-
-function resolvePlaygroundDir(): string {
-  const root = process.cwd();
-  const candidates = [
-    path.join(root, 'src', 'app', 'playground'),
-    path.join(root, 'app', 'playground'),
-  ];
-  for (const dir of candidates) {
-    if (fs.existsSync(dir)) return dir;
-  }
-  return candidates[0];
-}
 
 const PLAYGROUND_DIR = resolvePlaygroundDir();
 const DISCOVERY_JSON_PATH = path.join(PLAYGROUND_DIR, DISCOVERY_MANIFEST_FILENAME);
