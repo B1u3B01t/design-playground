@@ -148,10 +148,10 @@ export default function PlaygroundHeader({
   return (
     <TooltipProvider>
       <header
-        className="flex items-center justify-between px-4 h-12 bg-[#f5f5f4] border-b border-stone-200 flex-shrink-0"
+        className="flex items-center justify-between px-4 h-12 bg-gradient-to-b from-stone-50 to-transparent flex-shrink-0"
       >
         {/* Left: route label */}
-        <span className="text-base font-medium text-stone-800 tracking-tight select-none">
+        <span className="text-sm font-medium text-stone-800 tracking-tight select-none">
           /playground
         </span>
 
@@ -161,7 +161,7 @@ export default function PlaygroundHeader({
             <TooltipTrigger asChild>
               <button
                 onClick={() => setSettingsOpen(true)}
-                className="p-2 rounded-md text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
+                className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
                 aria-label="Model settings"
               >
                 <Settings className="w-[18px] h-[18px]" />
@@ -176,7 +176,7 @@ export default function PlaygroundHeader({
             <TooltipTrigger asChild>
               <button
                 onClick={handleArrange}
-                className="p-2 rounded-md text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
+                className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
                 aria-label="Auto-arrange layout"
               >
                 <LayoutGrid className="w-[18px] h-[18px]" />
@@ -191,7 +191,7 @@ export default function PlaygroundHeader({
             <TooltipTrigger asChild>
               <button
                 onClick={handleClear}
-                className="p-2 rounded-md text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
+                className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
                 aria-label="Clear all"
               >
                 <Eraser className="w-[18px] h-[18px]" />
@@ -206,7 +206,7 @@ export default function PlaygroundHeader({
             <TooltipTrigger asChild>
               <button
                 onClick={handleRefresh}
-                className="p-2 rounded-md text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
+                className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
                 aria-label="Refresh variations"
               >
                 <RefreshCw className="w-[18px] h-[18px]" />

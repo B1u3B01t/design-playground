@@ -1778,11 +1778,11 @@ export default function PlaygroundCanvas() {
           nodesConnectable={false}
           elementsSelectable
         >
-          <Controls
+          {/* <Controls
             className="!bg-white !border-stone-200 !rounded-lg !shadow-sm [&>button]:!bg-white [&>button]:!border-stone-200 [&>button]:!text-stone-600 [&>button:hover]:!bg-stone-50"
-          />
-          <MiniMap
-            className="!bg-white !border-stone-200 !rounded-lg !shadow-sm"
+          /> */}
+          {/* <MiniMap
+            className="bg-white !border-stone-200 rounded-lg !shadow-sm"
             nodeColor={(node) => {
               if (node.type === 'skeleton') return MINIMAP_SKELETON_COLOR;
               if (node.type === 'iteration') return MINIMAP_ITERATION_COLOR;
@@ -1790,7 +1790,7 @@ export default function PlaygroundCanvas() {
               return MINIMAP_COMPONENT_COLOR;
             }}
             maskColor={MINIMAP_MASK_COLOR}
-          />
+          /> */}
         <Background
           variant={BackgroundVariant.Dots}
           gap={BACKGROUND_GAP}

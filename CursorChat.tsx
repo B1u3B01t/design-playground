@@ -43,6 +43,12 @@ function BracketIcon() {
   );
 }
 
+function FrameIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // CursorChat Component
 // ---------------------------------------------------------------------------
@@ -326,22 +332,23 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
         />
       </div>
 
-      {/* Chat Box */}
+      {/* Chat Box — centered directly below the bubble */}
       <div
         className="pointer-events-auto flex flex-col transition-opacity duration-150 text-sm"
         style={{
           position: 'absolute',
-          top: '20px',
-          left: '22px',
-          width: isPeek ? '260px' : undefined,
-          minWidth: isPeek ? undefined : '240px',
+          top: '36px',
+          left: '100%',
+          transform: 'translateX(-9%)',
+          width: isPeek ? '320px' : '320px',
+          minWidth: isPeek ? undefined : '260px',
           opacity: isPeek ? 0.85 : 1,
           background: 'rgba(255, 255, 255, 0.97)',
           backdropFilter: 'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
-          borderRadius: isPeek ? '18px' : '14px',
-          border: isPeek ? '1.5px dashed rgb(200, 197, 193)' : '1.5px solid rgb(214, 211, 209)',
-          padding: isPeek ? '10px 5px 10px 12px' : '8px 10px 6px',
+          borderRadius: isPeek ? '18px' : '18px',
+          border: isPeek ? '1.5px dashed rgb(215, 212, 209)' : '',
+          padding: isPeek ? '14px' : '14px',
           boxShadow: isPlaced
             ? '0 0 50px -18px rgba(0,0,0,0.15), 0 2px 12px rgba(0,0,0,0.06)'
             : 'none',
@@ -353,14 +360,15 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
             className="flex items-center gap-1 px-1.5 py-px mb-1 self-start select-none"
             style={{
               background: 'rgb(250, 250, 249)',
-              border: '1px solid rgb(214, 211, 209)',
+              border: '1px solid rgb(147, 197, 253)',
               borderRadius: '12px',
               color: 'rgb(59, 130, 246)',
-              fontSize: '9px',
+              fontSize: '10px',
               fontWeight: 500,
+              marginBottom: '8px',
             }}
           >
-            <BracketIcon />
+            <FrameIcon/>
             <span>{targetNode.componentName}</span>
           </div>
         )}
@@ -377,8 +385,9 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
                   border: '1px solid rgb(147, 197, 253)',
                   borderRadius: '12px',
                   color: 'rgb(59, 130, 246)',
-                  fontSize: '9px',
+                  fontSize: '10px',
                   fontWeight: 500,
+                  marginBottom: '4px',
                 }}
               >
                 <BracketIcon />
@@ -397,7 +406,7 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
             {selectedElements.length >= 2 && onClearElements && (
               <button
                 onClick={onClearElements}
-                className="px-1.5 py-px text-[9px] text-stone-400 hover:text-stone-600 transition-colors pointer-events-auto select-none"
+                className="px-1.5 py-px text-[10px] text-stone-400 hover:text-stone-600 transition-colors pointer-events-auto select-none"
               >
                 × clear
               </button>
@@ -406,14 +415,14 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
         )}
 
         {/* Input row */}
-        <div ref={inlineRefContainerRef} className="flex items-start gap-1.5">
+        <div ref={inlineRefContainerRef} className="flex items-start gap-2">
           <InlineReference
             value={segments}
             onValueChange={setSegments}
-            className="w-full"
+            className="w-full cursor-chat-inline-input"
           >
             <InlineReferenceInput
-              placeholder={targetNode ? 'Describe variations...' : `using ${shortModelName} to iterate`}
+              placeholder={targetNode ? 'Describe variations...' : `Iterate, / for skills, using ${shortModelName}`}
               className="outline-none w-full border-none shadow-none ring-0 focus-visible:ring-0 focus-visible:border-none rounded-none px-0 py-0 text-left leading-[1.4]"
               style={{
                 background: 'transparent',
@@ -427,12 +436,13 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
             <InlineReferenceContent
               trigger="/"
               items={skillItems}
+              className="rounded-lg border border-stone-100"
             >
               <InlineReferenceGroup heading="Skills">
                 <InlineReferenceList>
                   {(item) => (
-                    <InlineReferenceItem key={item.id} value={item}>
-                      <span className="text-xs font-medium">{item.label}</span>
+                    <InlineReferenceItem key={item.id} value={item} className="rounded-lg">
+                      <span className="text-md px-1">{item.label}</span>
                     </InlineReferenceItem>
                   )}
                 </InlineReferenceList>
@@ -470,7 +480,7 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
 
         {/* Footer — placed mode only */}
         {isPlaced && (
-          <div className="flex items-center justify-between mt-1 pt-1 gap-2 whitespace-nowrap">
+          <div className="flex items-center justify-between mt-4 pt-2 gap-2 whitespace-nowrap">
             <button
               onClick={cycleModel}
               className="inline-flex items-center gap-1 px-1.5 py-px text-[9px] font-medium select-none transition-colors hover:bg-stone-100 whitespace-nowrap"
@@ -485,12 +495,12 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
             </button>
             
             
-            <div className="flex items-center gap-0.5 bg-stone-50 rounded-full px-1 py-0.2 border border-stone-100">
+            <div className="flex items-center gap-0.5 bg-stone-50 rounded-full px-1 py-1 border border-stone-100">
               {(ITERATION_COUNT_OPTIONS as readonly number[]).map((n) => (
                 <button
                   key={n}
                   onClick={() => setIterationCount(n)}
-                  className={`w-5 h-5 flex items-center justify-center rounded-full text-[8px] font-medium transition-colors ${
+                  className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium transition-colors ${
                     iterationCount === n
                       ? 'bg-stone-800 text-white'
                       : 'text-stone-500 hover:text-stone-800'
@@ -502,16 +512,16 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
             </div>
             <button
               onClick={handleSubmit}
-              className="flex items-center justify-center transition-colors hover:bg-stone-300"
+              className="flex items-center justify-center transition-colors hover:bg-stone-200"
               style={{
-                width: '20px',
-                height: '20px',
+                width: '28px',
+                height: '28px',
                 borderRadius: '50%',
                 background: 'rgb(41, 37, 36)',
               }}
               aria-label="Send"
             >
-              <svg width="9" height="9" viewBox="0 0 14 14" fill="none">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path d="M7 11V3M7 3L3 7M7 3L11 7" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
