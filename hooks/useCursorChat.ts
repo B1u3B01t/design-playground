@@ -219,6 +219,14 @@ export function useCursorChat(models: ModelOption[]) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (matchesAction(e, 'cursor-chat.activate')) {
+        // Guard: don't intercept if focus is in input/textarea/contenteditable
+        const active = document.activeElement;
+        if (active) {
+          const tag = active.tagName.toLowerCase();
+          if (tag === 'input' || tag === 'textarea') return;
+          if ((active as HTMLElement).isContentEditable) return;
+          if (active.closest('[role="dialog"]') || active.closest('[data-radix-popper-content-wrapper]')) return;
+        }
         e.preventDefault();
         if (modeRef.current === 'inactive') {
           activate();
