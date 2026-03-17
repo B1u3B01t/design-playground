@@ -39,6 +39,7 @@ import {
   generateElementIterationPrompt,
   generateElementIterationFromIterationPrompt,
 } from './registry';
+import { captureAndSaveScreenshot, getScreenshotFilename } from './lib/captureAndSaveScreenshot';
 import { loadSelectedModel } from './nodes/shared/IterateDialogParts';
 import {
   GENERATION_START_EVENT,
@@ -695,9 +696,9 @@ export default function PlaygroundCanvas() {
         }
 
         if (hasCollision) {
-          // Shift all candidate rects down
+          // Shift all candidate rects to the right
           for (const rect of rects) {
-            rect.y += SHIFT_STEP;
+            rect.x += SHIFT_STEP;
           }
           attempts++;
         }
@@ -742,41 +743,26 @@ export default function PlaygroundCanvas() {
         let y: number;
 
         if (gridLayout) {
-          // Grid layout from drag-to-iterate: position skeleton nodes at the
-          // same positions as ghost cells, matching each variation number.
-          // The parent node occupies cell (0,0). Variants are numbered
-          // left-to-right, top-to-bottom, skipping (0,0).
-          const { rows, cols } = gridLayout;
+          // Grid layout from drag-to-iterate: anchor grid to the right of parent
+          const { cols } = gridLayout;
           const gap = DRAG_GHOST_GAP;
+          const parentW = parentNode.measured?.width
+            ?? (parentNode.type === 'component' ? DEFAULT_COMPONENT_NODE_WIDTH : DEFAULT_ITERATION_NODE_WIDTH);
 
-          // Find the (row, col) for variant number i (skipping 0,0)
-          let variantIndex = 0;
-          let targetRow = 0;
-          let targetCol = 0;
-          for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-              if (r === 0 && c === 0) continue; // skip original
-              variantIndex++;
-              if (variantIndex === i) {
-                targetRow = r;
-                targetCol = c;
-                break;
-              }
-            }
-            if (variantIndex === i) break;
-          }
+          const gridOriginX = parentNode.position.x + parentW + ARRANGE_HORIZONTAL_GAP;
+          const gridOriginY = parentNode.position.y;
 
-          x = parentNode.position.x + targetCol * (cellW + gap);
-          y = parentNode.position.y + targetRow * (cellH + gap);
+          // Fill grid left-to-right, top-to-bottom
+          const col = (i - 1) % cols;
+          const row = Math.floor((i - 1) / cols);
+
+          x = gridOriginX + col * (cellW + gap);
+          y = gridOriginY + row * (cellH + gap);
         } else {
-          // Dialog flow: center iterations horizontally below the parent
-          const GAP_H = 40;
-          const GAP_V = 60;
-          const parentCenterX = parentNode.position.x + cellW / 2;
-          const totalSpan = iterationCount * cellW + (iterationCount - 1) * GAP_H;
-          const startX = parentCenterX - totalSpan / 2;
-          x = startX + (i - 1) * (cellW + GAP_H);
-          y = parentNode.position.y + cellH + GAP_V;
+          // Dialog flow: place iterations to the right of the parent
+          const pos = calculateIterationPosition(parentNode, i, iterationCount);
+          x = pos.x;
+          y = pos.y;
         }
 
         candidateRects.push({ x, y, w: cellW, h: cellH });
@@ -997,6 +983,10 @@ export default function PlaygroundCanvas() {
         }
       } catch { /* use default */ }
 
+      // Capture screenshot of the source node
+      const screenshotFilename = getScreenshotFilename(componentName, sourceFilename);
+      const screenshotPath = await captureAndSaveScreenshot(parentNodeId, screenshotFilename);
+
       if (sourceFilename) {
         try {
           prompt = generateIterationFromIterationPrompt(
@@ -1007,6 +997,8 @@ export default function PlaygroundCanvas() {
             'shell',
             DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
             defaultSkillPrompt || undefined,
+            undefined,
+            screenshotPath ?? undefined,
           );
         } catch {
           prompt = generateIterationPrompt(
@@ -1016,6 +1008,8 @@ export default function PlaygroundCanvas() {
             'shell',
             DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
             defaultSkillPrompt || undefined,
+            undefined,
+            screenshotPath ?? undefined,
           );
         }
       } else {
@@ -1026,6 +1020,8 @@ export default function PlaygroundCanvas() {
           'shell',
           DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
           defaultSkillPrompt || undefined,
+          undefined,
+          screenshotPath ?? undefined,
         );
       }
 
@@ -1155,8 +1151,8 @@ export default function PlaygroundCanvas() {
     let combinedSkillPrompt: string | undefined;
     if (skillPrompts.length > 0) {
       combinedSkillPrompt = skillPrompts.join('\n\n');
-    } else {
-      // Use default skills when no explicit skills selected
+    } else if (!text) {
+      // Use default skills only when no explicit skills selected and text is empty
       const defaultPrompt = await loadDefaultSkillPrompt();
       combinedSkillPrompt = defaultPrompt || undefined;
     }
@@ -1193,6 +1189,10 @@ export default function PlaygroundCanvas() {
         }
       } catch { /* use default */ }
 
+      // Capture screenshot of the target node
+      const screenshotFilename = getScreenshotFilename(componentName, sourceFilename);
+      const screenshotPath = await captureAndSaveScreenshot(targetNodeId, screenshotFilename);
+
       if (targetType === 'iteration' && sourceFilename) {
         // Iterate from iteration
         if (hasElementSelections) {
@@ -1206,6 +1206,7 @@ export default function PlaygroundCanvas() {
             customInstructions,
             combinedSkillPrompt,
             stylingMode,
+            screenshotPath ?? undefined,
           );
         } else {
           prompt = generateIterationFromIterationPrompt(
@@ -1217,6 +1218,7 @@ export default function PlaygroundCanvas() {
             customInstructions,
             combinedSkillPrompt,
             stylingMode,
+            screenshotPath ?? undefined,
           );
         }
       } else {
@@ -1231,6 +1233,7 @@ export default function PlaygroundCanvas() {
             customInstructions,
             combinedSkillPrompt,
             stylingMode,
+            screenshotPath ?? undefined,
           );
         } else {
           prompt = generateIterationPrompt(
@@ -1241,6 +1244,7 @@ export default function PlaygroundCanvas() {
             customInstructions,
             combinedSkillPrompt,
             stylingMode,
+            screenshotPath ?? undefined,
           );
         }
       }

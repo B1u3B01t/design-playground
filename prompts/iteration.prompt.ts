@@ -28,7 +28,7 @@ Depth: {{depthLabel}}
 {{childrenSection}}
 Props interface (DO NOT MODIFY):
 {{propsInterface}}
-
+{{screenshotSection}}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 INSTRUCTIONS
@@ -47,10 +47,11 @@ IMPORTANT
 CRITICAL REQUIREMENTS
 ${PROPS_CONSTRAINT}
 
-CREATIVE LAYOUT & THEME FREEDOM
-- Explore bold, unconventional layouts: asymmetric grids, overlapping elements, unusual spacing, and creative alignments.
-- {{stylingConstraint}}
-- Each iteration must be structurally and/or visually distinct from the original and from other iterations.
+if iterationCount > 1 then:
+  CREATIVE LAYOUT & THEME FREEDOM
+  - Explore bold, unconventional layouts: asymmetric grids, overlapping elements, unusual spacing, and creative alignments.
+  - {{stylingConstraint}}
+  - Each iteration must be structurally and/or visually distinct from the original and from other iterations.
 
 {{qualityChecklist}}
 - [ ] Layout and/or visual design is meaningfully different and creatively structured
@@ -75,6 +76,7 @@ export interface IterationPromptVars {
   qualityChecklist: string;
   iterationNumbersList: string;
   iterationSavesBlock: string;
+  screenshotSection?: string;
 }
 
 export function iterationPrompt(vars: IterationPromptVars): string {

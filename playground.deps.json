@@ -12,7 +12,8 @@
     "tailwind-merge": "latest",
     "sonner": "latest",
     "@tailwindcss/typography": "latest",
-    "tw-animate-css": "latest"
+    "tw-animate-css": "latest",
+    "html-to-image": "latest"
   },
   "requires": [
     "next",
@@ -20,5 +21,5 @@
     "react-dom",
     "tailwindcss"
   ],
-  "install": "npm install @xyflow/react lucide-react @radix-ui/react-alert-dialog @radix-ui/react-dialog @radix-ui/react-tooltip @radix-ui/react-slot class-variance-authority clsx tailwind-merge"
+  "install": "npm install @xyflow/react lucide-react @radix-ui/react-alert-dialog @radix-ui/react-dialog @radix-ui/react-tooltip @radix-ui/react-slot class-variance-authority clsx tailwind-merge html-to-image"
 }

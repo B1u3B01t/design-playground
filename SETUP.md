@@ -16,7 +16,7 @@
 If you prefer to skip the script, run this single command from your project root:
 
 ```
-npm install @xyflow/react lucide-react @radix-ui/react-alert-dialog @radix-ui/react-dialog @radix-ui/react-tooltip @radix-ui/react-slot class-variance-authority clsx tailwind-merge
+npm install @xyflow/react lucide-react @radix-ui/react-alert-dialog @radix-ui/react-dialog @radix-ui/react-tooltip @radix-ui/react-slot class-variance-authority clsx tailwind-merge html-to-image
 ```
 
 Replace `npm install` with `pnpm install`, `yarn add`, or `bun install` depending on your package manager.
@@ -48,5 +48,5 @@ The variation generator uses Cursor's agent CLI. This requires the [Cursor CLI](
 Delete the `src/app/playground/` folder. Then optionally uninstall packages you no longer need:
 
 ```
-npm uninstall @xyflow/react lucide-react @radix-ui/react-alert-dialog @radix-ui/react-dialog @radix-ui/react-tooltip @radix-ui/react-slot class-variance-authority clsx tailwind-merge
+npm uninstall @xyflow/react lucide-react @radix-ui/react-alert-dialog @radix-ui/react-dialog @radix-ui/react-tooltip @radix-ui/react-slot class-variance-authority clsx tailwind-merge html-to-image
 ```

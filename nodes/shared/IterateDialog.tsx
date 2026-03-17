@@ -5,6 +5,7 @@ import { Check, Copy, Loader2, Zap } from 'lucide-react';
 import { useReactFlow } from '@xyflow/react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../ui/tooltip';
 import { generateIterationPrompt, generateIterationFromIterationPrompt } from '../../registry';
+import { captureAndSaveScreenshot, getScreenshotFilename } from '../../lib/captureAndSaveScreenshot';
 import {
   InlineReference,
   InlineReferenceInput,
@@ -277,6 +278,37 @@ export default function IterateDialog({
       return;
     }
 
+    // Capture screenshot and rebuild prompt with the image path
+    const screenshotFilename = getScreenshotFilename(componentName, sourceFilename);
+    const screenshotPath = await captureAndSaveScreenshot(parentNodeId, screenshotFilename);
+
+    // Build a fresh prompt that includes the screenshot path
+    let promptWithScreenshot: string;
+    if (isFromIteration && startNumber !== null) {
+      promptWithScreenshot = generateIterationFromIterationPrompt(
+        componentId,
+        sourceFilename!,
+        iterationCount,
+        startNumber,
+        depth,
+        customInstructionsText,
+        skillPrompt,
+        undefined,
+        screenshotPath ?? undefined,
+      );
+    } else {
+      promptWithScreenshot = generateIterationPrompt(
+        componentId,
+        iterationCount,
+        startNumber ?? 1,
+        depth,
+        customInstructionsText,
+        skillPrompt,
+        undefined,
+        screenshotPath ?? undefined,
+      );
+    }
+
     window.dispatchEvent(
       new CustomEvent<GenerationStartPayload>(GENERATION_START_EVENT, {
         detail: { componentId, componentName, parentNodeId, iterationCount },
@@ -290,7 +322,7 @@ export default function IterateDialog({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: generatedPrompt,
+          prompt: promptWithScreenshot || generatedPrompt,
           componentId,
           iterationCount,
           model: selectedModel || undefined,

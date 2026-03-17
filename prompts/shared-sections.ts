@@ -52,3 +52,94 @@ export const PROPS_CONSTRAINT = `- **Props interface**: Keep it IDENTICAL to the
 - **Iteration depth**: Follow the requested depth (Shell only, 1 level deep, or All levels).
 - **Tree manifest**: Update src/app/playground/iterations/tree.json for every new iteration file.
 - **Registry index**: Register every iteration in src/app/playground/iterations/index.ts with a ".tsx" map key.`;
+
+// ---------------------------------------------------------------------------
+// Prompt section formatters
+// ---------------------------------------------------------------------------
+
+export function formatChildrenSection(children?: string[]): string {
+  if (!children || children.length === 0) return '';
+  return `
+Children to keep stable:
+${children.map((c) => `- ${c}`).join('\n')}
+`;
+}
+
+export function formatCustomInstructionsSection(customInstructions?: string): string {
+  if (!customInstructions || !customInstructions.trim()) return '';
+  return `
+
+CUSTOM INSTRUCTIONS:
+${customInstructions.trim()}
+
+`;
+}
+
+export function formatSkillSection(skillPrompt?: string): string {
+  if (!skillPrompt || !skillPrompt.trim()) return '';
+  return `SKILL CONTEXT
+══════════════
+
+${skillPrompt.trim()}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+`;
+}
+
+export function formatScreenshotSection(screenshotPath?: string): string {
+  if (!screenshotPath || !screenshotPath.trim()) return '';
+  return `
+CURRENT VISUAL STATE
+Screenshot of the current component: ${screenshotPath.trim()}
+Read this image to understand the current appearance before generating variations.
+`;
+}
+
+export function formatElementSelectionsSection(
+  elements?: {
+    tagName: string;
+    displayName: string;
+    textContent: string;
+    cssSelector: string;
+    htmlSource: string;
+    ancestorComponents: string[];
+    nodeId: string;
+    componentName: string;
+  }[],
+): string {
+  if (!elements || elements.length === 0) return '';
+
+  const lines: string[] = [
+    'TARGETED ELEMENTS',
+    '══════════════════',
+    '',
+  ];
+
+  for (let i = 0; i < elements.length; i++) {
+    const el = elements[i];
+    lines.push(`Element ${i + 1}: <${el.tagName}> in ${el.componentName}`);
+
+    if (el.textContent) {
+      lines.push(`- Text: "${el.textContent}"`);
+    }
+
+    if (el.cssSelector) {
+      lines.push(`- Selector: ${el.cssSelector}`);
+    }
+
+    if (el.htmlSource) {
+      lines.push(`- HTML: ${el.htmlSource}`);
+    }
+
+    if (el.ancestorComponents.length > 0) {
+      lines.push(`- Component ancestry: ${el.ancestorComponents.join(' > ')}`);
+    }
+
+    lines.push('');
+  }
+
+  lines.push('Focus your changes on these specific elements while keeping the rest of the component intact.');
+
+  return lines.join('\n');
+}
