@@ -255,23 +255,13 @@ export default function PlaygroundHeader({
 
           {/* Presence bubbles — stacked, active leftmost on top */}
           {presenceBubbles.length > 0 && (
-<!--             <div className="flex items-center ml-1.5 gap-0.5"> -->
-<!--               {presenceBubbles.map((bubble) => { -->
-<!--                 const iconConfig = getModelIconConfig(bubble.model); -->
-<!--                 return ( -->
-            <div className="presence-bubble-stack">
-              {/* Sort: generating first, then queued, then done */}
-              {[...presenceBubbles]
-                .sort((a, b) => {
-                  const order = { generating: 0, queued: 1, done: 2 };
-                  return order[a.status] - order[b.status];
-                })
-                .map((bubble, idx) => (
+         <div className="flex items-center ml-1.5 gap-0.5">
+            {presenceBubbles.map((bubble) => {
+              const iconConfig = getModelIconConfig(bubble.model);
+               return (
                 <div
                   key={bubble.id}
                   className="presence-bubble group"
-                  data-status={bubble.status}
-                  style={{ zIndex: presenceBubbles.length - idx }}
                   onClick={() => handleBubbleClick(bubble)}
                   title={`${bubble.model} — ${bubble.status}`}
                 >

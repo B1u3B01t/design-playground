@@ -998,7 +998,7 @@ export default function PlaygroundCanvas() {
             DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
             defaultSkillPrompt || undefined,
             undefined,
-            screenshotPath ?? undefined,
+            // screenshotPath ?? undefined,
           );
         } catch {
           prompt = generateIterationPrompt(
@@ -1009,7 +1009,7 @@ export default function PlaygroundCanvas() {
             DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
             defaultSkillPrompt || undefined,
             undefined,
-            screenshotPath ?? undefined,
+            // screenshotPath ?? undefined,
           );
         }
       } else {
@@ -1021,7 +1021,7 @@ export default function PlaygroundCanvas() {
           DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
           defaultSkillPrompt || undefined,
           undefined,
-          screenshotPath ?? undefined,
+          // screenshotPath ?? undefined,
         );
       }
 
@@ -1206,7 +1206,7 @@ export default function PlaygroundCanvas() {
             customInstructions,
             combinedSkillPrompt,
             stylingMode,
-            screenshotPath ?? undefined,
+            // screenshotPath ?? undefined,
           );
         } else {
           prompt = generateIterationFromIterationPrompt(
@@ -1218,7 +1218,7 @@ export default function PlaygroundCanvas() {
             customInstructions,
             combinedSkillPrompt,
             stylingMode,
-            screenshotPath ?? undefined,
+            // screenshotPath ?? undefined,
           );
         }
       } else {
@@ -1233,7 +1233,7 @@ export default function PlaygroundCanvas() {
             customInstructions,
             combinedSkillPrompt,
             stylingMode,
-            screenshotPath ?? undefined,
+            // screenshotPath ?? undefined,
           );
         } else {
           prompt = generateIterationPrompt(
@@ -1244,7 +1244,7 @@ export default function PlaygroundCanvas() {
             customInstructions,
             combinedSkillPrompt,
             stylingMode,
-            screenshotPath ?? undefined,
+            // screenshotPath ?? undefined,
           );
         }
       }
