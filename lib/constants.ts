@@ -62,6 +62,9 @@ export const SELECTED_MODEL_STORAGE_KEY = 'playground-selected-model';
 /** Key for persisting enabled model selections in settings */
 export const ENABLED_MODELS_STORAGE_KEY = 'playground-model-settings';
 
+/** Key for persisting user keybinding overrides */
+export const KEYBINDINGS_STORAGE_KEY = 'playground-keybindings';
+
 // ---------------------------------------------------------------------------
 // Timing Constants
 // ---------------------------------------------------------------------------

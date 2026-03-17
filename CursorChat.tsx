@@ -16,6 +16,7 @@ import { useAvailableModels } from './nodes/shared/IterateDialogParts';
 import { useCursorChat } from './hooks/useCursorChat';
 import { getModelIconConfig } from './lib/model-icons';
 import { ITERATION_COUNT_OPTIONS, CURSOR_CHAT_DEFAULT_COUNT, type CursorChatSubmitPayload } from './lib/constants';
+import { matchesAction } from './lib/keybindings';
 import type { SelectedElement } from './lib/element-context';
 import type { SelectedNodeContext } from './hooks/useNodeSelection';
 
@@ -265,8 +266,8 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
         return;
       }
 
-      // Shift+Tab: cycle model
-      if (e.key === 'Tab' && e.shiftKey) {
+      // Cycle model (default: Shift+Tab)
+      if (matchesAction(e, 'cursor-chat.cycle-model')) {
         e.preventDefault();
         cycleModel();
         return;

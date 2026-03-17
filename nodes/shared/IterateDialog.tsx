@@ -17,6 +17,7 @@ import {
   type Segment,
 } from '../../ui/inline-reference';
 import type { PlaygroundSkill } from '../../skills';
+import { matchesAction } from '../../lib/keybindings';
 import {
   GENERATION_START_EVENT,
   GENERATION_COMPLETE_EVENT,
@@ -573,11 +574,11 @@ export default function IterateDialog({
     if (!open) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'c') {
+      if (matchesAction(e, 'iterate.copy-prompt')) {
         e.preventDefault();
         handleCopyPrompt(generatedPrompt);
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && canRun) {
+      if (matchesAction(e, 'iterate.run') && canRun) {
         e.preventDefault();
         handleRunWithCursor();
       }

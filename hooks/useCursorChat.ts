@@ -6,6 +6,7 @@ import type { Node } from '@xyflow/react';
 import { loadSelectedModel, saveSelectedModel } from '../nodes/shared/IterateDialogParts';
 import type { ModelOption } from '../nodes/shared/IterateDialogParts';
 import { flatRegistry } from '../registry';
+import { matchesAction } from '../lib/keybindings';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -217,8 +218,7 @@ export function useCursorChat(models: ModelOption[]) {
   // Global keyboard listener for Cmd+/
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Cmd+/ or Ctrl+/
-      if ((e.metaKey || e.ctrlKey) && e.key === '/') {
+      if (matchesAction(e, 'cursor-chat.activate')) {
         e.preventDefault();
         if (modeRef.current === 'inactive') {
           activate();

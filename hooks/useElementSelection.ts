@@ -4,6 +4,7 @@ import {
   extractElementContext,
   type SelectedElement,
 } from '../lib/element-context';
+import { getHoldKey } from '../lib/keybindings';
 
 // Selectors for playground chrome that should be excluded from element selection
 const EXCLUDE_SELECTORS = [
@@ -39,15 +40,17 @@ export function useElementSelection(): UseElementSelectionReturn {
   // -----------------------------------------------------------------------
 
   useEffect(() => {
+    const holdKey = getHoldKey('element-select.hold');
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Alt') {
+      if (e.key === holdKey) {
         altRef.current = true;
         setIsAltHeld(true);
         document.documentElement.classList.add('element-select-mode');
       }
     };
 
-    const resetAlt = () => {
+    const reset = () => {
       altRef.current = false;
       setIsAltHeld(false);
       setHoveredElement(null);
@@ -57,10 +60,10 @@ export function useElementSelection(): UseElementSelectionReturn {
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Alt') resetAlt();
+      if (e.key === holdKey) reset();
     };
 
-    const handleBlur = () => resetAlt();
+    const handleBlur = () => reset();
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);

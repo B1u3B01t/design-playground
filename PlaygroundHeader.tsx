@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { LayoutGrid, Eraser, RefreshCw, X, Settings } from 'lucide-react';
+import { LayoutGrid, Eraser, RefreshCw, X, Settings, Keyboard } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { getModelIconConfig } from './lib/model-icons';
 import {
@@ -18,6 +18,7 @@ import {
   type GenerationQueuedPayload,
 } from './lib/constants';
 import ModelSettingsModal from './ModelSettingsModal';
+import KeyboardShortcutsModal from './KeyboardShortcutsModal';
 
 // ---------------------------------------------------------------------------
 // Presence Bubble Type
@@ -48,6 +49,7 @@ export default function PlaygroundHeader({
   onToggleSidebar: _onToggleSidebar,
 }: PlaygroundHeaderProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [presenceBubbles, setPresenceBubbles] = useState<PresenceBubble[]>([]);
   const removeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -196,6 +198,21 @@ export default function PlaygroundHeader({
           <Tooltip>
             <TooltipTrigger asChild>
               <button
+                onClick={() => setShortcutsOpen(true)}
+                className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
+                aria-label="Keyboard shortcuts"
+              >
+                <Keyboard className="w-[18px] h-[18px]" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Keyboard shortcuts</p>
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
                 onClick={() => setSettingsOpen(true)}
                 className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
                 aria-label="Model settings"
@@ -301,6 +318,7 @@ export default function PlaygroundHeader({
       </header>
 
       <ModelSettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <KeyboardShortcutsModal open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </TooltipProvider>
   );
 }
