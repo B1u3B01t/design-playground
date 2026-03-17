@@ -29,6 +29,7 @@ Depth: {{depthLabel}}
 Props interface (DO NOT MODIFY):
 {{propsInterface}}
 {{screenshotSection}}
+{{referenceNodesSection}}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 INSTRUCTIONS
@@ -77,6 +78,7 @@ export interface IterationPromptVars {
   iterationNumbersList: string;
   iterationSavesBlock: string;
   screenshotSection?: string;
+  referenceNodesSection?: string;
 }
 
 export function iterationPrompt(vars: IterationPromptVars): string {

@@ -38,7 +38,15 @@ import {
   generateIterationFromIterationPrompt,
   generateElementIterationPrompt,
   generateElementIterationFromIterationPrompt,
+  resolveRegistryItem,
 } from './registry';
+import {
+  formatReferenceNodesSection,
+  formatSkillSection,
+  formatCustomInstructionsSection,
+  getStylingConstraint,
+} from './prompts/shared-sections';
+import { freeformReferencePrompt } from './prompts/freeform-reference.prompt';
 import { captureAndSaveScreenshot, getScreenshotFilename } from './lib/captureAndSaveScreenshot';
 import { loadSelectedModel } from './nodes/shared/IterateDialogParts';
 import {
@@ -101,6 +109,7 @@ import type { PlaygroundSkill } from './skills';
 import CursorChat from './CursorChat';
 import ElementHighlight from './ElementHighlight';
 import { useElementSelection } from './hooks/useElementSelection';
+import { useNodeSelection } from './hooks/useNodeSelection';
 import { toast } from 'sonner';
 
 const nodeTypes = {
@@ -531,15 +540,20 @@ export default function PlaygroundCanvas() {
           }
         }
         
-        if (!sourceNodeId) {
-          continue;
+        // Position relative to source node, or use saved skeleton position for orphans
+        const sourceNode = sourceNodeId
+          ? (nodesRef.current.find(n => n.id === sourceNodeId) || newNodes.find(n => n.id === sourceNodeId))
+          : undefined;
+
+        let position: { x: number; y: number };
+        if (sourceNode) {
+          position = { x: sourceNode.position.x + ITERATION_HORIZONTAL_SPACING, y: sourceNode.position.y };
+        } else {
+          // Orphan iteration (e.g. freeform generation) — use skeleton position if available
+          const info = generationInfoRef.current;
+          const skeletonPos = info?.skeletonPositions?.[0];
+          position = skeletonPos ?? { x: 400, y: 200 };
         }
-        
-        // Position temporarily -- auto-arrange will fix positions
-        const sourceNode = nodesRef.current.find(n => n.id === sourceNodeId) || newNodes.find(n => n.id === sourceNodeId);
-        const position = sourceNode
-          ? { x: sourceNode.position.x + ITERATION_HORIZONTAL_SPACING, y: sourceNode.position.y }
-          : { x: 400, y: 200 };
         
         const nodeId = getNodeId();
         pendingNodesByFilename.set(iter.filename, nodeId);
@@ -562,22 +576,25 @@ export default function PlaygroundCanvas() {
             iterationNumber: iter.iterationNumber,
             filename: iter.filename,
             description: iter.description,
-            parentNodeId: sourceNodeId,
+            parentNodeId: sourceNodeId || undefined,
             parentSize,
             registryId: inheritedRegistryId,
             onDelete: handleIterationDelete,
             onAdopt: handleIterationAdopt,
           },
         });
-        
-        newEdges.push({
-          id: `edge_${sourceNodeId}_${nodeId}`,
-          source: sourceNodeId,
-          target: nodeId,
-          type: 'smoothstep',
-          animated: false,
-          style: ITERATION_EDGE_STYLE,
-        });
+
+        // Only create edges when there's a valid source node
+        if (sourceNodeId) {
+          newEdges.push({
+            id: `edge_${sourceNodeId}_${nodeId}`,
+            source: sourceNodeId,
+            target: nodeId,
+            type: 'smoothstep',
+            animated: false,
+            style: ITERATION_EDGE_STYLE,
+          });
+        }
         
         newKnownFilenames.push(iter.filename);
       }
@@ -710,6 +727,41 @@ export default function PlaygroundCanvas() {
     const handleGenerationStart = (e: CustomEvent<GenerationStartPayload>) => {
       const { componentId, componentName, parentNodeId, iterationCount, gridLayout } = e.detail;
 
+
+      // Freeform generations have no parent — create a standalone skeleton
+      if (!parentNodeId) {
+        const flowPos = e.detail.flowPosition ?? { x: 400, y: 200 };
+        const skeletonId = getNodeId();
+        const skeletonNode: Node = {
+          id: skeletonId,
+          type: 'skeleton',
+          position: flowPos,
+          data: {
+            iterationNumber: 1,
+            componentName,
+            parentNodeId: '',
+            totalIterations: 1,
+            width: DEFAULT_COMPONENT_NODE_WIDTH,
+            height: DEFAULT_COMPONENT_NODE_HEIGHT,
+          },
+        };
+
+        setNodes(nds => [...nds, skeletonNode]);
+
+        const newInfo: GenerationInfo = {
+          componentId,
+          componentName,
+          parentNodeId: '',
+          iterationCount: 1,
+          skeletonNodeIds: [skeletonId],
+          startTime: Date.now(),
+          skeletonPositions: [{ x: flowPos.x, y: flowPos.y }],
+        };
+        generationInfoRef.current = newInfo;
+        setIsGenerating(true);
+        setGenerationInfo(newInfo);
+        return;
+      }
 
       // Find the parent node (use ref for current nodes)
       const parentNode = nodesRef.current.find(n => n.id === parentNodeId);
@@ -1117,6 +1169,7 @@ export default function PlaygroundCanvas() {
   // Cursor Chat submit handler + queue
   // ---------------------------------------------------------------------------
   const elementSelection = useElementSelection();
+  const nodeSelection = useNodeSelection();
   const generationQueueRef = useRef<CursorChatSubmitPayload[]>([]);
 
   const handleCursorChatSubmit = useCallback(async (payload: CursorChatSubmitPayload) => {
@@ -1162,6 +1215,41 @@ export default function PlaygroundCanvas() {
     const stylingMode: StylingMode = payload.skillIds?.includes('no-bound-explore')
       ? 'inline-css' : DEFAULT_STYLING_MODE;
 
+    // Build reference nodes section from shift-drag selection
+    let referenceNodesSection = '';
+    if (payload.referenceNodes && payload.referenceNodes.length > 0) {
+      // Filter out the target node from references (no need to reference itself)
+      const refNodes = payload.referenceNodes.filter((n) => n.nodeId !== targetNodeId);
+
+      if (refNodes.length > 0) {
+        // Capture screenshots for each reference node
+        const refNodesWithScreenshots = await Promise.all(
+          refNodes.map(async (node) => {
+            const screenshotFilename = getScreenshotFilename(
+              node.componentName,
+              node.sourceFilename,
+            );
+            const screenshotPath = await captureAndSaveScreenshot(
+              node.nodeId,
+              screenshotFilename,
+            );
+            // Resolve source path from registry for component nodes
+            let sourcePath: string | undefined;
+            if (node.type === 'component') {
+              const item = resolveRegistryItem(node.componentId);
+              sourcePath = item?.sourcePath;
+            }
+            return {
+              ...node,
+              screenshotPath: screenshotPath ?? undefined,
+              sourcePath,
+            };
+          }),
+        );
+        referenceNodesSection = formatReferenceNodesSection(refNodesWithScreenshots);
+      }
+    }
+
     if (targetNodeId && targetComponentId && targetComponentName && targetType) {
       // --- WITH TARGET NODE ---
       let prompt: string;
@@ -1206,7 +1294,8 @@ export default function PlaygroundCanvas() {
             customInstructions,
             combinedSkillPrompt,
             stylingMode,
-            // screenshotPath ?? undefined,
+            screenshotPath ?? undefined,
+            referenceNodesSection,
           );
         } else {
           prompt = generateIterationFromIterationPrompt(
@@ -1218,7 +1307,8 @@ export default function PlaygroundCanvas() {
             customInstructions,
             combinedSkillPrompt,
             stylingMode,
-            // screenshotPath ?? undefined,
+            screenshotPath ?? undefined,
+            referenceNodesSection,
           );
         }
       } else {
@@ -1233,7 +1323,8 @@ export default function PlaygroundCanvas() {
             customInstructions,
             combinedSkillPrompt,
             stylingMode,
-            // screenshotPath ?? undefined,
+            screenshotPath ?? undefined,
+            referenceNodesSection,
           );
         } else {
           prompt = generateIterationPrompt(
@@ -1244,7 +1335,8 @@ export default function PlaygroundCanvas() {
             customInstructions,
             combinedSkillPrompt,
             stylingMode,
-            // screenshotPath ?? undefined,
+            screenshotPath ?? undefined,
+            referenceNodesSection,
           );
         }
       }
@@ -1312,26 +1404,41 @@ export default function PlaygroundCanvas() {
       }
     } else {
       // --- FREEFORM (no target) ---
-      // Manage isGenerating directly — do NOT dispatch GENERATION_START_EVENT
-      // because the event handler requires a valid parentNodeId to find a parent node.
-      const freeformInfo: GenerationInfo = {
-        componentId: 'cursor-chat-freeform',
-        componentName: 'Freeform',
-        parentNodeId: '',
-        iterationCount: 0,
-        skeletonNodeIds: [],
-        startTime: Date.now(),
-      };
-      generationInfoRef.current = freeformInfo;
-      setIsGenerating(true);
-      setGenerationInfo(freeformInfo);
+      const freeformComponentId = 'cursor-chat-freeform';
+
+      // Dispatch start event — creates skeleton node + presence bubble
+      window.dispatchEvent(
+        new CustomEvent<GenerationStartPayload>(GENERATION_START_EVENT, {
+          detail: {
+            componentId: freeformComponentId,
+            componentName: 'Freeform',
+            parentNodeId: '',
+            iterationCount: 0,
+            model: payloadModel || 'auto',
+            flowPosition: payload.canvasPosition ?? undefined,
+          },
+        }),
+      );
+
+      // Build prompt — use freeform-reference template if reference nodes exist
+      let freeformPrompt: string;
+      if (referenceNodesSection) {
+        freeformPrompt = freeformReferencePrompt({
+          skillSection: combinedSkillPrompt ? formatSkillSection(combinedSkillPrompt) : '',
+          referenceNodesSection,
+          customInstructionsSection: formatCustomInstructionsSection(customInstructions),
+          stylingConstraint: getStylingConstraint(stylingMode),
+        });
+      } else {
+        freeformPrompt = customInstructions;
+      }
 
       try {
         const response = await fetch('/playground/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            prompt: customInstructions,
+            prompt: freeformPrompt,
             componentId: 'cursor-chat-freeform',
             iterationCount: 0,
             model: payloadModel || undefined,
@@ -1341,21 +1448,34 @@ export default function PlaygroundCanvas() {
         const data = await response.json().catch(() => ({ success: false }));
         if (!response.ok || !data.success) {
           console.error('[CursorChat] Freeform generation failed:', data?.error);
+          window.dispatchEvent(
+            new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+              detail: { componentId: freeformComponentId, parentNodeId: '', error: data?.error || 'Generation failed' },
+            }),
+          );
+        } else {
+          window.dispatchEvent(
+            new CustomEvent<GenerationCompletePayload>(GENERATION_COMPLETE_EVENT, {
+              detail: { componentId: freeformComponentId, parentNodeId: '', output: '' },
+            }),
+          );
         }
       } catch (err) {
         console.error('[CursorChat] Freeform generation error:', err);
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        window.dispatchEvent(
+          new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+            detail: { componentId: freeformComponentId, parentNodeId: '', error: msg },
+          }),
+        );
       } finally {
-        generationInfoRef.current = null;
-        setIsGenerating(false);
-        setGenerationInfo(null);
-
-        // Drain queue
-        setTimeout(() => {
-          if (generationQueueRef.current.length > 0) {
-            const next = generationQueueRef.current.shift()!;
-            handleCursorChatSubmit(next);
-          }
-        }, POST_GENERATION_SCAN_DELAY + 500);
+        // State cleanup and queue draining handled by GENERATION_COMPLETE/ERROR event handlers
+        // Only clear state here as a safety net if events didn't fire (e.g. network error before dispatch)
+        if (generationInfoRef.current?.componentId === freeformComponentId) {
+          generationInfoRef.current = null;
+          setIsGenerating(false);
+          setGenerationInfo(null);
+        }
       }
     }
   }, [setIsGenerating, setGenerationInfo, scanForIterations]);
@@ -1904,6 +2024,9 @@ export default function PlaygroundCanvas() {
         selectedElements={elementSelection.selectedElements}
         onRemoveElement={(idx) => elementSelection.removeElement(idx)}
         onClearElements={elementSelection.clearSelection}
+        selectedNodes={nodeSelection.selectedNodes}
+        onRemoveNode={nodeSelection.removeNode}
+        onClearNodes={nodeSelection.clearNodeSelection}
       />
 
       {/* Clear canvas confirmation dialog */}

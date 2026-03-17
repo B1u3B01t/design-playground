@@ -425,6 +425,14 @@ export interface CursorChatSubmitPayload {
     nodeId: string;
     componentName: string;
   }[];
+  referenceNodes?: {
+    nodeId: string;
+    componentId: string;
+    componentName: string;
+    type: 'component' | 'iteration';
+    sourceFilename?: string;
+    screenshotPath?: string;
+  }[];
 }
 
 // ---------------------------------------------------------------------------

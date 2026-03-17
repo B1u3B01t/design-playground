@@ -17,6 +17,7 @@ import { useCursorChat } from './hooks/useCursorChat';
 import { getModelIconConfig } from './lib/model-icons';
 import { ITERATION_COUNT_OPTIONS, CURSOR_CHAT_DEFAULT_COUNT, type CursorChatSubmitPayload } from './lib/constants';
 import type { SelectedElement } from './lib/element-context';
+import type { SelectedNodeContext } from './hooks/useNodeSelection';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -28,6 +29,9 @@ interface CursorChatProps {
   selectedElements?: SelectedElement[];
   onRemoveElement?: (index: number) => void;
   onClearElements?: () => void;
+  selectedNodes?: SelectedNodeContext[];
+  onRemoveNode?: (nodeId: string) => void;
+  onClearNodes?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -53,7 +57,7 @@ function FrameIcon() {
 // CursorChat Component
 // ---------------------------------------------------------------------------
 
-export default function CursorChat({ isGenerating, onSubmit, selectedElements, onRemoveElement, onClearElements }: CursorChatProps) {
+export default function CursorChat({ isGenerating, onSubmit, selectedElements, onRemoveElement, onClearElements, selectedNodes, onRemoveNode, onClearNodes }: CursorChatProps) {
   const [segments, setSegments] = useState<Segment[]>([]);
   const [skills, setSkills] = useState<PlaygroundSkill[]>([]);
   const [iterationCount, setIterationCount] = useState(CURSOR_CHAT_DEFAULT_COUNT);
@@ -183,16 +187,24 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
     const { text, skillPrompts, skillIds } = extractPayload();
     if (!text && skillPrompts.length === 0) return;
 
+    // If no target node but exactly one selected node, promote it to target.
+    // With 2+ selected nodes and no click target → freeform with all as references.
+    const effectiveTarget = targetNode
+      ?? (selectedNodes?.length === 1 ? selectedNodes[0] : null);
+    const referenceOnly = effectiveTarget && !targetNode
+      ? undefined  // single selected node promoted to target, no references left
+      : selectedNodes;  // all selected nodes are references (freeform or click-target case)
+
     const payload: CursorChatSubmitPayload = {
       text,
       skillPrompts,
       skillIds,
       model,
-      targetNodeId: targetNode?.nodeId ?? null,
-      targetComponentId: targetNode?.componentId ?? null,
-      targetComponentName: targetNode?.componentName ?? null,
-      targetType: targetNode?.type ?? null,
-      sourceFilename: targetNode?.sourceFilename,
+      targetNodeId: effectiveTarget?.nodeId ?? null,
+      targetComponentId: effectiveTarget?.componentId ?? null,
+      targetComponentName: effectiveTarget?.componentName ?? null,
+      targetType: effectiveTarget?.type ?? null,
+      sourceFilename: effectiveTarget?.sourceFilename,
       iterationCount,
       canvasPosition: flowPosition ?? { x: 0, y: 0 },
       elementSelections: selectedElements && selectedElements.length > 0
@@ -207,6 +219,15 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
             componentName: sel.componentName,
           }))
         : undefined,
+      referenceNodes: referenceOnly && referenceOnly.length > 0
+        ? referenceOnly.map((node) => ({
+            nodeId: node.nodeId,
+            componentId: node.componentId,
+            componentName: node.componentName,
+            type: node.type,
+            sourceFilename: node.sourceFilename,
+          }))
+        : undefined,
     };
 
     // Clear and deactivate
@@ -214,10 +235,11 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
     const el = getInputEl();
     if (el) el.textContent = '';
     onClearElements?.();
+    onClearNodes?.();
     deactivate();
 
     await onSubmit(payload);
-  }, [extractPayload, model, iterationCount, targetNode, flowPosition, deactivate, onSubmit, getInputEl, selectedElements, onClearElements]);
+  }, [extractPayload, model, iterationCount, targetNode, flowPosition, deactivate, onSubmit, getInputEl, selectedElements, onClearElements, selectedNodes, onClearNodes]);
 
   // Keyboard handling
   useEffect(() => {
@@ -413,6 +435,49 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
               <button
                 onClick={onClearElements}
                 className="px-1.5 py-px text-[10px] text-stone-400 hover:text-stone-600 transition-colors pointer-events-auto select-none"
+              >
+                × clear
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Node reference chips */}
+        {selectedNodes && selectedNodes.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1 mb-1">
+            {selectedNodes.map((node) => (
+              <div
+                key={node.nodeId}
+                className="flex items-center gap-1 px-1.5 py-px select-none group"
+                style={{
+                  background: 'rgb(236, 253, 245)',
+                  border: '1px solid rgb(110, 231, 183)',
+                  borderRadius: '12px',
+                  color: 'rgb(5, 150, 105)',
+                  fontSize: '9px',
+                  fontWeight: 500,
+                }}
+              >
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="none" className="flex-shrink-0">
+                  <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="M5 6h6M5 8h4" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+                </svg>
+                <span>{node.componentName}</span>
+                {onRemoveNode && (
+                  <button
+                    onClick={() => onRemoveNode(node.nodeId)}
+                    className="ml-0.5 hover:text-red-500 transition-colors pointer-events-auto"
+                    style={{ lineHeight: 1 }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+            {selectedNodes.length >= 2 && onClearNodes && (
+              <button
+                onClick={onClearNodes}
+                className="px-1.5 py-px text-[9px] text-stone-400 hover:text-stone-600 transition-colors pointer-events-auto select-none"
               >
                 × clear
               </button>

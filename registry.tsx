@@ -3,11 +3,6 @@ import type { ComponentSize, CursorChatSubmitPayload, StylingMode } from './lib/
 import { DEFAULT_STYLING_MODE } from './lib/constants';
 import PricingCard from './examples/PricingCard';
 import PricingPage from './examples/PricingPage';
-import {
-  formatChildrenSection,
-  formatCustomInstructionsSection,
-  formatSkillSection,
-} from './prompts/shared-sections';
 import { iterationPrompt } from './prompts/iteration.prompt';
 import { iterationFromIterationPrompt } from './prompts/iteration-from-iteration.prompt';
 import { adoptIterationPrompt } from './prompts/adopt.prompt';
@@ -15,8 +10,16 @@ import {
   elementIterationPrompt,
   elementIterationFromIterationPrompt,
 } from './prompts/element-iteration.prompt';
-import { formatElementSelectionsSection } from './prompts/shared-sections';
-import { getStylingConstraint, getStylingQualityItem, getQualityChecklist } from './prompts/shared-sections';
+import {
+  formatChildrenSection,
+  formatCustomInstructionsSection,
+  formatSkillSection,
+  formatScreenshotSection,
+  formatElementSelectionsSection,
+  getStylingConstraint,
+  getStylingQualityItem,
+  getQualityChecklist,
+} from './prompts/shared-sections';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -171,16 +174,16 @@ export const registry: RegistryItem[] = [
         props: pricingCardProps,
         sourcePath: 'src/app/playground/examples/PricingCard.tsx',
         propsInterface: `interface PricingCardProps {
-  planName: string;
-  price: string;
-  period: string;
-  description: string;
-  features: string[];
-  ctaLabel: string;
-  highlighted?: boolean;
-  badge?: string;
-  onCtaClick?: () => void;
-}`,
+          planName: string;
+          price: string;
+          period: string;
+          description: string;
+          features: string[];
+          ctaLabel: string;
+          highlighted?: boolean;
+          badge?: string;
+          onCtaClick?: () => void;
+        }`,
       },
       {
         id: 'pricing-page',
@@ -190,20 +193,20 @@ export const registry: RegistryItem[] = [
         sourcePath: 'src/app/playground/examples/PricingPage.tsx',
         size: 'laptop' as ComponentSize,
         propsInterface: `interface PricingPageProps {
-  headline: string;
-  subheadline: string;
-  tiers: {
-    name: string;
-    price: string;
-    period: string;
-    description: string;
-    features: { label: string; included: boolean }[];
-    ctaLabel: string;
-    highlighted?: boolean;
-    badge?: string;
-  }[];
-  faqItems: { question: string; answer: string }[];
-}`,
+          headline: string;
+          subheadline: string;
+          tiers: {
+            name: string;
+            price: string;
+            period: string;
+            description: string;
+            features: { label: string; included: boolean }[];
+            ctaLabel: string;
+            highlighted?: boolean;
+            badge?: string;
+          }[];
+          faqItems: { question: string; answer: string }[];
+        }`,
       },
     ],
   },
@@ -263,6 +266,8 @@ export function generateIterationPrompt(
   customInstructions?: string,
   skillPrompt?: string,
   stylingMode: StylingMode = DEFAULT_STYLING_MODE,
+  screenshotPath?: string,
+  referenceNodesSection?: string,
 ): string {
   const item = resolveRegistryItem(componentId);
   if (!item) return '';
@@ -299,6 +304,8 @@ export function generateIterationPrompt(
     qualityChecklist: getQualityChecklist(stylingMode),
     iterationNumbersList: iterationNumbers.join(', '),
     iterationSavesBlock,
+    screenshotSection: formatScreenshotSection(screenshotPath),
+    referenceNodesSection: referenceNodesSection || '',
   });
 }
 
@@ -315,6 +322,8 @@ export function generateIterationFromIterationPrompt(
   customInstructions?: string,
   skillPrompt?: string,
   stylingMode: StylingMode = DEFAULT_STYLING_MODE,
+  screenshotPath?: string,
+  referenceNodesSection?: string,
 ): string {
   const item = resolveRegistryItem(componentId);
   if (!item) return '';
@@ -355,6 +364,8 @@ export function generateIterationFromIterationPrompt(
     iterationNumbersList: iterationNumbers.join(', '),
     sourceIterationFilename,
     stylingConstraint: getStylingConstraint(stylingMode),
+    screenshotSection: formatScreenshotSection(screenshotPath),
+    referenceNodesSection: referenceNodesSection || '',
   });
 }
 
@@ -371,6 +382,8 @@ export function generateElementIterationPrompt(
   customInstructions?: string,
   skillPrompt?: string,
   stylingMode: StylingMode = DEFAULT_STYLING_MODE,
+  screenshotPath?: string,
+  referenceNodesSection?: string,
 ): string {
   const item = flatRegistry[componentId];
   if (!item) return '';
@@ -408,6 +421,8 @@ export function generateElementIterationPrompt(
     iterationNumbersList: iterationNumbers.join(', '),
     iterationSavesBlock,
     stylingQualityItem: getStylingQualityItem(stylingMode),
+    screenshotSection: formatScreenshotSection(screenshotPath),
+    referenceNodesSection: referenceNodesSection || '',
   });
 }
 
@@ -421,6 +436,8 @@ export function generateElementIterationFromIterationPrompt(
   customInstructions?: string,
   skillPrompt?: string,
   stylingMode: StylingMode = DEFAULT_STYLING_MODE,
+  screenshotPath?: string,
+  referenceNodesSection?: string,
 ): string {
   const item = flatRegistry[componentId];
   if (!item) return '';
@@ -462,6 +479,8 @@ export function generateElementIterationFromIterationPrompt(
     treeParent: sourceIterationFilename,
     sourceIterationFilename,
     stylingQualityItem: getStylingQualityItem(stylingMode),
+    screenshotSection: formatScreenshotSection(screenshotPath),
+    referenceNodesSection: referenceNodesSection || '',
   });
 }
 
