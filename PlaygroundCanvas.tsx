@@ -1185,7 +1185,6 @@ export default function PlaygroundCanvas() {
           },
         }),
       );
-      toast('Queued — will run after current generation', { duration: 3000 });
       return;
     }
 

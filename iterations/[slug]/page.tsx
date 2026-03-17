@@ -26,10 +26,10 @@ function getRegistryItemForIteration(filename: string) {
   return undefined;
 }
 
-function ScreenFrame({ children }: { children: React.ReactNode }) {
+function ScreenFrame({ children, useAppTheme }: { children: React.ReactNode; useAppTheme?: boolean }) {
   return (
     <div className="fixed inset-0 bg-gray-100 p-4">
-      <div className="w-full h-full overflow-auto rounded-2xl border border-gray-300 bg-white shadow-sm">
+      <div className={`${useAppTheme ? 'app-theme' : ''} w-full h-full overflow-auto rounded-2xl border border-gray-300 bg-white shadow-sm`}>
         <div className="grid min-h-full place-items-center p-6">
           {children}
         </div>
@@ -50,7 +50,7 @@ export default async function PlaygroundIterationIsolatedPage({ params }: Iterat
     const props = (registryItem?.props ?? {}) as Record<string, unknown>;
 
     return (
-      <ScreenFrame>
+      <ScreenFrame useAppTheme={registryItem?.useAppTheme}>
         <IterationComponent {...props} />
       </ScreenFrame>
     );
@@ -62,11 +62,11 @@ export default async function PlaygroundIterationIsolatedPage({ params }: Iterat
     notFound();
   }
 
-  const { Component, props } = registryItem;
+  const { Component, props, useAppTheme } = registryItem;
   const effectiveProps = (props ?? {}) as Record<string, unknown>;
 
   return (
-    <ScreenFrame>
+    <ScreenFrame useAppTheme={useAppTheme}>
       <Component {...effectiveProps} />
     </ScreenFrame>
   );

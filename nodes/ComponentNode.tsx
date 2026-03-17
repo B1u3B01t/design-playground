@@ -128,7 +128,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
     );
   }
 
-  const { Component, props, label } = registryItem;
+  const { Component, props, label, useAppTheme } = registryItem;
   const effectiveProps = (resolvedProps ?? props ?? {}) as Record<string, unknown>;
   const config = SIZE_CONFIG[size];
   const isLargeComponent = size !== 'default';
@@ -184,7 +184,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
       <div className="relative flex items-start">
         {/* Component frame */}
         <div
-          className={`bg-white overflow-hidden rounded-xl transition-all ${
+          className={`${useAppTheme ? 'app-theme' : ''} bg-white overflow-hidden rounded-xl transition-all ${
             selected ? 'ring-2 ring-[#0B99FF]' : ''
           }`}
         >
