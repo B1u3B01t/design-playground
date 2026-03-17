@@ -11,7 +11,7 @@ import {
 } from './ui/dialog';
 import { useAvailableModels } from './nodes/shared/IterateDialogParts';
 import { useModelSettingsStore } from './lib/model-settings-store';
-import { getModelIcon } from './lib/model-icons';
+import { getModelIconConfig } from './lib/model-icons';
 import type { ModelOption } from './lib/constants';
 
 interface ModelSettingsModalProps {
@@ -109,11 +109,12 @@ export default function ModelSettingsModal({ open, onOpenChange }: ModelSettings
             ) : (
               models.map((m: ModelOption) => {
                 const checked = selected.has(m.value);
+                const iconConfig = getModelIconConfig(m.value);
                 return (
                   <button
                     key={m.value}
                     onClick={() => toggleModel(m.value)}
-                    className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-stone-50 transition-colors"
+                    className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-stone-50 transition-colors w-full"
                   >
                     <span
                       className={`flex items-center justify-center w-4 h-4 rounded border transition-colors flex-shrink-0 ${
@@ -124,12 +125,14 @@ export default function ModelSettingsModal({ open, onOpenChange }: ModelSettings
                     >
                       {checked && <Check className="w-3 h-3 text-white" />}
                     </span>
-                    <img
-                      src={getModelIcon(m.value)}
-                      alt=""
-                      className="w-4 h-4 flex-shrink-0"
+                    <span className="text-xs text-stone-700 truncate flex-1 text-left">{m.label}</span>
+                    <span
+                      className="flex items-center justify-center w-5 h-5 rounded flex-shrink-0 bg-center bg-no-repeat bg-[length:70%] ml-auto"
+                      style={{
+                        backgroundColor: iconConfig.bg,
+                        backgroundImage: `url(${iconConfig.src})`,
+                      }}
                     />
-                    <span className="text-xs text-stone-700 truncate">{m.label}</span>
                   </button>
                 );
               })

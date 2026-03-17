@@ -14,7 +14,7 @@ import {
 import type { PlaygroundSkill } from './skills';
 import { useAvailableModels } from './nodes/shared/IterateDialogParts';
 import { useCursorChat } from './hooks/useCursorChat';
-import { getModelIcon } from './lib/model-icons';
+import { getModelIconConfig } from './lib/model-icons';
 import { ITERATION_COUNT_OPTIONS, CURSOR_CHAT_DEFAULT_COUNT, type CursorChatSubmitPayload } from './lib/constants';
 import type { SelectedElement } from './lib/element-context';
 
@@ -310,8 +310,8 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
 
   const isPeek = mode === 'peek';
   const isPlaced = mode === 'placed';
-  const currentIcon = getModelIcon(model);
-  const nextIcon = nextModel ? getModelIcon(nextModel) : currentIcon;
+  const currentConfig = getModelIconConfig(model);
+  const nextConfig = nextModel ? getModelIconConfig(nextModel) : currentConfig;
 
   return (
     <div
@@ -324,11 +324,17 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
       <div className={`cursor-bubble ${isSwitching ? 'is-switching' : ''}`}>
         <div
           className="bubble-face bubble-face--current"
-          style={{ backgroundImage: `url(${currentIcon})` }}
+          style={{
+            backgroundColor: currentConfig.bg,
+            backgroundImage: `url(${currentConfig.src})`,
+          }}
         />
         <div
           className="bubble-face bubble-face--next"
-          style={{ backgroundImage: `url(${nextIcon})` }}
+          style={{
+            backgroundColor: nextConfig.bg,
+            backgroundImage: `url(${nextConfig.src})`,
+          }}
         />
       </div>
 

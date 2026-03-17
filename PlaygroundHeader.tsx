@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { LayoutGrid, Eraser, RefreshCw, X, Settings } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
-import { getModelIcon } from './lib/model-icons';
+import { getModelIconConfig } from './lib/model-icons';
 import {
   PLAYGROUND_AUTO_ARRANGE_EVENT,
   ITERATION_FETCH_EVENT,
@@ -220,7 +220,9 @@ export default function PlaygroundHeader({
           {/* Presence bubbles — after action icons */}
           {presenceBubbles.length > 0 && (
             <div className="flex items-center ml-1.5 gap-0.5">
-              {presenceBubbles.map((bubble) => (
+              {presenceBubbles.map((bubble) => {
+                const iconConfig = getModelIconConfig(bubble.model);
+                return (
                 <div
                   key={bubble.id}
                   className="presence-bubble group"
@@ -232,7 +234,10 @@ export default function PlaygroundHeader({
                   )}
                   <div
                     className="presence-bubble-face"
-                    style={{ backgroundImage: `url(${getModelIcon(bubble.model)})` }}
+                    style={{
+                      backgroundColor: iconConfig.bg,
+                      backgroundImage: `url(${iconConfig.src})`,
+                    }}
                   />
                   {bubble.status === 'done' && (
                     <div className="presence-bubble-dot" />
@@ -252,7 +257,8 @@ export default function PlaygroundHeader({
                     <X className="w-2 h-2 text-stone-500" />
                   </button>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>

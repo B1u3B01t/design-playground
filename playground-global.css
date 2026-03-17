@@ -191,7 +191,7 @@
   inset: 0;
   backface-visibility: hidden;
   border-radius: 50% 50% 50% 6px;
-  background: #1c1917;
+  /* background set per-model via inline style from model-icons.ts */
   background-size: 70%;
   background-position: center;
   background-repeat: no-repeat;
@@ -249,7 +249,7 @@
   height: calc(100% - 6px);
   margin: 3px;
   border-radius: 50% 50% 50% 3px;
-  background: #1c1917;
+  /* background set per-model via inline style from model-icons.ts */
   background-size: 60%;
   background-position: center;
   background-repeat: no-repeat;
