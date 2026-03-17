@@ -7,6 +7,7 @@
 
 # Generated iteration files - AI creates these when iterating on components
 iterations/*.iteration-*.tsx
+iterations/iterations-images/*
 
 # Generated API routes for component-specific data fetching
 # AI creates these when a component needs live data (e.g., api/insights/route.ts)

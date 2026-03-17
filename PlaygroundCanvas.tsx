@@ -39,11 +39,13 @@ import {
   generateElementIterationPrompt,
   generateElementIterationFromIterationPrompt,
 } from './registry';
+import { captureAndSaveScreenshot, getScreenshotFilename } from './lib/captureAndSaveScreenshot';
 import { loadSelectedModel } from './nodes/shared/IterateDialogParts';
 import {
   GENERATION_START_EVENT,
   GENERATION_COMPLETE_EVENT,
   GENERATION_ERROR_EVENT,
+  GENERATION_QUEUED_EVENT,
   PLAYGROUND_AUTO_ARRANGE_EVENT,
   DRAG_ITERATE_EVENT,
   DRAG_ITERATE_UNDO_DURATION_MS,
@@ -91,6 +93,7 @@ import {
   type GenerationStartPayload,
   type GenerationCompletePayload,
   type GenerationErrorPayload,
+  type GenerationQueuedPayload,
   type DragIteratePayload,
   type CursorChatSubmitPayload,
 } from './lib/constants';
@@ -241,12 +244,16 @@ export default function PlaygroundCanvas() {
   
   // Generation state
   const [isGenerating, setIsGenerating] = useState(false);
+  const isGeneratingRef = useRef(false);
   const [generationInfo, setGenerationInfo] = useState<GenerationInfo | null>(null);
   const generationInfoRef = useRef<GenerationInfo | null>(null);
   const [lastGenerationDuration, setLastGenerationDuration] = useState<string | null>(null);
   const [elapsedTime, setElapsedTime] = useState<string>('0m:00s');
   
   // Keep refs in sync with state
+  useEffect(() => {
+    isGeneratingRef.current = isGenerating;
+  }, [isGenerating]);
   useEffect(() => {
     generationInfoRef.current = generationInfo;
   }, [generationInfo]);
@@ -639,6 +646,67 @@ export default function PlaygroundCanvas() {
 
   // Handle generation lifecycle events
   useEffect(() => {
+    /**
+     * Check whether a rectangle overlaps any existing canvas node.
+     * Returns true if there is a collision.
+     */
+    const rectsOverlap = (
+      a: { x: number; y: number; w: number; h: number },
+      b: { x: number; y: number; w: number; h: number },
+      padding = 20,
+    ) =>
+      a.x < b.x + b.w + padding &&
+      a.x + a.w + padding > b.x &&
+      a.y < b.y + b.h + padding &&
+      a.y + a.h + padding > b.y;
+
+    /**
+     * Given a set of candidate skeleton rects, shift the entire group
+     * downward until none of them overlap any existing node on the canvas.
+     * Also avoids overlapping previously placed skeletons in the same batch.
+     */
+    const resolveOverlaps = (
+      rects: { x: number; y: number; w: number; h: number }[],
+      existingNodes: Node[],
+    ) => {
+      const SHIFT_STEP = 80; // px to shift down per iteration
+      const MAX_ATTEMPTS = 20;
+
+      // Build bounding boxes for all existing canvas nodes
+      const obstacles = existingNodes.map(n => ({
+        x: n.position.x,
+        y: n.position.y,
+        w: n.measured?.width ?? (n.type === 'component' ? DEFAULT_COMPONENT_NODE_WIDTH : DEFAULT_ITERATION_NODE_WIDTH),
+        h: n.measured?.height ?? (n.type === 'component' ? DEFAULT_COMPONENT_NODE_HEIGHT : DEFAULT_ITERATION_NODE_HEIGHT),
+      }));
+
+      let attempts = 0;
+      let hasCollision = true;
+
+      while (hasCollision && attempts < MAX_ATTEMPTS) {
+        hasCollision = false;
+        for (const rect of rects) {
+          for (const obs of obstacles) {
+            if (rectsOverlap(rect, obs)) {
+              hasCollision = true;
+              break;
+            }
+          }
+          if (hasCollision) break;
+        }
+
+        if (hasCollision) {
+          // Shift all candidate rects to the right
+          for (const rect of rects) {
+            rect.x += SHIFT_STEP;
+          }
+          attempts++;
+        }
+      }
+
+      return rects;
+    };
+
     const handleGenerationStart = (e: CustomEvent<GenerationStartPayload>) => {
       const { componentId, componentName, parentNodeId, iterationCount, gridLayout } = e.detail;
 
@@ -667,52 +735,45 @@ export default function PlaygroundCanvas() {
       const skeletonEdges: Edge[] = [];
       const skeletonNodeIds: string[] = [];
 
+      // Build candidate positions for all skeletons first
+      const candidateRects: { x: number; y: number; w: number; h: number }[] = [];
+
       for (let i = 1; i <= iterationCount; i++) {
-        let position: { x: number; y: number };
+        let x: number;
+        let y: number;
 
         if (gridLayout) {
-          // Grid layout from drag-to-iterate: position skeleton nodes at the
-          // same positions as ghost cells, matching each variation number.
-          // The parent node occupies cell (0,0). Variants are numbered
-          // left-to-right, top-to-bottom, skipping (0,0).
-          const { rows, cols } = gridLayout;
+          // Grid layout from drag-to-iterate: anchor grid to the right of parent
+          const { cols } = gridLayout;
           const gap = DRAG_GHOST_GAP;
+          const parentW = parentNode.measured?.width
+            ?? (parentNode.type === 'component' ? DEFAULT_COMPONENT_NODE_WIDTH : DEFAULT_ITERATION_NODE_WIDTH);
 
-          // Find the (row, col) for variant number i (skipping 0,0)
-          let variantIndex = 0;
-          let targetRow = 0;
-          let targetCol = 0;
-          for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-              if (r === 0 && c === 0) continue; // skip original
-              variantIndex++;
-              if (variantIndex === i) {
-                targetRow = r;
-                targetCol = c;
-                break;
-              }
-            }
-            if (variantIndex === i) break;
-          }
+          const gridOriginX = parentNode.position.x + parentW + ARRANGE_HORIZONTAL_GAP;
+          const gridOriginY = parentNode.position.y;
 
-          position = {
-            x: parentNode.position.x + targetCol * (cellW + gap),
-            y: parentNode.position.y + targetRow * (cellH + gap),
-          };
+          // Fill grid left-to-right, top-to-bottom
+          const col = (i - 1) % cols;
+          const row = Math.floor((i - 1) / cols);
+
+          x = gridOriginX + col * (cellW + gap);
+          y = gridOriginY + row * (cellH + gap);
         } else {
-          // Dialog flow: center iterations horizontally below the parent,
-          // using actual measured node dimensions so nodes never overlap.
-          const GAP_H = 40;
-          const GAP_V = 60;
-          const parentCenterX = parentNode.position.x + cellW / 2;
-          const totalSpan = iterationCount * cellW + (iterationCount - 1) * GAP_H;
-          const startX = parentCenterX - totalSpan / 2;
-          position = {
-            x: startX + (i - 1) * (cellW + GAP_H),
-            y: parentNode.position.y + cellH + GAP_V,
-          };
+          // Dialog flow: place iterations to the right of the parent
+          const pos = calculateIterationPosition(parentNode, i, iterationCount);
+          x = pos.x;
+          y = pos.y;
         }
 
+        candidateRects.push({ x, y, w: cellW, h: cellH });
+      }
+
+      // Resolve overlaps with existing canvas nodes (excludes parent which is above)
+      const existingNodes = nodesRef.current.filter(n => n.id !== parentNodeId);
+      resolveOverlaps(candidateRects, existingNodes);
+
+      for (let i = 0; i < iterationCount; i++) {
+        const position = { x: candidateRects[i].x, y: candidateRects[i].y };
         const nodeId = getNodeId();
         skeletonNodeIds.push(nodeId);
 
@@ -721,7 +782,7 @@ export default function PlaygroundCanvas() {
           type: 'skeleton',
           position,
           data: {
-            iterationNumber: i,
+            iterationNumber: i + 1,
             componentName,
             parentNodeId,
             totalIterations: iterationCount,
@@ -857,6 +918,7 @@ export default function PlaygroundCanvas() {
         console.info('[Playground] Generation already in progress.', logPayload);
       } else {
         console.error('[Playground] Generation error:', errorMessage, logPayload);
+        toast.error(errorMessage, { duration: 6000 });
       }
       
       // Remove skeleton nodes
@@ -921,6 +983,10 @@ export default function PlaygroundCanvas() {
         }
       } catch { /* use default */ }
 
+      // Capture screenshot of the source node
+      const screenshotFilename = getScreenshotFilename(componentName, sourceFilename);
+      const screenshotPath = await captureAndSaveScreenshot(parentNodeId, screenshotFilename);
+
       if (sourceFilename) {
         try {
           prompt = generateIterationFromIterationPrompt(
@@ -931,6 +997,8 @@ export default function PlaygroundCanvas() {
             'shell',
             DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
             defaultSkillPrompt || undefined,
+            undefined,
+            screenshotPath ?? undefined,
           );
         } catch {
           prompt = generateIterationPrompt(
@@ -940,6 +1008,8 @@ export default function PlaygroundCanvas() {
             'shell',
             DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
             defaultSkillPrompt || undefined,
+            undefined,
+            screenshotPath ?? undefined,
           );
         }
       } else {
@@ -950,6 +1020,8 @@ export default function PlaygroundCanvas() {
           'shell',
           DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
           defaultSkillPrompt || undefined,
+          undefined,
+          screenshotPath ?? undefined,
         );
       }
 
@@ -1049,8 +1121,17 @@ export default function PlaygroundCanvas() {
 
   const handleCursorChatSubmit = useCallback(async (payload: CursorChatSubmitPayload) => {
     // If generation already in progress, queue it
-    if (isGenerating) {
+    if (isGeneratingRef.current) {
       generationQueueRef.current.push(payload);
+      window.dispatchEvent(
+        new CustomEvent<GenerationQueuedPayload>(GENERATION_QUEUED_EVENT, {
+          detail: {
+            componentId: payload.targetComponentId || 'cursor-chat-freeform',
+            model: payload.model || 'auto',
+            flowPosition: payload.canvasPosition ?? null,
+          },
+        }),
+      );
       toast('Queued — will run after current generation', { duration: 3000 });
       return;
     }
@@ -1070,8 +1151,8 @@ export default function PlaygroundCanvas() {
     let combinedSkillPrompt: string | undefined;
     if (skillPrompts.length > 0) {
       combinedSkillPrompt = skillPrompts.join('\n\n');
-    } else {
-      // Use default skills when no explicit skills selected
+    } else if (!text) {
+      // Use default skills only when no explicit skills selected and text is empty
       const defaultPrompt = await loadDefaultSkillPrompt();
       combinedSkillPrompt = defaultPrompt || undefined;
     }
@@ -1108,6 +1189,10 @@ export default function PlaygroundCanvas() {
         }
       } catch { /* use default */ }
 
+      // Capture screenshot of the target node
+      const screenshotFilename = getScreenshotFilename(componentName, sourceFilename);
+      const screenshotPath = await captureAndSaveScreenshot(targetNodeId, screenshotFilename);
+
       if (targetType === 'iteration' && sourceFilename) {
         // Iterate from iteration
         if (hasElementSelections) {
@@ -1121,6 +1206,7 @@ export default function PlaygroundCanvas() {
             customInstructions,
             combinedSkillPrompt,
             stylingMode,
+            screenshotPath ?? undefined,
           );
         } else {
           prompt = generateIterationFromIterationPrompt(
@@ -1132,6 +1218,7 @@ export default function PlaygroundCanvas() {
             customInstructions,
             combinedSkillPrompt,
             stylingMode,
+            screenshotPath ?? undefined,
           );
         }
       } else {
@@ -1146,6 +1233,7 @@ export default function PlaygroundCanvas() {
             customInstructions,
             combinedSkillPrompt,
             stylingMode,
+            screenshotPath ?? undefined,
           );
         } else {
           prompt = generateIterationPrompt(
@@ -1156,6 +1244,7 @@ export default function PlaygroundCanvas() {
             customInstructions,
             combinedSkillPrompt,
             stylingMode,
+            screenshotPath ?? undefined,
           );
         }
       }
@@ -1269,7 +1358,7 @@ export default function PlaygroundCanvas() {
         }, POST_GENERATION_SCAN_DELAY + 500);
       }
     }
-  }, [isGenerating, setIsGenerating, setGenerationInfo, scanForIterations]);
+  }, [setIsGenerating, setGenerationInfo, scanForIterations]);
 
   // Also drain queue after normal generation completes
   // (hook into generation complete/error to check queue)

@@ -11,9 +11,11 @@ import {
   GENERATION_START_EVENT,
   GENERATION_COMPLETE_EVENT,
   GENERATION_ERROR_EVENT,
+  GENERATION_QUEUED_EVENT,
   PAN_TO_POSITION_EVENT,
   type GenerationStartPayload,
   type GenerationErrorPayload,
+  type GenerationQueuedPayload,
 } from './lib/constants';
 import ModelSettingsModal from './ModelSettingsModal';
 
@@ -24,7 +26,7 @@ import ModelSettingsModal from './ModelSettingsModal';
 interface PresenceBubble {
   id: string;
   model: string;
-  status: 'generating' | 'done';
+  status: 'queued' | 'generating' | 'done';
   flowPosition: { x: number; y: number } | null;
 }
 
@@ -51,16 +53,45 @@ export default function PlaygroundHeader({
 
   // Listen to generation lifecycle events
   useEffect(() => {
-    const handleStart = (e: Event) => {
-      const detail = (e as CustomEvent<GenerationStartPayload>).detail;
-      const id = `${detail.componentId}-${Date.now()}`;
+    const handleQueued = (e: Event) => {
+      const detail = (e as CustomEvent<GenerationQueuedPayload>).detail;
+      const id = `${detail.componentId}-queued-${Date.now()}`;
       const bubble: PresenceBubble = {
         id,
         model: detail.model || 'auto',
-        status: 'generating',
+        status: 'queued',
         flowPosition: detail.flowPosition ?? null,
       };
       setPresenceBubbles(prev => [...prev, bubble]);
+    };
+
+    const handleStart = (e: Event) => {
+      const detail = (e as CustomEvent<GenerationStartPayload>).detail;
+
+      setPresenceBubbles(prev => {
+        // Try to transition a queued bubble for this component
+        const queuedIdx = prev.findIndex(
+          b => b.status === 'queued' && b.id.startsWith(detail.componentId)
+        );
+
+        if (queuedIdx !== -1) {
+          return prev.map((b, i) =>
+            i === queuedIdx
+              ? { ...b, status: 'generating' as const, flowPosition: detail.flowPosition ?? b.flowPosition }
+              : b
+          );
+        }
+
+        // No queued bubble — create a new one
+        const id = `${detail.componentId}-${Date.now()}`;
+        const bubble: PresenceBubble = {
+          id,
+          model: detail.model || 'auto',
+          status: 'generating',
+          flowPosition: detail.flowPosition ?? null,
+        };
+        return [...prev, bubble];
+      });
     };
 
     const handleComplete = (e: Event) => {
@@ -88,14 +119,19 @@ export default function PlaygroundHeader({
     const handleError = (e: Event) => {
       const detail = (e as CustomEvent<{ componentId: string }>).detail;
       setPresenceBubbles(prev =>
-        prev.filter(b => !(b.status === 'generating' && b.id.startsWith(detail.componentId)))
+        prev.filter(b => !(
+          (b.status === 'generating' || b.status === 'queued') &&
+          b.id.startsWith(detail.componentId)
+        ))
       );
     };
 
+    window.addEventListener(GENERATION_QUEUED_EVENT, handleQueued);
     window.addEventListener(GENERATION_START_EVENT, handleStart);
     window.addEventListener(GENERATION_COMPLETE_EVENT, handleComplete);
     window.addEventListener(GENERATION_ERROR_EVENT, handleError);
     return () => {
+      window.removeEventListener(GENERATION_QUEUED_EVENT, handleQueued);
       window.removeEventListener(GENERATION_START_EVENT, handleStart);
       window.removeEventListener(GENERATION_COMPLETE_EVENT, handleComplete);
       window.removeEventListener(GENERATION_ERROR_EVENT, handleError);
@@ -217,15 +253,25 @@ export default function PlaygroundHeader({
             </TooltipContent>
           </Tooltip>
 
-          {/* Presence bubbles — after action icons */}
+          {/* Presence bubbles — stacked, active leftmost on top */}
           {presenceBubbles.length > 0 && (
-            <div className="flex items-center ml-1.5 gap-0.5">
-              {presenceBubbles.map((bubble) => {
-                const iconConfig = getModelIconConfig(bubble.model);
-                return (
+<!--             <div className="flex items-center ml-1.5 gap-0.5"> -->
+<!--               {presenceBubbles.map((bubble) => { -->
+<!--                 const iconConfig = getModelIconConfig(bubble.model); -->
+<!--                 return ( -->
+            <div className="presence-bubble-stack">
+              {/* Sort: generating first, then queued, then done */}
+              {[...presenceBubbles]
+                .sort((a, b) => {
+                  const order = { generating: 0, queued: 1, done: 2 };
+                  return order[a.status] - order[b.status];
+                })
+                .map((bubble, idx) => (
                 <div
                   key={bubble.id}
                   className="presence-bubble group"
+                  data-status={bubble.status}
+                  style={{ zIndex: presenceBubbles.length - idx }}
                   onClick={() => handleBubbleClick(bubble)}
                   title={`${bubble.model} — ${bubble.status}`}
                 >
@@ -252,7 +298,7 @@ export default function PlaygroundHeader({
                       handleRemoveBubble(bubble.id);
                     }}
                     className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-white border border-stone-200 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    aria-label={bubble.status === 'generating' ? 'Cancel generation' : 'Dismiss'}
+                    aria-label={bubble.status === 'generating' ? 'Cancel generation' : bubble.status === 'queued' ? 'Remove from queue' : 'Dismiss'}
                   >
                     <X className="w-2 h-2 text-stone-500" />
                   </button>
