@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { LayoutGrid, Eraser, RefreshCw, X, Settings } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
-import { getModelIcon } from './lib/model-icons';
+import { getModelIconConfig } from './lib/model-icons';
 import {
   PLAYGROUND_AUTO_ARRANGE_EVENT,
   ITERATION_FETCH_EVENT,
@@ -184,10 +184,10 @@ export default function PlaygroundHeader({
   return (
     <TooltipProvider>
       <header
-        className="flex items-center justify-between px-4 h-12 bg-[#f5f5f4] border-b border-stone-200 flex-shrink-0"
+        className="flex items-center justify-between px-4 h-12 bg-gradient-to-b from-stone-50 to-transparent flex-shrink-0"
       >
         {/* Left: route label */}
-        <span className="text-base font-medium text-stone-800 tracking-tight select-none">
+        <span className="text-sm font-medium text-stone-800 tracking-tight select-none">
           /playground
         </span>
 
@@ -197,7 +197,7 @@ export default function PlaygroundHeader({
             <TooltipTrigger asChild>
               <button
                 onClick={() => setSettingsOpen(true)}
-                className="p-2 rounded-md text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
+                className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
                 aria-label="Model settings"
               >
                 <Settings className="w-[18px] h-[18px]" />
@@ -212,7 +212,7 @@ export default function PlaygroundHeader({
             <TooltipTrigger asChild>
               <button
                 onClick={handleArrange}
-                className="p-2 rounded-md text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
+                className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
                 aria-label="Auto-arrange layout"
               >
                 <LayoutGrid className="w-[18px] h-[18px]" />
@@ -227,7 +227,7 @@ export default function PlaygroundHeader({
             <TooltipTrigger asChild>
               <button
                 onClick={handleClear}
-                className="p-2 rounded-md text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
+                className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
                 aria-label="Clear all"
               >
                 <Eraser className="w-[18px] h-[18px]" />
@@ -242,7 +242,7 @@ export default function PlaygroundHeader({
             <TooltipTrigger asChild>
               <button
                 onClick={handleRefresh}
-                className="p-2 rounded-md text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
+                className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
                 aria-label="Refresh variations"
               >
                 <RefreshCw className="w-[18px] h-[18px]" />
@@ -255,19 +255,13 @@ export default function PlaygroundHeader({
 
           {/* Presence bubbles — stacked, active leftmost on top */}
           {presenceBubbles.length > 0 && (
-            <div className="presence-bubble-stack">
-              {/* Sort: generating first, then queued, then done */}
-              {[...presenceBubbles]
-                .sort((a, b) => {
-                  const order = { generating: 0, queued: 1, done: 2 };
-                  return order[a.status] - order[b.status];
-                })
-                .map((bubble, idx) => (
+         <div className="flex items-center ml-1.5 gap-0.5">
+            {presenceBubbles.map((bubble) => {
+              const iconConfig = getModelIconConfig(bubble.model);
+               return (
                 <div
                   key={bubble.id}
                   className="presence-bubble group"
-                  data-status={bubble.status}
-                  style={{ zIndex: presenceBubbles.length - idx }}
                   onClick={() => handleBubbleClick(bubble)}
                   title={`${bubble.model} — ${bubble.status}`}
                 >
@@ -276,7 +270,10 @@ export default function PlaygroundHeader({
                   )}
                   <div
                     className="presence-bubble-face"
-                    style={{ backgroundImage: `url(${getModelIcon(bubble.model)})` }}
+                    style={{
+                      backgroundColor: iconConfig.bg,
+                      backgroundImage: `url(${iconConfig.src})`,
+                    }}
                   />
                   {bubble.status === 'done' && (
                     <div className="presence-bubble-dot" />
@@ -296,7 +293,8 @@ export default function PlaygroundHeader({
                     <X className="w-2 h-2 text-stone-500" />
                   </button>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>

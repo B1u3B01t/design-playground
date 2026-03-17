@@ -36,9 +36,6 @@
     --sidebar-accent-foreground: #1a1a1a;
     --sidebar-border: #e5e5e5;
     --sidebar-ring: #a1a1a1;
-    --font-sans: Intel One Mono, ui-monospace, monospace;
-    --font-serif: Intel One Mono, ui-monospace, monospace;
-    --font-mono: Intel One Mono, ui-monospace, monospace;
     --radius: 0rem;
     --shadow-2xs: 0 0px 0px 0px hsl(0 0% 0% / 0.00);
     --shadow-xs: 0 0px 0px 0px hsl(0 0% 0% / 0.00);
@@ -85,9 +82,6 @@
     --sidebar-accent-foreground: #fafafa;
     --sidebar-border: #282828;
     --sidebar-ring: #525252;
-    --font-sans: Intel One Mono, ui-monospace, monospace;
-    --font-serif: Intel One Mono, ui-monospace, monospace;
-    --font-mono: Intel One Mono, ui-monospace, monospace;
     --radius: 0rem;
     --shadow-2xs: 0 0px 0px 0px hsl(0 0% 0% / 0.00);
     --shadow-xs: 0 0px 0px 0px hsl(0 0% 0% / 0.00);
@@ -139,8 +133,9 @@
   
     --radius-sm: calc(var(--radius) - 4px);
     --radius-md: calc(var(--radius) - 2px);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) + 4px);
+    --radius-lg: calc(var(--radius) + 8px);
+    --radius-xl: calc(var(--radius) + 12px);
+    --radius-2xl: calc(var(--radius) + 16px);
   
     --shadow-2xs: var(--shadow-2xs);
     --shadow-xs: var(--shadow-xs);
@@ -152,12 +147,23 @@
     --shadow-2xl: var(--shadow-2xl);
   }
 
+/* Scoped font overrides — only for main playground (canvas/header/sidebar), not iterations isolated view */
+.playground-main-view {
+  --font-sans: Intel One Mono, ui-monospace, monospace;
+  --font-serif: Intel One Mono, ui-monospace, monospace;
+  --font-mono: Intel One Mono, ui-monospace, monospace;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground;
+  }
+  button {
+    @apply cursor-pointer font-medium rounded-lg text-sm text-stone-500;
+    @apply hover:text-stone-800 hover:bg-stone-100 rounded-lg;
   }
 }
 
@@ -185,16 +191,16 @@
   inset: 0;
   backface-visibility: hidden;
   border-radius: 50% 50% 50% 6px;
-  background: #1c1917;
+  /* background set per-model via inline style from model-icons.ts */
   background-size: 70%;
   background-position: center;
   background-repeat: no-repeat;
   outline: 2.5px solid rgba(255, 255, 255, 0.9);
   padding-right: 10%;
   box-shadow:
-    0 3px 10px rgba(0, 0, 0, 0.25),
-    inset 0 -3px 6px 0 rgba(0, 0, 0, 0.12),
-    inset 0 3px 5px 0 rgba(255, 255, 255, 0.08);
+    0 2px 8px rgba(0, 0, 0, 0.18),
+    inset 0 -4px 6px 0 rgba(0, 0, 0, 0.08),
+    inset 0 4px 4px 0 rgba(255, 255, 255, 0.25);
 }
 
 .bubble-face--next {
@@ -253,7 +259,7 @@
   height: calc(100% - 6px);
   margin: 3px;
   border-radius: 50% 50% 50% 3px;
-  background: #1c1917;
+  /* background set per-model via inline style from model-icons.ts */
   background-size: 60%;
   background-position: center;
   background-repeat: no-repeat;
@@ -333,6 +339,11 @@
   color: var(--muted-foreground);
   pointer-events: none;
   user-select: none;
+}
+
+/* Cursor Chat input — lighter placeholder */
+.cursor-chat-inline-input .inline-reference-input[data-empty]::before {
+  color: rgb(185, 183, 181); /* stone-400 */
 }
 
 /* Element selection mode — override all cursors when Alt is held */

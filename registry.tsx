@@ -7,7 +7,7 @@ import {
   formatChildrenSection,
   formatCustomInstructionsSection,
   formatSkillSection,
-} from './prompts/utility';
+} from './prompts/shared-sections';
 import { iterationPrompt } from './prompts/iteration.prompt';
 import { iterationFromIterationPrompt } from './prompts/iteration-from-iteration.prompt';
 import { adoptIterationPrompt } from './prompts/adopt.prompt';
@@ -15,7 +15,7 @@ import {
   elementIterationPrompt,
   elementIterationFromIterationPrompt,
 } from './prompts/element-iteration.prompt';
-import { formatElementSelectionsSection } from './prompts/utility';
+import { formatElementSelectionsSection } from './prompts/shared-sections';
 import { getStylingConstraint, getStylingQualityItem, getQualityChecklist } from './prompts/shared-sections';
 
 // ---------------------------------------------------------------------------
