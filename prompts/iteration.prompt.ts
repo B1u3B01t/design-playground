@@ -38,9 +38,17 @@ INSTRUCTIONS
 2. Read the source component at the path above
 3. Understand its structure, props interface, and current design
 4. Generate {{iterationCount}} **compatible** variations numbered {{iterationNumbersList}} (you may change both layout and visual design)
-5. For EACH variation you create:
+5. Process iterations ONE AT A TIME in the order listed below. For each iteration, complete ALL of the following steps before moving to the next:
+   a. Create and save the iteration file
+   b. Include metadata comment with @iteration, @parent, and @description
+   c. Immediately register that file in src/app/playground/iterations/index.ts (map key MUST include ".tsx")
+   d. Immediately add a matching entry to src/app/playground/iterations/tree.json with parent set to "{{componentId}}"
+   e. Only then start the next iteration
+
+   This sequential approach ensures each iteration is visible on the canvas as soon as it's done.
+
+Files to create (in this order):
 {{iterationSavesBlock}}
-${FILE_REGISTRATION_INSTRUCTIONS}
 
 IMPORTANT
 - Iteration numbers MUST be {{iterationNumbersList}} — do NOT reuse existing iteration numbers

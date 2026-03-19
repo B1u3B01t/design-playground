@@ -45,11 +45,17 @@ INSTRUCTIONS
 2. Read the source component at the path above
 3. **Copy the component file verbatim** into each iteration file
 4. **Only modify the targeted elements** described above — everything else must remain pixel-identical
-5. Generate {{iterationCount}} variations numbered {{iterationNumbersList}}. For EACH variation:
+5. Generate {{iterationCount}} variations numbered {{iterationNumbersList}}. Process iterations ONE AT A TIME in the order listed below. For each iteration, complete ALL of the following steps before moving to the next:
+   a. Create and save the iteration file
+   b. Include the required metadata comment block with @iteration, @parent, and @description
+   c. Immediately register that file in src/app/playground/iterations/index.ts (map key MUST include ".tsx")
+   d. Immediately add a matching entry to src/app/playground/iterations/tree.json with parent set to "{{componentId}}"
+   e. Only then start the next iteration
+
+   This sequential approach ensures each iteration is visible on the canvas as soon as it's done.
+
+Files to create (in this order):
 {{iterationSavesBlock}}
-   - Include the required metadata comment block with @iteration, @parent, and @description
-   - Immediately register that file in: src/app/playground/iterations/index.ts (map key MUST include ".tsx")
-   - Immediately add a matching entry to: src/app/playground/iterations/tree.json with parent set to "{{componentId}}"
 
 IMPORTANT
 - Iteration numbers MUST be {{iterationNumbersList}} — do NOT reuse existing iteration numbers
@@ -132,11 +138,17 @@ INSTRUCTIONS
 3. Also read the ORIGINAL component for context: {{sourcePath}}
 4. **Copy the base iteration file verbatim** into each new iteration file
 5. **Only modify the targeted elements** described above — everything else must remain pixel-identical
-6. Generate {{iterationCount}} variations numbered {{iterationNumbersList}}. For EACH variation:
+6. Generate {{iterationCount}} variations numbered {{iterationNumbersList}}. Process iterations ONE AT A TIME in the order listed below. For each iteration, complete ALL of the following steps before moving to the next:
+   a. Create and save the iteration file
+   b. Include metadata with @iteration, @parent, @sourceIteration {{sourceIterationFilename}}, and @description
+   c. Immediately register that file in src/app/playground/iterations/index.ts (map key MUST include ".tsx")
+   d. Immediately add a matching entry to src/app/playground/iterations/tree.json with parent set to "{{treeParent}}"
+   e. Only then start the next iteration
+
+   This sequential approach ensures each iteration is visible on the canvas as soon as it's done.
+
+Files to create (in this order):
 {{iterationSavesBlock}}
-   - Include metadata with @iteration, @parent, @sourceIteration {{sourceIterationFilename}}, and @description
-   - Immediately register that file in: src/app/playground/iterations/index.ts
-   - Immediately add a matching entry to: src/app/playground/iterations/tree.json with parent set to "{{treeParent}}"
 
 IMPORTANT
 - Iteration numbers MUST be {{iterationNumbersList}} — do NOT reuse existing iteration numbers

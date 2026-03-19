@@ -231,6 +231,7 @@ export default function PlaygroundCanvas() {
   const [isPolling, setIsPolling] = useState(false);
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const generationEventSourceRef = useRef<EventSource | null>(null);
   
   // Node ID counter as a ref (survives re-renders, initialized from localStorage)
   const nodeIdCounterRef = useRef<number>(initialState?.nodeIdCounter || 0);
@@ -479,6 +480,7 @@ export default function PlaygroundCanvas() {
   }, [stopPolling]);
 
   // Scan for iterations (single check) -- tree-aware: connects to parent iteration or component
+  // During active generation, progressively replaces skeleton nodes with real iteration nodes.
   const scanForIterations = useCallback(async (resetTimeoutOnFind = false) => {
     setIsScanning(true);
     try {
@@ -487,12 +489,12 @@ export default function PlaygroundCanvas() {
         console.error('[Playground] Failed to fetch iterations:', response.status);
         return;
       }
-      
+
       const { iterations } = await response.json() as { iterations: IterationFile[] };
-      
+
       const currentNodes = nodesRef.current;
       const currentKnownIterations = knownIterationsRef.current;
-      
+
       // Build set of known filenames (from state + existing nodes)
       const existingFilenames = new Set([
         ...currentKnownIterations,
@@ -500,26 +502,39 @@ export default function PlaygroundCanvas() {
           .filter(n => n.type === 'iteration' && n.data.filename)
           .map(n => n.data.filename as string)
       ]);
-      
+
       const newIterations = iterations.filter(
         (iter: IterationFile) => !existingFilenames.has(iter.filename)
       );
-      
+
       if (newIterations.length === 0) {
         return;
       }
-      
+
+      // Progressive skeleton replacement: during active generation, find
+      // remaining skeleton nodes so we can position real nodes at their
+      // locations and remove them one-by-one.
+      const info = generationInfoRef.current;
+      const remainingSkeletonIds = info
+        ? info.skeletonNodeIds.filter(id => currentNodes.some(n => n.id === id))
+        : [];
+      // Track which skeletons to remove during this scan
+      const skeletonsToRemove: string[] = [];
+
       // Create nodes and edges for new iterations (tree-aware)
       const newNodes: Node[] = [];
       const newEdges: Edge[] = [];
       const newKnownFilenames: string[] = [];
-      
+
       // We may need to look up newly added nodes too (for chaining within one scan)
       const pendingNodesByFilename = new Map<string, string>(); // filename -> nodeId
-      
+
+      // Sort new iterations by number so they map to skeleton positions in order
+      newIterations.sort((a, b) => a.iterationNumber - b.iterationNumber);
+
       for (const iter of newIterations) {
         let sourceNodeId: string | undefined;
-        
+
         // Tree-aware: if sourceIteration exists, connect to the parent iteration node
         if (iter.sourceIteration) {
           // First check existing nodes
@@ -531,7 +546,7 @@ export default function PlaygroundCanvas() {
             sourceNodeId = pendingNodesByFilename.get(iter.sourceIteration);
           }
         }
-        
+
         // Fallback: connect to the component node
         if (!sourceNodeId) {
           const parentNode = findParentNode(iter.componentName, iter.parentId);
@@ -539,25 +554,39 @@ export default function PlaygroundCanvas() {
             sourceNodeId = parentNode.id;
           }
         }
-        
-        // Position relative to source node, or use saved skeleton position for orphans
+
+        // Position: during active generation, use the next skeleton's position;
+        // otherwise fall back to source node offset or default.
         const sourceNode = sourceNodeId
           ? (nodesRef.current.find(n => n.id === sourceNodeId) || newNodes.find(n => n.id === sourceNodeId))
           : undefined;
 
         let position: { x: number; y: number };
-        if (sourceNode) {
+
+        if (remainingSkeletonIds.length > 0) {
+          // Progressive reveal: take the next skeleton's position
+          const skeletonId = remainingSkeletonIds.shift()!;
+          const skeletonNode = currentNodes.find(n => n.id === skeletonId);
+          if (skeletonNode) {
+            position = { ...skeletonNode.position };
+            skeletonsToRemove.push(skeletonId);
+          } else {
+            // Skeleton already gone — fall back
+            position = sourceNode
+              ? { x: sourceNode.position.x + ITERATION_HORIZONTAL_SPACING, y: sourceNode.position.y }
+              : { x: 400, y: 200 };
+          }
+        } else if (sourceNode) {
           position = { x: sourceNode.position.x + ITERATION_HORIZONTAL_SPACING, y: sourceNode.position.y };
         } else {
           // Orphan iteration (e.g. freeform generation) — use skeleton position if available
-          const info = generationInfoRef.current;
           const skeletonPos = info?.skeletonPositions?.[0];
           position = skeletonPos ?? { x: 400, y: 200 };
         }
-        
+
         const nodeId = getNodeId();
         pendingNodesByFilename.set(iter.filename, nodeId);
-        
+
         const parentSize = (sourceNode?.data?.size as string | undefined) as import('./lib/constants').ComponentSize | undefined;
 
         // Inherit the registry ID from the parent node so we never have to
@@ -595,15 +624,23 @@ export default function PlaygroundCanvas() {
             style: ITERATION_EDGE_STYLE,
           });
         }
-        
+
         newKnownFilenames.push(iter.filename);
       }
-      
+
       if (newNodes.length > 0) {
-        setNodes(nds => [...nds, ...newNodes]);
-        setEdges(eds => [...eds, ...newEdges]);
+        const skeletonSet = new Set(skeletonsToRemove);
+        // Add new real nodes and remove replaced skeletons in a single update
+        setNodes(nds => [
+          ...nds.filter(n => !skeletonSet.has(n.id)),
+          ...newNodes,
+        ]);
+        setEdges(eds => [
+          ...eds.filter(e => !skeletonSet.has(e.target)),
+          ...newEdges,
+        ]);
         setKnownIterations(prev => [...prev, ...newKnownFilenames]);
-        
+
         if (resetTimeoutOnFind) {
           resetPollTimeout();
         }
@@ -660,6 +697,36 @@ export default function PlaygroundCanvas() {
     scanForIterations(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps = run once on mount
+
+  // SSE helpers for progressive iteration detection during generation.
+  // The server watches tree.json via fs.watch and pushes events when it changes.
+  const startGenerationEventSource = useCallback(() => {
+    stopGenerationEventSource();
+    const es = new EventSource('/playground/api/generate?action=events');
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'iteration-added') {
+          scanForIterations(false);
+        } else if (data.type === 'done') {
+          es.close();
+        }
+      } catch { /* ignore parse errors */ }
+    };
+    es.onerror = () => {
+      // Connection lost — server will close when generation ends.
+      // The final scan in handleGenerationComplete catches anything missed.
+      es.close();
+    };
+    generationEventSourceRef.current = es;
+  }, [scanForIterations]);
+
+  const stopGenerationEventSource = useCallback(() => {
+    if (generationEventSourceRef.current) {
+      generationEventSourceRef.current.close();
+      generationEventSourceRef.current = null;
+    }
+  }, []);
 
   // Handle generation lifecycle events
   useEffect(() => {
@@ -760,6 +827,9 @@ export default function PlaygroundCanvas() {
         generationInfoRef.current = newInfo;
         setIsGenerating(true);
         setGenerationInfo(newInfo);
+
+        // Subscribe to server-sent events for progressive iteration detection
+        startGenerationEventSource();
         return;
       }
 
@@ -878,9 +948,14 @@ export default function PlaygroundCanvas() {
       setIsGenerating(true);
       setLastGenerationDuration(null);
       setGenerationInfo(newInfo);
+
+      // Subscribe to server-sent events for progressive iteration detection
+      startGenerationEventSource();
     };
 
     const handleGenerationComplete = (): void => {
+      // Close the SSE connection for progressive iteration detection
+      stopGenerationEventSource();
 
       // Use ref to get latest generation info
       const info = generationInfoRef.current;
@@ -949,6 +1024,9 @@ export default function PlaygroundCanvas() {
     };
 
     const handleGenerationError = (e: CustomEvent<GenerationErrorPayload>) => {
+      // Close the SSE connection for progressive iteration detection
+      stopGenerationEventSource();
+
       const detail = e.detail || {};
       const errorMessage = detail.error || 'Unknown error occurred';
       const componentId = detail.componentId || 'unknown';
@@ -993,6 +1071,7 @@ export default function PlaygroundCanvas() {
       window.removeEventListener(GENERATION_START_EVENT, handleGenerationStart as EventListener);
       window.removeEventListener(GENERATION_COMPLETE_EVENT, handleGenerationComplete as EventListener);
       window.removeEventListener(GENERATION_ERROR_EVENT, handleGenerationError as EventListener);
+      stopGenerationEventSource();
     };
     // Using refs for nodes and generationInfo so we don't need them in deps
   }, [getNodeId, setNodes, setEdges, scanForIterations]);
@@ -1185,7 +1264,6 @@ export default function PlaygroundCanvas() {
           },
         }),
       );
-      toast('Queued — will run after current generation', { duration: 3000 });
       return;
     }
 

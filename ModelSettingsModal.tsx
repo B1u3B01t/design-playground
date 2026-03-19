@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Check } from 'lucide-react';
+import { Check, RefreshCw } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -21,7 +21,7 @@ interface ModelSettingsModalProps {
 
 export default function ModelSettingsModal({ open, onOpenChange }: ModelSettingsModalProps) {
   const { allModels: models, isLoading } = useAvailableModels();
-  const { enabledModels, setEnabledModels } = useModelSettingsStore();
+  const { enabledModels, setEnabledModels, fetchModels } = useModelSettingsStore();
 
   // Local state mirrors store while modal is open
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -77,8 +77,16 @@ export default function ModelSettingsModal({ open, onOpenChange }: ModelSettings
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Model Settings</DialogTitle>
-          <DialogDescription>
-            Choose which models appear in model selectors.
+          <DialogDescription className="flex items-center justify-between">
+            <span>Choose which models appear in model selectors.</span>
+            <button
+              onClick={() => fetchModels()}
+              disabled={isLoading}
+              className="p-1 text-stone-400 hover:text-stone-600 rounded transition-colors disabled:opacity-50"
+              title="Refresh models"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            </button>
           </DialogDescription>
         </DialogHeader>
 

@@ -9,8 +9,13 @@ When a user pastes an iteration prompt, you will:
 2. Read the source component
 3. Understand its structure, props interface, and current design
 4. Generate the requested number of **compatible** variations (layout and visual design can both change)
-5. Save each variation as a separate file in the iterations folder
-6. Register each variation in the iterations registry and tree manifest
+5. **Process iterations ONE AT A TIME.** For each variation, complete all steps before starting the next:
+   a. Save the iteration file to the iterations folder
+   b. Register it in `iterations/index.ts`
+   c. Add it to `iterations/tree.json`
+   d. Then proceed to the next variation
+
+> **Why sequential?** Each iteration becomes visible on the canvas as soon as it's registered, giving the user immediate feedback instead of waiting for all iterations to finish.
 
 ## Input Format
 
@@ -127,7 +132,7 @@ Always include the metadata comment block:
 
 ### 6. Tree Manifest (`tree.json`)
 
-After creating iterations, you **must** update `src/app/playground/iterations/tree.json`. This file tracks the parent-child relationships between iterations.
+After creating **each** iteration, you **must** immediately update `src/app/playground/iterations/tree.json`. This file tracks the parent-child relationships between iterations. Do not wait until all iterations are done — update after each one.
 
 ```json
 {

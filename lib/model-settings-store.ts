@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { ENABLED_MODELS_STORAGE_KEY, type ModelOption } from './constants';
+import {
+  ENABLED_MODELS_STORAGE_KEY,
+  MODELS_STORAGE_KEY,
+  FALLBACK_MODELS,
+  type ModelOption,
+} from './constants';
 
 interface ModelSettingsState {
   /** Model values that are enabled. Empty array = all models shown (default). */
@@ -8,11 +13,20 @@ interface ModelSettingsState {
   toggleModel: (value: string) => void;
   setEnabledModels: (values: string[]) => void;
   resetToAll: () => void;
+
+  /** All available models fetched from the API */
+  availableModels: ModelOption[];
+  /** Whether the initial fetch has completed (prevents re-fetching on every hook mount) */
+  hasFetched: boolean;
+  /** Whether a fetch is currently in progress */
+  isLoadingModels: boolean;
+  /** Fetch models from API. Called once on init and on explicit user refresh. */
+  fetchModels: () => Promise<void>;
 }
 
 export const useModelSettingsStore = create<ModelSettingsState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       enabledModels: [],
       toggleModel: (value: string) =>
         set((state) => {
@@ -26,9 +40,40 @@ export const useModelSettingsStore = create<ModelSettingsState>()(
         }),
       setEnabledModels: (values: string[]) => set({ enabledModels: values }),
       resetToAll: () => set({ enabledModels: [] }),
+
+      availableModels: FALLBACK_MODELS,
+      hasFetched: false,
+      isLoadingModels: false,
+      fetchModels: async () => {
+        // Prevent concurrent fetches
+        if (get().isLoadingModels) return;
+        set({ isLoadingModels: true });
+        try {
+          const response = await fetch('/playground/api/models');
+          const data = await response.json();
+          if (!response.ok || !data.success) {
+            throw new Error(data?.error || 'Failed to fetch models');
+          }
+          if (Array.isArray(data.models) && data.models.length > 0) {
+            set({ availableModels: data.models, hasFetched: true });
+          } else {
+            throw new Error('No models returned from API');
+          }
+        } catch (error) {
+          console.error('[Models] Failed to fetch models:', error);
+          // Keep existing availableModels (persisted from localStorage or fallback)
+          set({ hasFetched: true });
+        } finally {
+          set({ isLoadingModels: false });
+        }
+      },
     }),
     {
       name: ENABLED_MODELS_STORAGE_KEY,
+      partialize: (state) => ({
+        enabledModels: state.enabledModels,
+        availableModels: state.availableModels,
+      }),
     }
   )
 );

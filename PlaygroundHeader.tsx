@@ -275,12 +275,15 @@ export default function PlaygroundHeader({
          <div className="flex items-center ml-1.5 gap-0.5">
             {presenceBubbles.map((bubble) => {
               const iconConfig = getModelIconConfig(bubble.model);
+              const tooltipText = bubble.status === 'queued'
+                ? 'Queued — will run after current generation'
+                : `${bubble.model} — ${bubble.status}`;
                return (
+                <Tooltip key={bubble.id}>
+                  <TooltipTrigger asChild>
                 <div
-                  key={bubble.id}
                   className="presence-bubble group"
                   onClick={() => handleBubbleClick(bubble)}
-                  title={`${bubble.model} — ${bubble.status}`}
                 >
                   {bubble.status === 'generating' && (
                     <div className="presence-bubble-spinner" />
@@ -310,6 +313,11 @@ export default function PlaygroundHeader({
                     <X className="w-2 h-2 text-stone-500" />
                   </button>
                 </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="text-xs">
+                    {tooltipText}
+                  </TooltipContent>
+                </Tooltip>
               );
               })}
             </div>

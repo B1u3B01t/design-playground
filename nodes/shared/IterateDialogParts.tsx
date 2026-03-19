@@ -5,9 +5,7 @@ import { ChevronDown, Check, Loader2, XCircle, Download } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../ui/tooltip';
 import {
   GENERATION_ERROR_EVENT,
-  MODELS_STORAGE_KEY,
   SELECTED_MODEL_STORAGE_KEY,
-  FALLBACK_MODELS,
   ITERATION_COUNT_OPTIONS,
   DEPTH_OPTIONS,
   type ModelOption,
@@ -17,37 +15,6 @@ import { useModelSettingsStore } from '../../lib/model-settings-store';
 
 // Re-export ModelOption for consumers
 export type { ModelOption } from '../../lib/constants';
-
-// Load models from localStorage
-function loadStoredModels(): ModelOption[] | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const stored = localStorage.getItem(MODELS_STORAGE_KEY);
-    if (stored) {
-      const data = JSON.parse(stored);
-      if (Array.isArray(data.models) && data.models.length > 0) {
-        return data.models;
-      }
-    }
-  } catch (e) {
-    console.error('[Models] Error loading from localStorage:', e);
-  }
-  return null;
-}
-
-// Save models to localStorage
-function saveModelsToStorage(models: ModelOption[], source: string) {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(MODELS_STORAGE_KEY, JSON.stringify({
-      models,
-      source,
-      timestamp: Date.now(),
-    }));
-  } catch (e) {
-    console.error('[Models] Error saving to localStorage:', e);
-  }
-}
 
 // Load last selected model from localStorage
 export function loadSelectedModel(): string {
@@ -74,52 +41,22 @@ export function saveSelectedModel(model: string) {
 // ---------------------------------------------------------------------------
 
 export function useAvailableModels() {
-  const [allModels, setAllModels] = useState<ModelOption[]>(() => {
-    // Try localStorage first, then fallback
-    return loadStoredModels() || FALLBACK_MODELS;
-  });
-  const [isLoading, setIsLoading] = useState(false);
-  const fetchedRef = useRef(false);
+  const availableModels = useModelSettingsStore((s) => s.availableModels);
+  const isLoading = useModelSettingsStore((s) => s.isLoadingModels);
+  const fetchModels = useModelSettingsStore((s) => s.fetchModels);
+  const hasFetched = useModelSettingsStore((s) => s.hasFetched);
 
   useEffect(() => {
-    // Only fetch once per session
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-
-    const fetchModels = async () => {
-      setIsLoading(true);
-      try {
-        const response = await fetch('/playground/api/models');
-        const data = await response.json();
-        if (!response.ok || !data.success) {
-          throw new Error(data?.error || 'Failed to fetch models');
-        }
-        if (Array.isArray(data.models) && data.models.length > 0) {
-          setAllModels(data.models);
-          saveModelsToStorage(data.models, data.source);
-        } else {
-          throw new Error('No models returned from API');
-        }
-      } catch (error) {
-        console.error('[Models] Failed to fetch models:', error);
-        const fallbackModels = loadStoredModels() || FALLBACK_MODELS;
-        setAllModels(fallbackModels);
-        saveModelsToStorage(fallbackModels, 'fallback');
-        // Keep using localStorage/fallback models
-      }
-      setIsLoading(false);
-    };
-
-    fetchModels();
-  }, []);
+    if (!hasFetched) fetchModels();
+  }, [hasFetched, fetchModels]);
 
   // Filter by enabled models from settings (subscribes to store for reactivity)
   const enabledModels = useModelSettingsStore((s) => s.enabledModels);
   const models = enabledModels.length === 0
-    ? allModels
-    : allModels.filter((m) => enabledModels.includes(m.value));
+    ? availableModels
+    : availableModels.filter((m) => enabledModels.includes(m.value));
 
-  return { models, allModels, isLoading };
+  return { models, allModels: availableModels, isLoading };
 }
 
 // ---------------------------------------------------------------------------
