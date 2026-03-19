@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { flatRegistry } from '../../registry';
 import { getIterationComponent } from '..';
+import type { ComponentSize } from '../../lib/constants';
 
 interface IterationPageProps {
   params: Promise<{
@@ -26,11 +27,15 @@ function getRegistryItemForIteration(filename: string) {
   return undefined;
 }
 
-function ScreenFrame({ children, useAppTheme }: { children: React.ReactNode; useAppTheme?: boolean }) {
+const isFullPage = (size?: ComponentSize) => size === 'laptop' || size === 'tablet' || size === 'mobile';
+
+function ScreenFrame({ children, useAppTheme, size }: { children: React.ReactNode; useAppTheme?: boolean; size?: ComponentSize }) {
+  const full = isFullPage(size);
+
   return (
     <div className="fixed inset-0 bg-gray-100 p-4">
-      <div className={`${useAppTheme ? 'app-theme' : ''} w-full h-full overflow-auto rounded-2xl border border-gray-300 bg-white shadow-sm`}>
-        <div className="grid min-h-full place-items-center p-6">
+      <div className={`${useAppTheme ? 'app-theme' : ''} w-full h-full overflow-auto rounded-2xl border border-gray-300 bg-background shadow-sm`}>
+        <div className={full ? 'min-h-full' : 'grid min-h-full place-items-center p-[5%]'}>
           {children}
         </div>
       </div>
@@ -50,7 +55,7 @@ export default async function PlaygroundIterationIsolatedPage({ params }: Iterat
     const props = (registryItem?.props ?? {}) as Record<string, unknown>;
 
     return (
-      <ScreenFrame useAppTheme={registryItem?.useAppTheme}>
+      <ScreenFrame useAppTheme={registryItem?.useAppTheme} size={registryItem?.size}>
         <IterationComponent {...props} />
       </ScreenFrame>
     );
@@ -62,11 +67,11 @@ export default async function PlaygroundIterationIsolatedPage({ params }: Iterat
     notFound();
   }
 
-  const { Component, props, useAppTheme } = registryItem;
+  const { Component, props, useAppTheme, size } = registryItem;
   const effectiveProps = (props ?? {}) as Record<string, unknown>;
 
   return (
-    <ScreenFrame useAppTheme={useAppTheme}>
+    <ScreenFrame useAppTheme={useAppTheme} size={size}>
       <Component {...effectiveProps} />
     </ScreenFrame>
   );

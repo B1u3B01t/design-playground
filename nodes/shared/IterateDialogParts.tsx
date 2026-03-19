@@ -8,6 +8,7 @@ import {
   SELECTED_MODEL_STORAGE_KEY,
   ITERATION_COUNT_OPTIONS,
   DEPTH_OPTIONS,
+  DEFAULT_ENABLED_MODELS,
   type ModelOption,
   type GenerationErrorPayload,
 } from '../../lib/constants';
@@ -53,7 +54,7 @@ export function useAvailableModels() {
   // Filter by enabled models from settings (subscribes to store for reactivity)
   const enabledModels = useModelSettingsStore((s) => s.enabledModels);
   const models = enabledModels.length === 0
-    ? availableModels
+    ? availableModels.filter((m) => DEFAULT_ENABLED_MODELS.includes(m.value))
     : availableModels.filter((m) => enabledModels.includes(m.value));
 
   return { models, allModels: availableModels, isLoading };

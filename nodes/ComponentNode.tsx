@@ -196,7 +196,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
               onWheel={isInteractive ? handleWheel : undefined}
             >
               <div
-                className="bg-white"
+                className="bg-background"
                 style={{ width: config.width, minHeight: config.height, zoom: config.scale }}
               >
                 {isLoadingProps && !Object.keys(effectiveProps).length ? (

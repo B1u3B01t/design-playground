@@ -48,7 +48,7 @@
     --tracking-normal: 0em;
     --spacing: 0.2rem;
   }
-  
+
   .dark {
     --background: #1a1a1a;
     --foreground: #fafafa;
@@ -92,6 +92,13 @@
     --shadow-xl: 0 0px 0px 0px hsl(0 0% 0% / 0.00), 0 8px 10px -1px hsl(0 0% 0% / 0.00);
     --shadow-2xl: 0 0px 0px 0px hsl(0 0% 0% / 0.00);
   }
+
+/* Scoped font overrides — only for main playground (canvas/header/sidebar), not iterations isolated view */
+.playground-main-view {
+  --font-sans: Intel One Mono, ui-monospace, monospace;
+  --font-serif: Intel One Mono, ui-monospace, monospace;
+  --font-mono: Intel One Mono, ui-monospace, monospace;
+}
   
   @theme inline {
     --color-background: var(--background);
@@ -126,16 +133,21 @@
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-ring: var(--sidebar-ring);
+    --color-search-bg: var(--search-bg);
+    --color-text-brown: var(--text-brown);
+    --color-text-brown-dark: var(--text-brown-dark);
+    --color-text-brown-light: var(--text-brown-light);
+    --color-text-brown-darker: var(--text-brown-darker);
+    --color-accent-orange: var(--accent-orange);
   
-    --font-sans: var(--font-sans);
-    --font-mono: var(--font-mono);
+    --font-sans: var(--font-geist-sans);
+    --font-mono: var(--font-geist-mono);
     --font-serif: var(--font-serif);
-  
+
     --radius-sm: calc(var(--radius) - 4px);
     --radius-md: calc(var(--radius) - 2px);
-    --radius-lg: calc(var(--radius) + 8px);
-    --radius-xl: calc(var(--radius) + 12px);
-    --radius-2xl: calc(var(--radius) + 16px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
   
     --shadow-2xs: var(--shadow-2xs);
     --shadow-xs: var(--shadow-xs);
@@ -147,12 +159,6 @@
     --shadow-2xl: var(--shadow-2xl);
   }
 
-/* Scoped font overrides — only for main playground (canvas/header/sidebar), not iterations isolated view */
-.playground-main-view {
-  --font-sans: Intel One Mono, ui-monospace, monospace;
-  --font-serif: Intel One Mono, ui-monospace, monospace;
-  --font-mono: Intel One Mono, ui-monospace, monospace;
-}
 
 @layer base {
   * {

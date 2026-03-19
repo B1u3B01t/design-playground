@@ -12,7 +12,7 @@ import {
 import { useAvailableModels } from './nodes/shared/IterateDialogParts';
 import { useModelSettingsStore } from './lib/model-settings-store';
 import { getModelIconConfig } from './lib/model-icons';
-import type { ModelOption } from './lib/constants';
+import { DEFAULT_ENABLED_MODELS, type ModelOption } from './lib/constants';
 
 interface ModelSettingsModalProps {
   open: boolean;
@@ -30,8 +30,8 @@ export default function ModelSettingsModal({ open, onOpenChange }: ModelSettings
   useEffect(() => {
     if (open) {
       if (enabledModels.length === 0) {
-        // All models enabled by default
-        setSelected(new Set(models.map((m) => m.value)));
+        // Use default enabled models
+        setSelected(new Set(DEFAULT_ENABLED_MODELS));
       } else {
         setSelected(new Set(enabledModels));
       }

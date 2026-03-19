@@ -4,6 +4,7 @@ import {
   ENABLED_MODELS_STORAGE_KEY,
   MODELS_STORAGE_KEY,
   FALLBACK_MODELS,
+  DEFAULT_ENABLED_MODELS,
   type ModelOption,
 } from './constants';
 
@@ -27,7 +28,7 @@ interface ModelSettingsState {
 export const useModelSettingsStore = create<ModelSettingsState>()(
   persist(
     (set, get) => ({
-      enabledModels: [],
+      enabledModels: DEFAULT_ENABLED_MODELS,
       toggleModel: (value: string) =>
         set((state) => {
           const current = state.enabledModels;
@@ -39,7 +40,7 @@ export const useModelSettingsStore = create<ModelSettingsState>()(
           return { enabledModels: [...current, value] };
         }),
       setEnabledModels: (values: string[]) => set({ enabledModels: values }),
-      resetToAll: () => set({ enabledModels: [] }),
+      resetToAll: () => set({ enabledModels: DEFAULT_ENABLED_MODELS }),
 
       availableModels: FALLBACK_MODELS,
       hasFetched: false,
@@ -84,6 +85,8 @@ export const useModelSettingsStore = create<ModelSettingsState>()(
  */
 export function filterEnabledModels(allModels: ModelOption[]): ModelOption[] {
   const { enabledModels } = useModelSettingsStore.getState();
-  if (enabledModels.length === 0) return allModels;
+  if (enabledModels.length === 0) {
+    return allModels.filter((m) => DEFAULT_ENABLED_MODELS.includes(m.value));
+  }
   return allModels.filter((m) => enabledModels.includes(m.value));
 }

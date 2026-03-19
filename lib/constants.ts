@@ -148,7 +148,7 @@ export interface SizeConfigEntry {
 /** Viewport presets for previewing components at different device sizes */
 export const SIZE_CONFIG: Record<ComponentSize, SizeConfigEntry> = {
   default: { width: 0, height: 0, scale: 1, label: 'Auto' },
-  laptop:  { width: 1440, height: 900, scale: 0.6, label: 'Laptop' },
+  laptop:  { width: 1470, height: 832, scale: 0.6, label: 'Laptop' },
   tablet:  { width: 768, height: 1024, scale: 0.5, label: 'Tablet' },
   mobile:  { width: 393, height: 852, scale: 0.7, label: 'Mobile' },
 };
@@ -209,6 +209,19 @@ export interface ModelOption {
   value: string;
   label: string;
 }
+
+/** Default set of models enabled when no user preference is saved */
+export const DEFAULT_ENABLED_MODELS: string[] = [
+  'auto',
+  'composer-1.5',
+  'gpt-5.2',
+  'gpt-5.3-codex',
+  'sonnet-4.6',
+  'sonnet-4.6-thinking',
+  'opus-4.6',
+  'gemini-3-pro',
+  'gemini-3-flash',
+];
 
 /** Fallback models used when the CLI fetch fails and localStorage is empty */
 export const FALLBACK_MODELS: ModelOption[] = [

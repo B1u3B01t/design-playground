@@ -216,7 +216,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
                   }
                 >
                   <div
-                    className="bg-white"
+                    className="bg-background"
                     style={{ width: config.width, minHeight: config.height, zoom: config.scale }}
                   >
                     {isLoadingProps && !Object.keys(effectiveProps).length ? (

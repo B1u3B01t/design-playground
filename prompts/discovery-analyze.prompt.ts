@@ -130,6 +130,8 @@ Size guidelines:
 - \`default\` — cards, sections, small/medium components
 - \`tablet\` / \`mobile\` — only if the component targets that specific viewport
 
+**Background colour (important):** Some page components may have no explicit background — they inherit \`bg-background\` from the \`<body>\`. In the playground the component is rendered inside a wrapper, NOT a \`<body>\`, so that inheritance is lost. If the component or any of its children rely on the page background colour (e.g. the outermost \`<div>\` has no \`bg-*\` class), add \`className="bg-background"\` to the component's root element in the mock data or note that the playground wrapper already applies \`bg-background\`. Do NOT use a hardcoded \`bg-white\` — always use \`bg-background\` so the correct theme colour is resolved via CSS variables.
+
 ## Step 4: Add a props fetcher (if the component uses real data)
 
 Open \`${playgroundDir}/lib/props-fetchers.server.ts\`.
@@ -174,24 +176,11 @@ Read \`${playgroundDir}/discovery.json\` and update the entry with id \`${id}\`:
 }
 \`\`\`
 
-## Step 6: Sync app theme CSS variables
-
-The playground has its own CSS variables (in \`${playgroundDir}/playground-global.css\`) that differ from the main app's theme (in \`src/app/globals.css\`). To ensure discovered components render with the correct colors, borders, and spacing, the playground defines an \`.app-theme\` CSS class that re-applies the app's CSS variables.
-
-Open \`src/app/globals.css\` and \`${playgroundDir}/playground-global.css\`. Compare the \`:root\` block in \`globals.css\` with the \`.app-theme\` block in \`playground-global.css\`.
-
-- If any CSS custom properties defined in the app's \`:root\` are **missing** from \`.app-theme\`, add them.
-- If any values in \`.app-theme\` are **out of date** compared to \`globals.css\`, update them.
-- Do NOT copy dark-mode or \`@media (prefers-color-scheme: dark)\` variables — only the light-mode \`:root\` values.
-- Preserve the existing comment at the top of the \`.app-theme\` block.
-
-This step ensures every discovered component sees the real app theme when rendered in the playground.
-
 ## Rules
 
 - Do NOT modify the original component at \`${componentPath}\`
 - Do NOT create any wrapper or \`discovered/\` files — there is no \`discovered/\` directory
-- Only touch: \`${playgroundDir}/data/${mockDataFilename}\`, \`${playgroundDir}/registry.tsx\`, \`${playgroundDir}/discovery.json\`, \`${playgroundDir}/playground-global.css\` (the \`.app-theme\` block only), and (if the component fetches data) \`${playgroundDir}/lib/props-fetchers.server.ts\`
+- Only touch: \`${playgroundDir}/data/${mockDataFilename}\`, \`${playgroundDir}/registry.tsx\`, \`${playgroundDir}/discovery.json\`, and (if the component fetches data) \`${playgroundDir}/lib/props-fetchers.server.ts\`
 - All import paths must be correct relative to the project root (\`@/\` alias maps to \`src/\`)
 - Mock data must look visually appealing and realistic when rendered
 - The props fetcher key MUST match the kebab-case registry ID exactly — this is how the analyze route links the two
