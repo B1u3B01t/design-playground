@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { spawn, ChildProcess } from 'child_process';
+import { EventEmitter } from 'events';
 import fs from 'fs';
 import path from 'path';
 import { TEMP_DIR_RELATIVE, GENERATION_LOCKFILE_FILENAME } from '../../lib/constants';
@@ -10,16 +11,55 @@ import { TEMP_DIR_RELATIVE, GENERATION_LOCKFILE_FILENAME } from '../../lib/const
  * POST: Start generation (spawns cursor agent, waits for completion)
  * DELETE: Cancel running generation
  * GET?action=download-chat: Download agent output log
+ * GET?action=events: SSE stream for progressive iteration detection
+ * GET?action=status: Check generation status
  */
 
 const TEMP_DIR = path.join(process.cwd(), TEMP_DIR_RELATIVE);
 const LOCKFILE_PATH = path.join(TEMP_DIR, GENERATION_LOCKFILE_FILENAME);
+const ITERATIONS_DIR = path.join(process.cwd(), 'src/app/playground/iterations');
 
 // Global state for managing the running generation
 let currentProcess: ChildProcess | null = null;
 let currentChatLogPath: string | null = null;
 let currentLogStream: fs.WriteStream | null = null;
 let isGenerating = false;
+
+// ---------------------------------------------------------------------------
+// File-watching event emitter for progressive iteration detection
+// ---------------------------------------------------------------------------
+// When the cursor agent writes tree.json (the last step per iteration),
+// a debounced event is emitted so SSE clients can trigger a scan immediately.
+const generationEvents = new EventEmitter();
+let fileWatcher: fs.FSWatcher | null = null;
+
+function startFileWatcher() {
+  stopFileWatcher();
+  let debounceTimer: NodeJS.Timeout | null = null;
+  try {
+    fileWatcher = fs.watch(ITERATIONS_DIR, (eventType, filename) => {
+      if (filename === 'tree.json' || (filename && filename.endsWith('.tsx'))) {
+        // Debounce: the OS may fire multiple events for a single write
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          generationEvents.emit('iteration-added');
+        }, 500);
+      }
+    });
+    fileWatcher.on('error', () => {
+      // iterations dir might not exist yet — ignore
+    });
+  } catch {
+    // iterations dir might not exist yet
+  }
+}
+
+function stopFileWatcher() {
+  if (fileWatcher) {
+    fileWatcher.close();
+    fileWatcher = null;
+  }
+}
 
 // Ensure temp directory exists
 function ensureTempDir() {
@@ -175,6 +215,9 @@ export async function POST(req: Request) {
           writeLockfile(currentProcess.pid, componentId);
         }
 
+        // Start watching iterations directory for progressive detection
+        startFileWatcher();
+
         let stderr = '';
 
         // Stream stdout to log file (non-blocking)
@@ -198,6 +241,8 @@ export async function POST(req: Request) {
           currentLogStream?.write(`\n=== Generation ended with code ${code} at ${new Date().toISOString()} ===\n`);
           closeLogStream();
           removeLockfile();
+          stopFileWatcher();
+          generationEvents.emit('done');
 
           isGenerating = false;
           currentProcess = null;
@@ -229,6 +274,8 @@ export async function POST(req: Request) {
           currentLogStream?.write(`\n=== Error: ${errorMessage} ===\n`);
           closeLogStream();
           removeLockfile();
+          stopFileWatcher();
+          generationEvents.emit('done');
 
           isGenerating = false;
           currentProcess = null;
@@ -337,6 +384,53 @@ export async function GET(req: Request) {
     });
   }
 
+  if (action === 'events') {
+    // SSE stream for progressive iteration detection.
+    // The client connects when generation starts and receives events
+    // each time tree.json changes (i.e. a new iteration was registered).
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        // If no generation is active, send done immediately and close.
+        if (!isGenerating) {
+          controller.enqueue(encoder.encode('data: {"type":"done"}\n\n'));
+          controller.close();
+          return;
+        }
+
+        const onIteration = () => {
+          try {
+            controller.enqueue(encoder.encode('data: {"type":"iteration-added"}\n\n'));
+          } catch { /* stream may already be closed */ }
+        };
+
+        const onDone = () => {
+          try {
+            controller.enqueue(encoder.encode('data: {"type":"done"}\n\n'));
+            controller.close();
+          } catch { /* stream may already be closed */ }
+          cleanup();
+        };
+
+        const cleanup = () => {
+          generationEvents.removeListener('iteration-added', onIteration);
+          generationEvents.removeListener('done', onDone);
+        };
+
+        generationEvents.on('iteration-added', onIteration);
+        generationEvents.on('done', onDone);
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    });
+  }
+
   if (action === 'status') {
     return NextResponse.json({
       success: true,
@@ -346,7 +440,7 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json(
-    { success: false, error: 'Unsupported action. Use ?action=download-chat or ?action=status' },
+    { success: false, error: 'Unsupported action. Use ?action=download-chat, ?action=events, or ?action=status' },
     { status: 400 }
   );
 }

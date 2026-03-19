@@ -43,9 +43,14 @@ export function getQualityChecklist(mode: StylingMode = 'tailwind'): string {
 export const QUALITY_CHECKLIST = getQualityChecklist('tailwind');
 
 /** File registration instructions shared across templates */
-export const FILE_REGISTRATION_INSTRUCTIONS = `   - Include the required metadata comment block with @iteration, @parent, optional @sourceIteration, and @description
-   - Immediately register that file in: src/app/playground/iterations/index.ts (map key MUST include ".tsx")
-   - Immediately add a matching entry to: src/app/playground/iterations/tree.json with parent set to "{{componentId}}"`;
+export const FILE_REGISTRATION_INSTRUCTIONS = `IMPORTANT — SEQUENTIAL WORKFLOW: Process iterations ONE AT A TIME. For each iteration, complete ALL of the following steps before starting the next:
+   a. Create and save the iteration file
+   b. Include the required metadata comment block with @iteration, @parent, optional @sourceIteration, and @description
+   c. Immediately register that file in: src/app/playground/iterations/index.ts (map key MUST include ".tsx")
+   d. Immediately add a matching entry to: src/app/playground/iterations/tree.json with parent set to "{{componentId}}"
+   e. Only then proceed to the next iteration
+
+   This sequential approach ensures each iteration is visible on the canvas as soon as it's done.`;
 
 /** Props constraint block shared across templates */
 export const PROPS_CONSTRAINT = `- **Props interface**: Keep it IDENTICAL to the original component (no added/removed/renamed props, no type changes).

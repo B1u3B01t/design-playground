@@ -44,10 +44,17 @@ INSTRUCTIONS
 2. Read the BASE ITERATION at: {{iterationSourcePath}}
 3. Also read the ORIGINAL component for context: {{sourcePath}}
 4. Generate {{iterationCount}} new variations based on the base iteration
-5. For EACH new variation you create:
+5. Process iterations ONE AT A TIME in the order listed below. For each iteration, complete ALL of the following steps before moving to the next:
+   a. Create and save the iteration file
+   b. Include metadata comment with @iteration, @parent, @sourceIteration {{sourceIterationFilename}}, and @description
+   c. Immediately register that file in src/app/playground/iterations/index.ts (map key MUST include ".tsx")
+   d. Immediately add a matching entry to src/app/playground/iterations/tree.json with parent set to "{{treeParent}}"
+   e. Only then start the next iteration
+
+   This sequential approach ensures each iteration is visible on the canvas as soon as it's done.
+
+Files to create (in this order):
 {{iterationSavesBlock}}
-   - Immediately register that file in: src/app/playground/iterations/index.ts
-   - Immediately add a matching entry to: src/app/playground/iterations/tree.json with parent set to "{{treeParent}}"
 {{customInstructionsSection}}
 IMPORTANT
 - Use the BASE ITERATION as your starting point, NOT the original component
