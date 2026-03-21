@@ -13,6 +13,8 @@ import {
   GENERATION_ERROR_EVENT,
   GENERATION_QUEUED_EVENT,
   PAN_TO_POSITION_EVENT,
+  FIT_COMPONENT_NODES_EVENT,
+  PRESENCE_BUBBLES_STORAGE_KEY,
   type GenerationStartPayload,
   type GenerationErrorPayload,
   type GenerationQueuedPayload,
@@ -26,6 +28,7 @@ import KeyboardShortcutsModal from './KeyboardShortcutsModal';
 
 interface PresenceBubble {
   id: string;
+  componentId: string;
   model: string;
   status: 'queued' | 'generating' | 'done';
   flowPosition: { x: number; y: number } | null;
@@ -50,8 +53,26 @@ export default function PlaygroundHeader({
 }: PlaygroundHeaderProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [presenceBubbles, setPresenceBubbles] = useState<PresenceBubble[]>([]);
+  const [presenceBubbles, setPresenceBubbles] = useState<PresenceBubble[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const stored = localStorage.getItem(PRESENCE_BUBBLES_STORAGE_KEY);
+      if (stored) {
+        const bubbles = JSON.parse(stored) as PresenceBubble[];
+        // On reload, drop queued bubbles (queue state is lost), keep generating and done
+        return bubbles.filter(b => b.status !== 'queued');
+      }
+    } catch { /* ignore */ }
+    return [];
+  });
   const removeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  // Persist presence bubbles to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(PRESENCE_BUBBLES_STORAGE_KEY, JSON.stringify(presenceBubbles));
+    } catch { /* ignore */ }
+  }, [presenceBubbles]);
 
   // Listen to generation lifecycle events
   useEffect(() => {
@@ -60,6 +81,7 @@ export default function PlaygroundHeader({
       const id = `${detail.componentId}-queued-${Date.now()}`;
       const bubble: PresenceBubble = {
         id,
+        componentId: detail.componentId,
         model: detail.model || 'auto',
         status: 'queued',
         flowPosition: detail.flowPosition ?? null,
@@ -88,6 +110,7 @@ export default function PlaygroundHeader({
         const id = `${detail.componentId}-${Date.now()}`;
         const bubble: PresenceBubble = {
           id,
+          componentId: detail.componentId,
           model: detail.model || 'auto',
           status: 'generating',
           flowPosition: detail.flowPosition ?? null,
@@ -104,16 +127,6 @@ export default function PlaygroundHeader({
             ? { ...b, status: 'done' as const }
             : b
         );
-        // Auto-remove done bubbles after 5s
-        for (const b of updated) {
-          if (b.status === 'done' && !removeTimersRef.current.has(b.id)) {
-            const timer = setTimeout(() => {
-              setPresenceBubbles(p => p.filter(x => x.id !== b.id));
-              removeTimersRef.current.delete(b.id);
-            }, 5000);
-            removeTimersRef.current.set(b.id, timer);
-          }
-        }
         return updated;
       });
     };
@@ -144,11 +157,9 @@ export default function PlaygroundHeader({
   }, []);
 
   const handleBubbleClick = useCallback((bubble: PresenceBubble) => {
-    if (bubble.flowPosition) {
-      window.dispatchEvent(
-        new CustomEvent(PAN_TO_POSITION_EVENT, { detail: bubble.flowPosition })
-      );
-    }
+    window.dispatchEvent(
+      new CustomEvent(FIT_COMPONENT_NODES_EVENT, { detail: { componentId: bubble.componentId } })
+    );
   }, []);
 
   const handleRemoveBubble = useCallback((id: string) => {

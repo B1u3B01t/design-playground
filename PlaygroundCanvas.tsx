@@ -59,6 +59,7 @@ import {
   DRAG_ITERATE_UNDO_DURATION_MS,
   DRAG_ITERATE_TOAST_DURATION_MS,
   STORAGE_KEY,
+
   POLL_INTERVAL,
   POLL_DURATION,
   ITERATION_HORIZONTAL_SPACING,
@@ -91,6 +92,7 @@ import {
   ITERATION_COLLAPSE_TOGGLE_EVENT,
   PLAYGROUND_CLEAR_EVENT,
   PAN_TO_POSITION_EVENT,
+  FIT_COMPONENT_NODES_EVENT,
   TREE_COLUMN_WIDTH,
   DRAG_GHOST_GAP,
   DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
@@ -161,6 +163,10 @@ interface CanvasState {
   nodeIdCounter: number;
   knownIterations: string[];
   collapsedNodeIds?: string[];
+  /** Persisted generation info for resuming after page reload */
+  generationInfo?: GenerationInfo | null;
+  /** Persisted viewport (pan/zoom) */
+  viewport?: { x: number; y: number; zoom: number };
 }
 
 function loadCanvasState(): CanvasState | null {
@@ -169,16 +175,18 @@ function loadCanvasState(): CanvasState | null {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const state = JSON.parse(stored) as CanvasState;
-      // Strip skeleton nodes that may have been persisted mid-generation;
-      // generationInfo is not stored so they can never be cleaned up.
       const skeletonIds = new Set(
         state.nodes.filter(n => n.type === 'skeleton').map(n => n.id),
       );
-      if (skeletonIds.size > 0) {
+      // Strip skeleton nodes unless we have generationInfo to resume
+      const hasValidGenInfo = state.generationInfo &&
+        (Date.now() - state.generationInfo.startTime <= 10 * 60 * 1000);
+      if (skeletonIds.size > 0 && !hasValidGenInfo) {
         state.nodes = state.nodes.filter(n => n.type !== 'skeleton');
         state.edges = state.edges.filter(
           e => !skeletonIds.has(e.source) && !skeletonIds.has(e.target),
         );
+        state.generationInfo = null;
       }
       return state;
     }
@@ -188,10 +196,23 @@ function loadCanvasState(): CanvasState | null {
   return null;
 }
 
-function saveCanvasState(nodes: Node[], edges: Edge[], counter: number, knownIterations: string[], collapsedNodeIds: string[]) {
+function saveCanvasState(
+  nodes: Node[],
+  edges: Edge[],
+  counter: number,
+  knownIterations: string[],
+  collapsedNodeIds: string[],
+  generationInfo?: GenerationInfo | null,
+  viewport?: { x: number; y: number; zoom: number },
+) {
   if (typeof window === 'undefined') return;
   try {
-    const state: CanvasState = { nodes, edges, nodeIdCounter: counter, knownIterations, collapsedNodeIds };
+    const state: CanvasState = {
+      nodes, edges, nodeIdCounter: counter, knownIterations, collapsedNodeIds,
+      // Only persist generationInfo when skeletons are present
+      generationInfo: nodes.some(n => n.type === 'skeleton') ? generationInfo : null,
+      viewport,
+    };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (e) {
     console.error('Failed to save canvas state:', e);
@@ -275,7 +296,7 @@ export default function PlaygroundCanvas() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialState?.nodes || []);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialState?.edges || []);
-  const { screenToFlowPosition, fitView, setCenter } = useReactFlow();
+  const { screenToFlowPosition, fitView, setCenter, getViewport } = useReactFlow();
 
   // Running timer during generation + safety timeout for orphaned skeletons
   useEffect(() => {
@@ -307,6 +328,7 @@ export default function PlaygroundCanvas() {
       }
       setIsGenerating(false);
       setGenerationInfo(null);
+
     }, 10 * 60 * 1000);
 
     return () => {
@@ -377,8 +399,17 @@ export default function PlaygroundCanvas() {
 
   // Save to localStorage whenever nodes or edges change
   useEffect(() => {
-    saveCanvasState(nodes, edges, nodeIdCounterRef.current, knownIterations, Array.from(collapsedNodeIds));
-  }, [nodes, edges, knownIterations, collapsedNodeIds]);
+    saveCanvasState(nodes, edges, nodeIdCounterRef.current, knownIterations, Array.from(collapsedNodeIds), generationInfoRef.current, getViewport());
+  }, [nodes, edges, knownIterations, collapsedNodeIds, getViewport]);
+
+  // Save viewport on page unload (captures pan/zoom changes that don't trigger node updates)
+  useEffect(() => {
+    const handler = () => {
+      saveCanvasState(nodesRef.current, edges, nodeIdCounterRef.current, knownIterationsRef.current, Array.from(collapsedNodeIdsRef.current), generationInfoRef.current, getViewport());
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [edges, getViewport]);
 
   // Find parent node for a given component (reads from ref to avoid stale closure)
   const findParentNode = useCallback((componentName: string, parentId?: string): Node | undefined => {
@@ -728,6 +759,30 @@ export default function PlaygroundCanvas() {
     }
   }, []);
 
+  // Resume generation after page reload — restore persisted generationInfo,
+  // keep skeleton nodes on canvas, and reconnect SSE.
+  useEffect(() => {
+    const persisted = initialState?.generationInfo;
+    if (!persisted) return;
+
+    // Verify skeletons actually exist in the loaded nodes
+    const currentSkeletons = nodesRef.current.filter(
+      n => n.type === 'skeleton' && persisted.skeletonNodeIds.includes(n.id),
+    );
+    if (currentSkeletons.length === 0) return;
+
+    // Restore generation state
+    generationInfoRef.current = persisted;
+    setIsGenerating(true);
+    setGenerationInfo(persisted);
+
+    // Reconnect SSE and kick off an immediate scan to pick up any
+    // iterations that landed while the page was reloading
+    startGenerationEventSource();
+    scanForIterations(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Handle generation lifecycle events
   useEffect(() => {
     /**
@@ -827,6 +882,7 @@ export default function PlaygroundCanvas() {
         generationInfoRef.current = newInfo;
         setIsGenerating(true);
         setGenerationInfo(newInfo);
+
 
         // Subscribe to server-sent events for progressive iteration detection
         startGenerationEventSource();
@@ -1059,6 +1115,7 @@ export default function PlaygroundCanvas() {
 
       // Reset generation state — eagerly sync ref
       generationInfoRef.current = null;
+
       setIsGenerating(false);
       setGenerationInfo(null);
     };
@@ -1592,6 +1649,34 @@ export default function PlaygroundCanvas() {
     return () => window.removeEventListener(PAN_TO_POSITION_EVENT, handler);
   }, [setCenter]);
 
+  // Fit viewport around all nodes for a given component (presence bubble click)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { componentId } = (e as CustomEvent<{ componentId: string }>).detail;
+      if (!componentId) return;
+
+      // Find the parent component node and all its iteration/skeleton children
+      const parentNode = nodesRef.current.find(
+        n => n.type === 'component' && (n.data.componentId as string)?.includes(componentId),
+      );
+      const childNodes = nodesRef.current.filter(
+        n => (n.type === 'iteration' || n.type === 'skeleton') &&
+          parentNode && n.data.parentNodeId === parentNode.id,
+      );
+
+      const nodeIds = [
+        ...(parentNode ? [parentNode.id] : []),
+        ...childNodes.map(n => n.id),
+      ];
+
+      if (nodeIds.length > 0) {
+        fitView({ nodes: nodeIds.map(id => ({ id })), duration: 400, padding: 0.15 });
+      }
+    };
+    window.addEventListener(FIT_COMPONENT_NODES_EVENT, handler);
+    return () => window.removeEventListener(FIT_COMPONENT_NODES_EVENT, handler);
+  }, [fitView]);
+
   const onConnect = useCallback(
     (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
     [setEdges]
@@ -2050,7 +2135,9 @@ export default function PlaygroundCanvas() {
           onDrop={onDrop}
           onPaneClick={handlePaneClick}
           nodeTypes={nodeTypes}
-          fitView
+          {...(initialState?.viewport
+            ? { defaultViewport: initialState.viewport }
+            : { fitView: true })}
           className="bg-gray-50"
           proOptions={{ hideAttribution: true }}
           minZoom={CANVAS_MIN_ZOOM}
@@ -2068,8 +2155,8 @@ export default function PlaygroundCanvas() {
           {/* <Controls
             className="!bg-white !border-stone-200 !rounded-lg !shadow-sm [&>button]:!bg-white [&>button]:!border-stone-200 [&>button]:!text-stone-600 [&>button:hover]:!bg-stone-50"
           /> */}
-          {/* <MiniMap
-            className="bg-white !border-stone-200 rounded-lg !shadow-sm"
+          <MiniMap
+            className="bg-white !border-stone-200 rounded-lg !shadow-sm !bottom-4 !right-4"
             nodeColor={(node) => {
               if (node.type === 'skeleton') return MINIMAP_SKELETON_COLOR;
               if (node.type === 'iteration') return MINIMAP_ITERATION_COLOR;
@@ -2077,7 +2164,8 @@ export default function PlaygroundCanvas() {
               return MINIMAP_COMPONENT_COLOR;
             }}
             maskColor={MINIMAP_MASK_COLOR}
-          /> */}
+            position="bottom-right"
+          />
         <Background
           variant={BackgroundVariant.Dots}
           gap={BACKGROUND_GAP}

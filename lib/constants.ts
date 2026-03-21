@@ -34,6 +34,9 @@ export const GENERATION_QUEUED_EVENT = 'playground:generation-queued';
 /** Fired to pan the canvas to a specific flow position */
 export const PAN_TO_POSITION_EVENT = 'playground:pan-to-position';
 
+/** Fired to fit the viewport around all nodes for a given component */
+export const FIT_COMPONENT_NODES_EVENT = 'playground:fit-component-nodes';
+
 /** Fired to trigger auto-arrange of canvas nodes */
 export const PLAYGROUND_AUTO_ARRANGE_EVENT = 'PLAYGROUND_AUTO_ARRANGE';
 
@@ -64,6 +67,12 @@ export const ENABLED_MODELS_STORAGE_KEY = 'playground-model-settings';
 
 /** Key for persisting user keybinding overrides */
 export const KEYBINDINGS_STORAGE_KEY = 'playground-keybindings';
+
+/** Key for persisting presence bubbles across page reloads */
+export const PRESENCE_BUBBLES_STORAGE_KEY = 'playground-presence-bubbles';
+
+/** Key for persisting generation info across page reloads */
+export const GENERATION_INFO_STORAGE_KEY = 'playground-generation-info';
 
 // ---------------------------------------------------------------------------
 // Timing Constants
