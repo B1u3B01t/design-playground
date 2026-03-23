@@ -121,7 +121,6 @@ import <ComponentName> from '<correct import path>';
   props: <camelCaseName>MockData as Record<string, unknown>,
   sourcePath: '<path to the actual component file being registered>',
   size: '<one of: default | laptop | tablet | mobile>' as ComponentSize,
-  useAppTheme: true,
   propsInterface: \`<the component's TypeScript props interface as a string>\`,${parentId ? `\n  parentId: '${parentId}',` : ''}
 },
 \`\`\`

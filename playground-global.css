@@ -3,7 +3,7 @@
 @import "tw-animate-css";
 /* stylelint-disable at-rule-no-unknown, csstools/use-nesting */
 
-:root {
+.playground-main-view {
     --background: #ffffff;
     --foreground: #1a1a1a;
     --card: #ffffff;
@@ -47,9 +47,12 @@
     --shadow-2xl: 0 0px 0px 0px hsl(0 0% 0% / 0.00);
     --tracking-normal: 0em;
     --spacing: 0.2rem;
+    --font-sans: Intel One Mono, ui-monospace, monospace;
+    --font-serif: Intel One Mono, ui-monospace, monospace;
+    --font-mono: Intel One Mono, ui-monospace, monospace;
   }
 
-  .dark {
+  .playground-main-view.dark {
     --background: #1a1a1a;
     --foreground: #fafafa;
     --card: #1a1a1a;
@@ -93,13 +96,6 @@
     --shadow-2xl: 0 0px 0px 0px hsl(0 0% 0% / 0.00);
   }
 
-/* Scoped font overrides — only for main playground (canvas/header/sidebar), not iterations isolated view */
-.playground-main-view {
-  --font-sans: Intel One Mono, ui-monospace, monospace;
-  --font-serif: Intel One Mono, ui-monospace, monospace;
-  --font-mono: Intel One Mono, ui-monospace, monospace;
-}
-  
   @theme inline {
     --color-background: var(--background);
     --color-foreground: var(--foreground);

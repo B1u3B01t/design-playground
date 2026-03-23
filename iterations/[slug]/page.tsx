@@ -29,12 +29,12 @@ function getRegistryItemForIteration(filename: string) {
 
 const isFullPage = (size?: ComponentSize) => size === 'laptop' || size === 'tablet' || size === 'mobile';
 
-function ScreenFrame({ children, useAppTheme, size }: { children: React.ReactNode; useAppTheme?: boolean; size?: ComponentSize }) {
+function ScreenFrame({ children, size }: { children: React.ReactNode; size?: ComponentSize }) {
   const full = isFullPage(size);
 
   return (
     <div className="fixed inset-0 bg-gray-100 p-4">
-      <div className={`${useAppTheme ? 'app-theme' : ''} w-full h-full overflow-auto rounded-2xl border border-gray-300 bg-background shadow-sm`}>
+      <div className="app-theme w-full h-full overflow-auto rounded-2xl border border-gray-300 bg-background shadow-sm">
         <div className={full ? 'min-h-full' : 'grid min-h-full place-items-center p-[5%]'}>
           {children}
         </div>
@@ -55,7 +55,7 @@ export default async function PlaygroundIterationIsolatedPage({ params }: Iterat
     const props = (registryItem?.props ?? {}) as Record<string, unknown>;
 
     return (
-      <ScreenFrame useAppTheme={registryItem?.useAppTheme} size={registryItem?.size}>
+      <ScreenFrame size={registryItem?.size}>
         <IterationComponent {...props} />
       </ScreenFrame>
     );
@@ -67,11 +67,11 @@ export default async function PlaygroundIterationIsolatedPage({ params }: Iterat
     notFound();
   }
 
-  const { Component, props, useAppTheme, size } = registryItem;
+  const { Component, props, size } = registryItem;
   const effectiveProps = (props ?? {}) as Record<string, unknown>;
 
   return (
-    <ScreenFrame useAppTheme={useAppTheme} size={size}>
+    <ScreenFrame size={size}>
       <Component {...effectiveProps} />
     </ScreenFrame>
   );

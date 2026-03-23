@@ -67,7 +67,6 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
   const registryItem = useMemo(() => resolveRegistryItem(registryId), [registryId]);
   const staticProps = useMemo(() => registryItem?.props || {}, [registryItem]);
   const effectiveProps = (resolvedProps ?? staticProps) as Record<string, unknown>;
-  const useAppTheme = registryItem?.useAppTheme ?? false;
 
   // Use parent's size at creation time, then fall back to registry default
   const [size, setSize] = useState<ComponentSize>(
@@ -196,7 +195,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
       <div className="relative flex items-start">
         {/* Component frame */}
         <div
-          className={`${useAppTheme ? 'app-theme' : ''} bg-white overflow-hidden rounded-xl transition-all ${
+          className={`app-theme bg-background overflow-hidden rounded-xl transition-all ${
             selected ? 'ring-2 ring-[#0B99FF]' : ''
           }`}
         >
