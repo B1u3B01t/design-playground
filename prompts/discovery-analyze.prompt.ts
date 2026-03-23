@@ -101,14 +101,16 @@ First, determine the **registry ID** and **camelCase variable name** for this co
 import { mockData as <camelCaseName>MockData } from './data/${mockDataFilename.replace('.ts', '')}';
 \`\`\`
 
-Also add the component import (use \`dynamic\` for large page components, static import for small components):
+Also add the component import using \`dynamic\` (all playground components must be dynamically imported):
 
 \`\`\`ts
-// for a large page component:
+// for a default-exported component (pages, standalone components):
 const <ComponentName> = dynamic(() => import('<correct import path>')) as ComponentType<Record<string, unknown>>;
 
-// for a small/medium component:
-import <ComponentName> from '<correct import path>';
+// for a named-exported component:
+const <ComponentName> = dynamic(
+  () => import('<correct import path>').then(m => m.<ComponentName> as unknown as ComponentType<Record<string, unknown>>),
+) as ComponentType<Record<string, unknown>>;
 \`\`\`
 
 ### 3b — add the entry inside the \`components\` group's \`children\` array
@@ -120,7 +122,7 @@ import <ComponentName> from '<correct import path>';
   Component: <ComponentName> as unknown as ComponentType<Record<string, unknown>>,
   props: <camelCaseName>MockData as Record<string, unknown>,
   sourcePath: '<path to the actual component file being registered>',
-  size: '<one of: default | laptop | tablet | mobile>' as ComponentSize,
+  size: '<one of: default | laptop | tablet | mobile>',
   propsInterface: \`<the component's TypeScript props interface as a string>\`,${parentId ? `\n  parentId: '${parentId}',` : ''}
 },
 \`\`\`

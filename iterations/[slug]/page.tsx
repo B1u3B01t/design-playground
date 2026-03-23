@@ -1,3 +1,6 @@
+'use client';
+
+import { use } from 'react';
 import { notFound } from 'next/navigation';
 import { flatRegistry } from '../../registry';
 import { getIterationComponent } from '..';
@@ -43,8 +46,8 @@ function ScreenFrame({ children, size }: { children: React.ReactNode; size?: Com
   );
 }
 
-export default async function PlaygroundIterationIsolatedPage({ params }: IterationPageProps) {
-  const { slug } = await params;
+export default function PlaygroundIterationIsolatedPage({ params }: IterationPageProps) {
+  const { slug } = use(params);
 
   // 1) Try to resolve as an iteration first (by filename)
   const iterationFilename = `${slug}.tsx`;

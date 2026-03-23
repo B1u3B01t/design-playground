@@ -211,7 +211,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
               </div>
             </div>
           ) : (
-            <div className={`p-4 flex items-center justify-center ${isInteractive ? 'nodrag nowheel nopan' : ''}`}>
+            <div className={`grid place-items-center p-4 ${isInteractive ? 'nodrag nowheel nopan' : ''}`}>
               {isLoadingProps && !Object.keys(effectiveProps).length ? (
                 <div className="text-xs text-gray-500">Loading live data…</div>
               ) : propsError && !Object.keys(effectiveProps).length ? (

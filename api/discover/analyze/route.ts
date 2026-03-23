@@ -199,7 +199,7 @@ export async function POST(req: Request) {
             }
 
             // Promote child components to top-level entries
-            let childEntries: DiscoveryEntry[] = [];
+            const childEntries: DiscoveryEntry[] = [];
             if (entry?.childComponents && entry.childComponents.length > 0) {
               const existingIds = new Set((data.entries || []).map((e: DiscoveryEntry) => e.id));
               for (const child of entry.childComponents) {

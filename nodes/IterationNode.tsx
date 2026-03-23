@@ -239,7 +239,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
               )}
             </div>
           ) : (
-            <div className={`p-4 flex items-center justify-center min-h-[100px] ${isInteractive ? 'nodrag nowheel nopan' : ''}`}>
+            <div className={`grid place-items-center min-h-[100px] p-4 ${isInteractive ? 'nodrag nowheel nopan' : ''}`}>
               {IterationComponent ? (
                 <Suspense fallback={<Loader2 className="w-5 h-5 animate-spin text-gray-400" />}>
                   <div className="w-full">
