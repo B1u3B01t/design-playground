@@ -1,9 +1,45 @@
 'use client';
 
-import { useState, DragEvent } from 'react';
-import { ChevronRight, ChevronDown, GripVertical, ChevronLeft, Plus } from 'lucide-react';
-import { registry, RegistryItem, isGroup, isLeaf } from './registry';
+import { useState, useMemo, DragEvent } from 'react';
+import { ChevronRight, ChevronDown, GripVertical, ChevronLeft, Plus, Loader2 } from 'lucide-react';
+import { registry, RegistryItem, RegistryLeafItem, isGroup, isLeaf } from './registry';
 import { DND_DATA_KEY } from './lib/constants';
+import type { PendingChild } from './PlaygroundClient';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Build a map of parentId -> child leaf items from the registry tree. */
+function buildChildrenMap(items: RegistryItem[]): Map<string, RegistryLeafItem[]> {
+  const map = new Map<string, RegistryLeafItem[]>();
+  function collect(list: RegistryItem[]) {
+    for (const item of list) {
+      if (isLeaf(item) && item.parentId) {
+        const existing = map.get(item.parentId) || [];
+        existing.push(item);
+        map.set(item.parentId, existing);
+      } else if (isGroup(item)) {
+        collect(item.children);
+      }
+    }
+  }
+  collect(items);
+  return map;
+}
+
+/** Remove leaf items that have a parentId from group children (they render nested under their parent). */
+function stripChildLeaves(items: RegistryItem[]): RegistryItem[] {
+  return items
+    .map((item) => {
+      if (isGroup(item)) {
+        return { ...item, children: stripChildLeaves(item.children) };
+      }
+      if (isLeaf(item) && item.parentId) return null;
+      return item;
+    })
+    .filter((item): item is RegistryItem => item !== null);
+}
 
 // ---------------------------------------------------------------------------
 // Tree node
@@ -12,9 +48,11 @@ import { DND_DATA_KEY } from './lib/constants';
 interface TreeNodeProps {
   item: RegistryItem;
   depth?: number;
+  childrenMap: Map<string, RegistryLeafItem[]>;
+  pendingChildren: Map<string, PendingChild[]>;
 }
 
-function TreeNode({ item, depth = 0 }: TreeNodeProps) {
+function TreeNode({ item, depth = 0, childrenMap, pendingChildren }: TreeNodeProps) {
   const [expanded, setExpanded] = useState(true);
 
   const handleDragStart = (e: DragEvent<HTMLDivElement>, componentId: string) => {
@@ -40,7 +78,7 @@ function TreeNode({ item, depth = 0 }: TreeNodeProps) {
         {expanded && (
           <div>
             {item.children.map((child) => (
-              <TreeNode key={child.id} item={child} depth={depth + 1} />
+              <TreeNode key={child.id} item={child} depth={depth + 1} childrenMap={childrenMap} pendingChildren={pendingChildren} />
             ))}
           </div>
         )}
@@ -49,6 +87,65 @@ function TreeNode({ item, depth = 0 }: TreeNodeProps) {
   }
 
   if (isLeaf(item)) {
+    const registryChildren = childrenMap.get(item.id) || [];
+    const pending = pendingChildren.get(item.id) || [];
+    // Filter out pending items that already exist as registry children (done analyzing)
+    const registryChildIds = new Set(registryChildren.map((c) => c.id));
+    const activePending = pending.filter((p) => p.status !== 'done' && !registryChildIds.has(p.id));
+    const hasChildren = registryChildren.length > 0 || activePending.length > 0;
+
+    if (hasChildren) {
+      return (
+        <div>
+          {/* Parent item — both expandable and draggable */}
+          <div
+            className="flex items-center gap-1 px-2 py-1.5 text-[13px] text-stone-700 hover:text-stone-900 hover:bg-stone-100 rounded-sm transition-colors group select-none"
+            style={{ paddingLeft: `${depth * 10 + 8}px` }}
+          >
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="shrink-0 p-0 text-stone-400 hover:text-stone-600"
+            >
+              {expanded ? (
+                <ChevronDown className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5" />
+              )}
+            </button>
+            <div
+              draggable
+              onDragStart={(e) => handleDragStart(e, item.id)}
+              className="flex items-center gap-1.5 flex-1 min-w-0 cursor-grab active:cursor-grabbing"
+            >
+              <GripVertical className="w-3.5 h-3.5 text-stone-300 group-hover:text-stone-400 shrink-0 transition-colors" />
+              <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{item.label}</span>
+            </div>
+          </div>
+          {expanded && (
+            <div>
+              {/* Already-analyzed child components */}
+              {registryChildren.map((child) => (
+                <TreeNode key={child.id} item={child} depth={depth + 1} childrenMap={childrenMap} pendingChildren={pendingChildren} />
+              ))}
+              {/* Pending child components — greyed out with spinner */}
+              {activePending.map((child) => (
+                <div
+                  key={child.id}
+                  className="flex items-center gap-1.5 px-2 py-1.5 text-[13px] text-stone-400 opacity-50 cursor-default select-none"
+                  title={`Adding ${child.name}…`}
+                  style={{ paddingLeft: `${(depth + 1) * 10 + 8}px` }}
+                >
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-300 shrink-0" />
+                  <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{child.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Normal leaf — no children
     return (
       <div
         draggable
@@ -72,10 +169,14 @@ function TreeNode({ item, depth = 0 }: TreeNodeProps) {
 interface PlaygroundSidebarProps {
   onCollapse: () => void;
   onOpenDiscovery: () => void;
+  pendingChildren: Map<string, PendingChild[]>;
 }
 
-export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery }: PlaygroundSidebarProps) {
+export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pendingChildren }: PlaygroundSidebarProps) {
   const [search, setSearch] = useState('');
+
+  const childrenMap = useMemo(() => buildChildrenMap(registry), []);
+  const strippedRegistry = useMemo(() => stripChildLeaves(registry), []);
 
   const filterItems = (items: RegistryItem[], query: string): RegistryItem[] => {
     if (!query.trim()) return items;
@@ -88,13 +189,20 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery }: Playg
           if (item.label.toLowerCase().includes(lowerQuery)) return item;
           return null;
         }
-        if (isLeaf(item) && item.label.toLowerCase().includes(lowerQuery)) return item;
+        if (isLeaf(item)) {
+          // Match on the item itself
+          if (item.label.toLowerCase().includes(lowerQuery)) return item;
+          // Match on any of its registry children
+          const kids = childrenMap.get(item.id) || [];
+          if (kids.some((k) => k.label.toLowerCase().includes(lowerQuery))) return item;
+          return null;
+        }
         return null;
       })
       .filter((item): item is RegistryItem => item !== null);
   };
 
-  const filteredRegistry = filterItems(registry, search);
+  const filteredRegistry = filterItems(strippedRegistry, search);
 
   return (
     <aside className="w-[208px] h-full bg-white rounded-2xl border border-border flex flex-col overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
@@ -140,7 +248,9 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery }: Playg
       {/* Component tree */}
       <div className="flex-1 overflow-y-auto px-1.5 min-h-0 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-stone-300 [&::-webkit-scrollbar-thumb]:rounded">
         {filteredRegistry.length > 0 ? (
-          filteredRegistry.map((item) => <TreeNode key={item.id} item={item} />)
+          filteredRegistry.map((item) => (
+            <TreeNode key={item.id} item={item} childrenMap={childrenMap} pendingChildren={pendingChildren} />
+          ))
         ) : (
           <p className="text-xs text-stone-400 text-center py-3 select-none">No components found</p>
         )}

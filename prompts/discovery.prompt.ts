@@ -65,7 +65,10 @@ Write the following JSON to \`${playgroundDir}/discovery.json\`:
       "type": "page",
       "route": "/url-path",
       "description": "<One sentence describing what this looks like>",
-      "status": "discovered"
+      "status": "discovered",
+      "childComponents": [
+        { "name": "<PascalCaseComponentName>", "path": "<relative/path/to/ChildComponent.tsx>" }
+      ]
     },
     {
       "id": "<unique-kebab-case-slug>",
@@ -73,7 +76,8 @@ Write the following JSON to \`${playgroundDir}/discovery.json\`:
       "path": "<relative/path/to/file.tsx>",
       "type": "component",
       "description": "<One sentence describing what this looks like>",
-      "status": "discovered"
+      "status": "discovered",
+      "childComponents": []
     }
   ]
 }
@@ -98,6 +102,13 @@ Write the following JSON to \`${playgroundDir}/discovery.json\`:
 - \`route\`: only include for "page" type entries (the URL path, e.g., "/pricing")
 - \`status\`: always set to "discovered" for new entries
 - \`description\`: one sentence, describe the visual appearance (not the code)
+- \`childComponents\`: array of visual child components imported and rendered by this entry. For each child:
+  - \`name\`: the PascalCase React component name as imported (e.g., "Hero", "SignupForm", "PlanCards")
+  - \`path\`: relative path to the child component file (e.g., "src/app/signup/SignupForm.tsx")
+  - Only include children that are **visual UI components** — skip hooks, utilities, context providers, shadcn/ui primitives, icons, and layout wrappers
+  - Only include children that live **within the project** (not from node_modules)
+  - Read the file to identify which components it imports and renders in its JSX — list those as children
+  - If the entry has no visual child components, use an empty array \`[]\`
 
 ## Important
 

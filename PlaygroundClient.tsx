@@ -8,10 +8,18 @@ import PlaygroundCanvas from './PlaygroundCanvas';
 import PlaygroundHeader from './PlaygroundHeader';
 import DiscoveryModal, { type DiscoveryEntry } from './DiscoveryModal';
 
+export interface PendingChild {
+  id: string;
+  name: string;
+  path: string;
+  status: 'pending' | 'analyzing' | 'done' | 'error';
+}
+
 export default function PlaygroundClient() {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
   const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
+  const [pendingChildren, setPendingChildren] = useState<Map<string, PendingChild[]>>(new Map());
   const hasScanTriggered = useRef(false);
   const scanPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -111,6 +119,124 @@ export default function PlaygroundClient() {
     window.dispatchEvent(new CustomEvent('playground:discovery-updated'));
   }, []);
 
+  // Analyze a list of child components sequentially, showing them as pending in the sidebar.
+  const analyzeChildren = useCallback(async (
+    parentRegistryId: string,
+    children: { id: string; name: string; path: string }[],
+  ) => {
+    if (children.length === 0) return;
+
+    const initialPending: PendingChild[] = children.map((c) => ({
+      id: c.id,
+      name: c.name,
+      path: c.path,
+      status: 'pending' as const,
+    }));
+
+    setPendingChildren((prev) => {
+      const next = new Map(prev);
+      next.set(parentRegistryId, initialPending);
+      return next;
+    });
+
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+
+      // Update status to 'analyzing'
+      setPendingChildren((prev) => {
+        const next = new Map(prev);
+        const list = [...(next.get(parentRegistryId) || [])];
+        list[i] = { ...list[i], status: 'analyzing' };
+        next.set(parentRegistryId, list);
+        return next;
+      });
+
+      try {
+        const childRes = await fetch('/playground/api/discover/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: child.id,
+            path: child.path,
+            name: child.name,
+            type: 'component',
+            // Pass parent's registry ID so the child's registry entry references
+            // the correct parent ID for sidebar nesting.
+            parentId: parentRegistryId,
+          }),
+        });
+        const childData = await childRes.json();
+
+        setPendingChildren((prev) => {
+          const next = new Map(prev);
+          const list = [...(next.get(parentRegistryId) || [])];
+          list[i] = { ...list[i], status: childData.success ? 'done' : 'error' };
+          next.set(parentRegistryId, list);
+          return next;
+        });
+
+        if (childData.success) {
+          notifySidebar();
+        }
+      } catch {
+        setPendingChildren((prev) => {
+          const next = new Map(prev);
+          const list = [...(next.get(parentRegistryId) || [])];
+          list[i] = { ...list[i], status: 'error' };
+          next.set(parentRegistryId, list);
+          return next;
+        });
+      }
+    }
+
+    // Clear pending children after all are done
+    setPendingChildren((prev) => {
+      const next = new Map(prev);
+      next.delete(parentRegistryId);
+      return next;
+    });
+    notifySidebar();
+  }, [notifySidebar]);
+
+  // Catch-up: detect orphaned children (parent added, children still "discovered") and auto-analyze them.
+  // This handles cases where a parent was analyzed before the child auto-analysis feature existed.
+  const hasCatchupRun = useRef(false);
+  useEffect(() => {
+    if (hasCatchupRun.current) return;
+    hasCatchupRun.current = true;
+
+    (async () => {
+      try {
+        const res = await fetch('/playground/api/discover');
+        const data = await res.json();
+        if (data.status !== 'complete' || !data.entries) return;
+
+        const entries: DiscoveryEntry[] = data.entries;
+
+        // Find parent entries that are "added" and have children still "discovered"
+        for (const parent of entries) {
+          if (parent.status !== 'added' || !parent.analysis?.registryId) continue;
+
+          const parentRegistryId = parent.analysis.registryId;
+
+          // Find child entries that reference this parent and are not yet analyzed
+          const orphanedChildren = entries.filter(
+            (e) => e.parentId === parent.id && e.status === 'discovered',
+          );
+
+          if (orphanedChildren.length > 0) {
+            analyzeChildren(
+              parentRegistryId,
+              orphanedChildren.map((c) => ({ id: c.id, name: c.name, path: c.path })),
+            );
+          }
+        }
+      } catch {
+        // Silently fail — catch-up is best-effort
+      }
+    })();
+  }, [analyzeChildren]);
+
   // Add a component — runs at the PlaygroundClient level so it persists across modal open/close
   const handleAddComponent = useCallback(async (entry: DiscoveryEntry) => {
     setAddingIds((prev) => new Set(prev).add(entry.id));
@@ -139,6 +265,13 @@ export default function PlaygroundClient() {
           duration: 4000,
         });
         notifySidebar();
+
+        // Handle child components — analyze them sequentially
+        const children: { id: string; name: string; path: string }[] = data.childEntries || [];
+        if (children.length > 0) {
+          const parentRegistryId = data.entry.analysis?.registryId || entry.id;
+          analyzeChildren(parentRegistryId, children);
+        }
       } else {
         toast.error(data.error || `Failed to add "${entry.name}"`, {
           id: toastId,
@@ -157,7 +290,7 @@ export default function PlaygroundClient() {
         return next;
       });
     }
-  }, [notifySidebar]);
+  }, [notifySidebar, analyzeChildren]);
 
   return (
     <ReactFlowProvider>
@@ -179,6 +312,7 @@ export default function PlaygroundClient() {
             <PlaygroundSidebar
               onCollapse={() => setSidebarVisible(false)}
               onOpenDiscovery={() => setDiscoveryOpen(true)}
+              pendingChildren={pendingChildren}
             />
           </div>
 

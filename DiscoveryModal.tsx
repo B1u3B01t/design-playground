@@ -24,9 +24,12 @@ export interface DiscoveryEntry {
   route?: string;
   description: string;
   status: 'discovered' | 'adding' | 'added';
+  parentId?: string;
+  childComponents?: { name: string; path: string }[];
   analysis?: {
     showcasePath: string;
     componentName: string;
+    registryId: string;
     discoveredFilename: string;
     propsInterface: string;
     size: string;
@@ -89,6 +92,11 @@ function DiscoveryCard({
         {entry.description && (
           <p className="text-[12px] text-stone-500 mt-1.5 leading-relaxed">
             {entry.description}
+          </p>
+        )}
+        {entry.childComponents && entry.childComponents.length > 0 && (
+          <p className="text-[11px] text-stone-400 mt-1">
+            {entry.childComponents.length} child component{entry.childComponents.length !== 1 ? 's' : ''}
           </p>
         )}
       </div>
@@ -272,16 +280,18 @@ export default function DiscoveryModal({
     [entries, addingIds],
   );
 
+  // Filter out child entries — they appear nested under their parent, not as top-level items
+  const topLevelEntries = mergedEntries.filter((e) => !e.parentId);
   // Filter
   const lowerSearch = search.toLowerCase();
-  const filtered = mergedEntries.filter(
+  const filtered = topLevelEntries.filter(
     (e) =>
       e.name.toLowerCase().includes(lowerSearch) ||
       e.description?.toLowerCase().includes(lowerSearch),
   );
-  // Total counts across all discovered entries
-  const pages = mergedEntries.filter((e) => e.type === 'page');
-  const components = mergedEntries.filter((e) => e.type === 'component');
+  // Total counts across all discovered entries (excluding children)
+  const pages = topLevelEntries.filter((e) => e.type === 'page');
+  const components = topLevelEntries.filter((e) => e.type === 'component');
   // Filtered lists for display based on search
   const filteredPages = filtered.filter((e) => e.type === 'page');
   const filteredComponents = filtered.filter((e) => e.type === 'component');

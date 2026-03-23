@@ -12,6 +12,8 @@ interface DiscoveryAnalyzeParams {
   playgroundDir: string;
   /** Real data fetched from the app's data source. Use verbatim for mock props. */
   propsSnapshot?: Record<string, unknown>;
+  /** If this is a child component, the parent's registry ID. */
+  parentId?: string;
 }
 
 export function discoveryAnalyzePrompt({
@@ -21,6 +23,7 @@ export function discoveryAnalyzePrompt({
   type,
   playgroundDir,
   propsSnapshot,
+  parentId,
 }: DiscoveryAnalyzeParams): string {
   const cleanName = name.replace(/\s+/g, '');
   const mockDataFilename = `${cleanName}.mockData.ts`;
@@ -119,7 +122,7 @@ import <ComponentName> from '<correct import path>';
   sourcePath: '<path to the actual component file being registered>',
   size: '<one of: default | laptop | tablet | mobile>' as ComponentSize,
   useAppTheme: true,
-  propsInterface: \`<the component's TypeScript props interface as a string>\`,
+  propsInterface: \`<the component's TypeScript props interface as a string>\`,${parentId ? `\n  parentId: '${parentId}',` : ''}
 },
 \`\`\`
 
@@ -175,6 +178,8 @@ Read \`${playgroundDir}/discovery.json\` and update the entry with id \`${id}\`:
   }
 }
 \`\`\`
+
+**Important:** Do NOT modify the \`parentId\` field if it already exists on this entry — it was set automatically by the system.
 
 ## Rules
 

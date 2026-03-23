@@ -36,6 +36,8 @@ interface DiscoveryEntry {
   path: string;
   type: 'page' | 'component';
   status: string;
+  parentId?: string;
+  childComponents?: { name: string; path: string }[];
   analysis?: {
     discoveredFilename?: string;
     componentName?: string;
@@ -43,12 +45,19 @@ interface DiscoveryEntry {
   };
 }
 
+function toKebabCase(str: string): string {
+  return str
+    .replace(/([a-z])([A-Z])/g, '$1-$2')
+    .replace(/\s+/g, '-')
+    .toLowerCase();
+}
+
 // ---------------------------------------------------------------------------
 // POST — analyze a specific component
 // ---------------------------------------------------------------------------
 
 export async function POST(req: Request) {
-  let body: { id?: string; path?: string; name?: string; type?: 'page' | 'component'; model?: string } | null = null;
+  let body: { id?: string; path?: string; name?: string; type?: 'page' | 'component'; model?: string; parentId?: string } | null = null;
 
   try {
     body = await req.json();
@@ -66,7 +75,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const { id, name, type, model } = body;
+  const { id, name, type, model, parentId } = body;
   const componentPath = body.path;
 
   log(` POST — analyzing component "${name}" (id=${id}, type=${type})`);
@@ -107,6 +116,7 @@ export async function POST(req: Request) {
     type,
     playgroundDir: playgroundRelPath,
     propsSnapshot,
+    parentId,
   });
 
   log(` Generated analysis prompt (${prompt.length} chars)`);
@@ -188,9 +198,37 @@ export async function POST(req: Request) {
               console.warn(`${LOG_PREFIX} Entry "${id}" not found in discovery.json after analysis`);
             }
 
+            // Promote child components to top-level entries
+            let childEntries: DiscoveryEntry[] = [];
+            if (entry?.childComponents && entry.childComponents.length > 0) {
+              const existingIds = new Set((data.entries || []).map((e: DiscoveryEntry) => e.id));
+              for (const child of entry.childComponents) {
+                const childId = `${id}--${toKebabCase(child.name)}`;
+                if (!existingIds.has(childId)) {
+                  const childEntry: DiscoveryEntry = {
+                    id: childId,
+                    name: child.name,
+                    path: child.path,
+                    type: 'component',
+                    parentId: id,
+                    status: 'discovered',
+                  };
+                  data.entries.push(childEntry);
+                  childEntries.push(childEntry);
+                  existingIds.add(childId);
+                  log(` Promoted child component "${child.name}" as "${childId}"`);
+                }
+              }
+              if (childEntries.length > 0) {
+                fs.writeFileSync(DISCOVERY_JSON_PATH, JSON.stringify(data, null, 2) + '\n', 'utf-8');
+                log(` Wrote ${childEntries.length} child entries to discovery.json`);
+              }
+            }
+
             resolve(NextResponse.json({
               success: true,
               entry: entry || null,
+              childEntries,
             }));
           } catch (e) {
             console.error(`${LOG_PREFIX} Error reading discovery.json after analysis:`, e);
