@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, DragEvent } from 'react';
-import { ChevronRight, ChevronDown, GripVertical, ChevronLeft, Plus, Loader2 } from 'lucide-react';
+import { ChevronRight, ChevronDown, ChevronLeft, Plus, Loader2 } from 'lucide-react';
 import { registry, RegistryItem, RegistryLeafItem, isGroup, isLeaf } from './registry';
 import { DND_DATA_KEY } from './lib/constants';
 import type { PendingChild } from './PlaygroundClient';
@@ -117,7 +117,6 @@ function TreeNode({ item, depth = 0, childrenMap, pendingChildren }: TreeNodePro
               onDragStart={(e) => handleDragStart(e, item.id)}
               className="flex items-center gap-1.5 flex-1 min-w-0 cursor-grab active:cursor-grabbing"
             >
-              <GripVertical className="w-3.5 h-3.5 text-stone-300 group-hover:text-stone-400 shrink-0 transition-colors" />
               <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{item.label}</span>
             </div>
           </div>
@@ -153,7 +152,6 @@ function TreeNode({ item, depth = 0, childrenMap, pendingChildren }: TreeNodePro
         className="flex items-center gap-1.5 px-2 py-1.5 text-[13px] text-stone-700 hover:text-stone-900 hover:bg-stone-100 rounded-sm cursor-grab active:cursor-grabbing transition-colors group select-none"
         style={{ paddingLeft: `${depth * 10 + 8}px` }}
       >
-        <GripVertical className="w-3.5 h-3.5 text-stone-300 group-hover:text-stone-400 shrink-0 transition-colors" />
         <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{item.label}</span>
       </div>
     );
