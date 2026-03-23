@@ -1,12 +1,13 @@
 'use client';
 
-import { memo, useState, useRef, useEffect } from 'react';
-import { useNodeId, useReactFlow } from '@xyflow/react';
-import { Monitor, Smartphone, ArrowUpRight, Loader2 } from 'lucide-react';
+import { memo, useState, useCallback, useRef, useEffect } from 'react';
+import { useNodeId, useReactFlow, NodeResizeControl } from '@xyflow/react';
+import { ArrowUpRight, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { resolveRegistryItem } from '../registry';
 import { CancelGenerationButton } from './shared/IterateDialogParts';
 import IterateDialog from './shared/IterateDialog';
+import { SizeButtons } from './shared/SizeButtons';
 
 import { useAsyncProps, useScrollCapture } from '../hooks/useNodeShared';
 import { useTunnelShare } from '../hooks/useTunnelShare';
@@ -18,6 +19,8 @@ import {
   GENERATION_ERROR_EVENT,
   SIZE_CONFIG,
   getDisplayDimensions,
+  RESIZE_MIN_WIDTH,
+  RESIZE_MIN_HEIGHT,
   type ComponentSize,
 } from '../lib/constants';
 
@@ -26,57 +29,10 @@ interface ComponentNodeProps {
     componentId: string;
     /** Persisted across reloads — reflects the last user-chosen size */
     size?: ComponentSize;
+    /** Whether this node has been freeform-resized */
+    customResized?: boolean;
   };
   selected?: boolean;
-}
-
-// Icon-only size switcher: Auto · Desktop · Mobile
-function SizeButtons({
-  currentSize,
-  onSizeChange,
-}: {
-  currentSize: ComponentSize;
-  onSizeChange: (size: ComponentSize) => void;
-}) {
-  const sizes: { key: ComponentSize; icon: React.ReactNode; label: string }[] = [
-    {
-      key: 'default',
-      label: 'Auto',
-      icon: (
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M8 3H5a2 2 0 0 0-2 2v3" />
-          <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
-          <path d="M3 16v3a2 2 0 0 0 2 2h3" />
-          <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
-        </svg>
-      ),
-    },
-    { key: 'laptop', label: 'Desktop', icon: <Monitor className="w-3 h-3" /> },
-    { key: 'mobile', label: 'Mobile',  icon: <Smartphone className="w-3 h-3" /> },
-  ];
-
-  return (
-    <div className="flex items-center gap-0.5">
-      {sizes.map(({ key, icon, label }) => (
-        <Tooltip key={key}>
-          <TooltipTrigger asChild>
-            <button
-              onClick={() => onSizeChange(key)}
-              className={`p-1 rounded transition-colors ${
-                currentSize === key
-                  ? 'text-[#0B99FF] bg-blue-50'
-                  : 'text-stone-400 hover:text-stone-600 hover:bg-stone-100'
-              }`}
-              aria-label={label}
-            >
-              {icon}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent><p>{label}</p></TooltipContent>
-        </Tooltip>
-      ))}
-    </div>
-  );
 }
 
 function ComponentNode({ data, selected = false }: ComponentNodeProps) {
@@ -89,13 +45,15 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   const handleWheel = useScrollCapture(scrollContainerRef);
 
   const nodeId = useNodeId();
-  const { updateNodeData } = useReactFlow();
+  const { updateNodeData, setNodes } = useReactFlow();
   const isInteractive = !!selected;
 
   const { share: handleShare, state: shareState } = useTunnelShare(componentId);
 
   // Prefer the persisted size from node data (survives reload), then registry default
   const [size, setSize] = useState<ComponentSize>(data.size || registryItem?.size || 'default');
+  const [isResizing, setIsResizing] = useState(false);
+  const [isCustomResized, setIsCustomResized] = useState(!!data.customResized);
 
   useEffect(() => {
     const on  = () => setIsGlobalGenerating(true);
@@ -110,11 +68,31 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
     };
   }, []);
 
+  const handleResizeStart = useCallback(() => {
+    setIsResizing(true);
+    setSize('default');
+  }, []);
+
+  const handleResizeEnd = useCallback(() => {
+    setIsResizing(false);
+    setIsCustomResized(true);
+    if (nodeId) updateNodeData(nodeId, { customResized: true });
+  }, [nodeId, updateNodeData]);
+
   const handleSizeChange = (newSize: ComponentSize) => {
     setSize(newSize);
-    // Persist size in node data so it survives reload and is readable by child iterations
-    if (nodeId) updateNodeData(nodeId, { size: newSize });
-    // Broadcast using nodeId so each iteration can track its own parent
+    setIsCustomResized(false);
+    if (nodeId) {
+      updateNodeData(nodeId, { size: newSize, customResized: false });
+      // Clear any width/height that NodeResizeControl may have set on the node
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === nodeId
+            ? { ...n, width: undefined, height: undefined, style: { ...n.style, width: undefined, height: undefined } }
+            : n,
+        ),
+      );
+    }
     window.dispatchEvent(new CustomEvent(COMPONENT_SIZE_CHANGE_EVENT, {
       detail: { nodeId, size: newSize },
     }));
@@ -131,17 +109,46 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   const { Component, props, label } = registryItem;
   const effectiveProps = (resolvedProps ?? props ?? {}) as Record<string, unknown>;
   const config = SIZE_CONFIG[size];
-  const isLargeComponent = size !== 'default';
+  const isPreset = size !== 'default';
+  const isFillMode = isResizing || isCustomResized;
+  const isLargeComponent = isPreset || isFillMode;
   const displayDims = getDisplayDimensions(size);
 
   return (
     <div
       className={`flex flex-col ${isLargeComponent ? '' : 'min-w-[200px]'}`}
       style={{
-        ...(isLargeComponent ? { width: displayDims.width } : {}),
+        ...(isPreset ? { width: displayDims.width } : {}),
+        ...(isFillMode ? { width: '100%', height: '100%' } : {}),
         fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif',
       }}
     >
+      {/* Resize handle — bottom-right corner, only when selected */}
+      <NodeResizeControl
+        position="bottom-right"
+        minWidth={RESIZE_MIN_WIDTH}
+        minHeight={RESIZE_MIN_HEIGHT}
+        onResizeStart={handleResizeStart}
+        onResizeEnd={handleResizeEnd}
+        style={{
+          background: 'transparent',
+          border: 'none',
+          width: 10,
+          height: 10,
+          bottom: 2,
+          right: 2,
+          opacity: selected ? 1 : 0,
+          pointerEvents: selected ? 'auto' : 'none',
+          cursor: 'nwse-resize',
+        }}
+      >
+        <svg width="10" height="10" viewBox="0 0 10 10" className="text-stone-300 hover:text-stone-500 transition-colors">
+          <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.2" />
+          <line x1="9" y1="4" x2="4" y2="9" stroke="currentColor" strokeWidth="1.2" />
+          <line x1="9" y1="7" x2="7" y2="9" stroke="currentColor" strokeWidth="1.2" />
+        </svg>
+      </NodeResizeControl>
+
       {/* ── Top bar — always visible label, controls only when selected ── */}
       <div className="flex items-center justify-between px-0.5 pb-1.5 nodrag cursor-default">
         {/* Left: label (always) + size buttons (selected only) */}
@@ -181,14 +188,32 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
       </div>
 
       {/* ── Frame + right-side vertical toolbar ── */}
-      <div className="relative flex items-start">
+      <div className={`relative flex items-start ${isFillMode ? 'flex-1 min-h-0' : ''}`}>
         {/* Component frame */}
         <div
-          className={`app-theme bg-background overflow-hidden rounded-xl transition-all ${
+          className={`app-theme bg-background overflow-hidden rounded-xl ${isResizing ? '' : 'transition-all'} ${
             selected ? 'ring-2 ring-[#0B99FF]' : ''
-          }`}
+          } ${isFillMode ? 'w-full h-full' : ''}`}
         >
-          {isLargeComponent ? (
+          {isFillMode ? (
+            /* Freeform / active resize: fill the node with centered content */
+            <div
+              ref={scrollContainerRef}
+              className={`grid place-items-center p-[5%] overflow-auto w-full h-full ${isInteractive ? 'nodrag nowheel nopan' : ''}`}
+              onWheel={isInteractive ? handleWheel : undefined}
+            >
+              {isLoadingProps && !Object.keys(effectiveProps).length ? (
+                <div className="text-xs text-gray-500">Loading live data…</div>
+              ) : propsError && !Object.keys(effectiveProps).length ? (
+                <div className="text-xs text-red-600">Failed to load data: {propsError}</div>
+              ) : (
+                <ComponentErrorBoundary componentName={label}>
+                  <Component {...effectiveProps} />
+                </ComponentErrorBoundary>
+              )}
+            </div>
+          ) : isPreset ? (
+            /* Preset mode (Desktop/Mobile): fixed viewport with zoom scaling */
             <div
               ref={scrollContainerRef}
               className={`bg-gray-100 overflow-x-hidden overflow-y-auto ${isInteractive ? 'nodrag nowheel nopan' : ''}`}
@@ -211,6 +236,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
               </div>
             </div>
           ) : (
+            /* Auto mode: intrinsic sizing */
             <div className={`grid place-items-center p-4 ${isInteractive ? 'nodrag nowheel nopan' : ''}`}>
               {isLoadingProps && !Object.keys(effectiveProps).length ? (
                 <div className="text-xs text-gray-500">Loading live data…</div>

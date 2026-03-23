@@ -141,6 +141,12 @@ export const DEFAULT_COMPONENT_NODE_WIDTH = 650;
 /** Default estimated height for component nodes (px) */
 export const DEFAULT_COMPONENT_NODE_HEIGHT = 450;
 
+/** Minimum width when freeform-resizing a node (px) */
+export const RESIZE_MIN_WIDTH = 150;
+
+/** Minimum height when freeform-resizing a node (px) */
+export const RESIZE_MIN_HEIGHT = 100;
+
 // ---------------------------------------------------------------------------
 // Component Size Configurations
 // ---------------------------------------------------------------------------

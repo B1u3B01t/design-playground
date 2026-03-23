@@ -1,12 +1,13 @@
 'use client';
 
-import { memo, useState, Suspense, useMemo, useRef, useEffect } from 'react';
-import { useReactFlow } from '@xyflow/react';
+import { memo, useState, useCallback, Suspense, useMemo, useRef, useEffect } from 'react';
+import { useReactFlow, NodeResizeControl } from '@xyflow/react';
 import { Check, Trash2, Loader2, ArrowUpRight, ChevronRight } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { resolveRegistryItem, generateAdoptPrompt } from '../registry';
 import { getIterationComponent } from '../iterations';
 import { CancelGenerationButton } from './shared/IterateDialogParts';
+import { SizeButtons } from './shared/SizeButtons';
 import {
   COMPONENT_SIZE_CHANGE_EVENT,
   GENERATION_START_EVENT,
@@ -16,6 +17,8 @@ import {
   SIZE_CONFIG,
   getDisplayDimensions,
   COPIED_FEEDBACK_DURATION,
+  RESIZE_MIN_WIDTH,
+  RESIZE_MIN_HEIGHT,
   type ComponentSize,
 } from '../lib/constants';
 import { useAsyncProps, useScrollCapture } from '../hooks/useNodeShared';
@@ -35,6 +38,8 @@ interface IterationNodeProps {
     registryId?: string;
     /** Size of the parent ComponentNode at the time this iteration was created */
     parentSize?: ComponentSize;
+    /** Whether this node has been freeform-resized */
+    customResized?: boolean;
     hasChildren?: boolean;
     isCollapsed?: boolean;
     onDelete?: (filename: string) => void;
@@ -44,7 +49,7 @@ interface IterationNodeProps {
 }
 
 function IterationNode({ id, data, selected = false }: IterationNodeProps) {
-  const { deleteElements } = useReactFlow();
+  const { deleteElements, updateNodeData, setNodes } = useReactFlow();
   const [isDeleting, setIsDeleting] = useState(false);
   const [isAdopting, setIsAdopting] = useState(false);
   const [isGlobalGenerating, setIsGlobalGenerating] = useState(false);
@@ -67,19 +72,23 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
   const registryItem = useMemo(() => resolveRegistryItem(registryId), [registryId]);
   const staticProps = useMemo(() => registryItem?.props || {}, [registryItem]);
   const effectiveProps = (resolvedProps ?? staticProps) as Record<string, unknown>;
-
-  // Use parent's size at creation time, then fall back to registry default
+  // Independent size — persisted in node data, initially from parent at creation time
   const [size, setSize] = useState<ComponentSize>(
     () => data.parentSize || resolveRegistryItem(registryId)?.size || 'default',
   );
+  const [isResizing, setIsResizing] = useState(false);
+  const [isCustomResized, setIsCustomResized] = useState(!!data.customResized);
 
+  // Listen for parent size changes — only apply if not custom-resized
   useEffect(() => {
-    const handleSizeChange = (e: CustomEvent<{ nodeId: string; size: ComponentSize }>) => {
-      if (e.detail.nodeId === data.parentNodeId) setSize(e.detail.size);
+    const handleParentSizeChange = (e: CustomEvent<{ nodeId: string; size: ComponentSize }>) => {
+      if (e.detail.nodeId === data.parentNodeId && !isCustomResized) {
+        setSize(e.detail.size);
+      }
     };
-    window.addEventListener(COMPONENT_SIZE_CHANGE_EVENT, handleSizeChange as EventListener);
-    return () => window.removeEventListener(COMPONENT_SIZE_CHANGE_EVENT, handleSizeChange as EventListener);
-  }, [data.parentNodeId]);
+    window.addEventListener(COMPONENT_SIZE_CHANGE_EVENT, handleParentSizeChange as EventListener);
+    return () => window.removeEventListener(COMPONENT_SIZE_CHANGE_EVENT, handleParentSizeChange as EventListener);
+  }, [data.parentNodeId, isCustomResized]);
 
   useEffect(() => {
     const on  = () => setIsGlobalGenerating(true);
@@ -94,8 +103,35 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
     };
   }, []);
 
+  const handleResizeStart = useCallback(() => {
+    setIsResizing(true);
+    setSize('default');
+  }, []);
+
+  const handleResizeEnd = useCallback(() => {
+    setIsResizing(false);
+    setIsCustomResized(true);
+    updateNodeData(id, { customResized: true });
+  }, [id, updateNodeData]);
+
+  const handleSizeChange = (newSize: ComponentSize) => {
+    setSize(newSize);
+    setIsCustomResized(false);
+    updateNodeData(id, { size: newSize, customResized: false });
+    // Clear any width/height that NodeResizeControl may have set on the node
+    setNodes((nds) =>
+      nds.map((n) =>
+        n.id === id
+          ? { ...n, width: undefined, height: undefined, style: { ...n.style, width: undefined, height: undefined } }
+          : n,
+      ),
+    );
+  };
+
   const config = SIZE_CONFIG[size];
-  const isLargeComponent = size !== 'default';
+  const isPreset = size !== 'default';
+  const isFillMode = isResizing || isCustomResized;
+  const isLargeComponent = isPreset || isFillMode;
   const displayDims = getDisplayDimensions(size);
   const handleWheel = useScrollCapture(scrollContainerRef);
 
@@ -142,13 +178,40 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
     <div
       className={`flex flex-col ${isLargeComponent ? '' : 'min-w-[280px] max-w-[400px]'}`}
       style={{
-        ...(isLargeComponent ? { width: displayDims.width } : {}),
+        ...(isPreset ? { width: displayDims.width } : {}),
+        ...(isFillMode ? { width: '100%', height: '100%' } : {}),
         fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif',
       }}
     >
+      {/* Resize handle — bottom-right corner, only when selected */}
+      <NodeResizeControl
+        position="bottom-right"
+        minWidth={RESIZE_MIN_WIDTH}
+        minHeight={RESIZE_MIN_HEIGHT}
+        onResizeStart={handleResizeStart}
+        onResizeEnd={handleResizeEnd}
+        style={{
+          background: 'transparent',
+          border: 'none',
+          width: 10,
+          height: 10,
+          bottom: 2,
+          right: 2,
+          opacity: selected ? 1 : 0,
+          pointerEvents: selected ? 'auto' : 'none',
+          cursor: 'nwse-resize',
+        }}
+      >
+        <svg width="10" height="10" viewBox="0 0 10 10" className="text-stone-300 hover:text-stone-500 transition-colors">
+          <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.2" />
+          <line x1="9" y1="4" x2="4" y2="9" stroke="currentColor" strokeWidth="1.2" />
+          <line x1="9" y1="7" x2="7" y2="9" stroke="currentColor" strokeWidth="1.2" />
+        </svg>
+      </NodeResizeControl>
+
       {/* ── Top bar — label always, controls only when selected ── */}
       <div className="flex items-center justify-between px-0.5 pb-1.5 nodrag cursor-default">
-        {/* Left: collapse toggle + label */}
+        {/* Left: collapse toggle + label + size buttons */}
         <div className="flex items-center gap-1.5 min-w-0">
           {data.hasChildren && (
             <button
@@ -169,6 +232,10 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
           >
             {iterationLabel}
           </span>
+          <div className={`flex items-center gap-1.5 transition-opacity nodrag ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+            <div className="w-px h-3 bg-stone-200 shrink-0" />
+            <SizeButtons currentSize={size} onSizeChange={handleSizeChange} />
+          </div>
         </div>
 
         {/* Right: expand icon — invisible when not selected, always occupies space */}
@@ -192,14 +259,43 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
       </div>
 
       {/* ── Frame + right-side vertical toolbar ── */}
-      <div className="relative flex items-start">
+      <div className={`relative flex items-start ${isFillMode ? 'flex-1 min-h-0' : ''}`}>
         {/* Component frame */}
         <div
-          className={`app-theme bg-background overflow-hidden rounded-xl transition-all ${
+          className={`app-theme bg-background overflow-hidden rounded-xl ${isResizing ? '' : 'transition-all'} ${
             selected ? 'ring-2 ring-[#0B99FF]' : ''
-          }`}
+          } ${isFillMode ? 'w-full h-full' : ''}`}
         >
-          {isLargeComponent ? (
+          {isFillMode ? (
+            /* Freeform / active resize: fill the node with centered content */
+            <div
+              ref={scrollContainerRef}
+              className={`grid place-items-center p-[5%] overflow-auto w-full h-full ${isInteractive ? 'nodrag nowheel nopan' : ''}`}
+              onWheel={isInteractive ? handleWheel : undefined}
+            >
+              {IterationComponent ? (
+                <Suspense fallback={<Loader2 className="w-5 h-5 animate-spin text-gray-400" />}>
+                  <div className="w-full">
+                    {isLoadingProps && !Object.keys(effectiveProps).length ? (
+                      <div className="text-xs text-gray-500">Loading live data…</div>
+                    ) : propsError && !Object.keys(effectiveProps).length ? (
+                      <div className="text-xs text-red-600">Failed to load data: {propsError}</div>
+                    ) : (
+                      <ComponentErrorBoundary componentName={`${data.componentName} #${data.iterationNumber}`}>
+                        <IterationComponent {...effectiveProps} />
+                      </ComponentErrorBoundary>
+                    )}
+                  </div>
+                </Suspense>
+              ) : (
+                <div className="text-center">
+                  <p className="text-[10px] text-gray-400">{data.filename}</p>
+                  <p className="text-[9px] text-amber-500 mt-1">Waiting for registration — try refreshing</p>
+                </div>
+              )}
+            </div>
+          ) : isPreset ? (
+            /* Preset mode (Desktop/Mobile): fixed viewport with zoom scaling */
             <div
               ref={scrollContainerRef}
               className={`bg-gray-100 overflow-x-hidden overflow-y-auto ${isInteractive ? 'nodrag nowheel nopan' : ''}`}
@@ -239,6 +335,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
               )}
             </div>
           ) : (
+            /* Auto mode: intrinsic sizing */
             <div className={`grid place-items-center min-h-[100px] p-4 ${isInteractive ? 'nodrag nowheel nopan' : ''}`}>
               {IterationComponent ? (
                 <Suspense fallback={<Loader2 className="w-5 h-5 animate-spin text-gray-400" />}>
