@@ -25,7 +25,7 @@ interface KeyboardShortcutsModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const CATEGORIES = ['Cursor Chat', 'Iterate Dialog', 'Canvas'] as const;
+const CATEGORIES = ['Cursor Chat', 'Iterate Dialog', 'Canvas', 'Sidebar'] as const;
 
 /** Modifier keys that can be used as hold keys */
 const MODIFIER_KEYS = ['Meta', 'Shift', 'Alt', 'Control'] as const;

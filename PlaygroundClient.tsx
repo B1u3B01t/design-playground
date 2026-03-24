@@ -8,6 +8,7 @@ import PlaygroundCanvas from './PlaygroundCanvas';
 import PlaygroundHeader from './PlaygroundHeader';
 import DiscoveryModal, { type DiscoveryEntry } from './DiscoveryModal';
 import { getProviderFields } from './lib/generation-body';
+import { matchesAction } from './lib/keybindings';
 
 export interface PendingChild {
   id: string;
@@ -29,6 +30,18 @@ export default function PlaygroundClient() {
     return () => {
       if (scanPollRef.current) clearTimeout(scanPollRef.current);
     };
+  }, []);
+
+  // Sidebar toggle keybinding
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (matchesAction(e, 'sidebar.toggle')) {
+        e.preventDefault();
+        setSidebarVisible((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
   }, []);
 
   // Auto-scan on first visit

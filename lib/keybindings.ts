@@ -23,13 +23,14 @@ export type PlaygroundAction =
   | 'cursor-chat.cycle-model'
   | 'iterate.copy-prompt'
   | 'iterate.run'
-  | 'element-select.hold';
+  | 'element-select.hold'
+  | 'sidebar.toggle';
 
 export interface KeybindingDefinition {
   action: PlaygroundAction;
   label: string;
   description: string;
-  category: 'Cursor Chat' | 'Iterate Dialog' | 'Canvas';
+  category: 'Cursor Chat' | 'Iterate Dialog' | 'Canvas' | 'Sidebar';
   defaultCombo: KeyCombo;
 }
 
@@ -72,6 +73,13 @@ export const DEFAULT_KEYBINDINGS: KeybindingDefinition[] = [
     description: 'Hold to select elements inside components',
     category: 'Canvas',
     defaultCombo: { key: 'Meta', hold: true },
+  },
+  {
+    action: 'sidebar.toggle',
+    label: 'Toggle Sidebar',
+    description: 'Show or hide the sidebar panel',
+    category: 'Sidebar',
+    defaultCombo: { key: 's', meta: true, shift: true },
   },
 ];
 
