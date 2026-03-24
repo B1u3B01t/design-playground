@@ -217,7 +217,19 @@ export const STYLING_MODE_OPTIONS: { key: StylingMode; label: string }[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Fallback AI Models
+// Provider Types (re-exported from providers module)
+// ---------------------------------------------------------------------------
+
+export type { ProviderId } from './providers/types';
+export { DEFAULT_PROVIDER_ID } from './providers/registry';
+export { DEFAULT_CLAUDE_CODE_OPTIONS } from './providers/types';
+export type { ClaudeCodeOptions } from './providers/types';
+
+/** localStorage key for persisting the active provider selection */
+export const PROVIDER_STORAGE_KEY = 'playground-provider';
+
+// ---------------------------------------------------------------------------
+// AI Models
 // ---------------------------------------------------------------------------
 
 export interface ModelOption {
@@ -225,30 +237,15 @@ export interface ModelOption {
   label: string;
 }
 
-/** Default set of models enabled when no user preference is saved */
-export const DEFAULT_ENABLED_MODELS: string[] = [
-  'auto',
-  'composer-1.5',
-  'gpt-5.2',
-  'gpt-5.3-codex',
-  'sonnet-4.6',
-  'sonnet-4.6-thinking',
-  'opus-4.6',
-  'gemini-3-pro',
-  'gemini-3-flash',
-];
-
-/** Fallback models used when the CLI fetch fails and localStorage is empty */
-export const FALLBACK_MODELS: ModelOption[] = [
-  { value: 'auto', label: 'Auto (Default)' },
-  { value: 'opus-4.6-thinking', label: 'Claude 4.6 Opus (Thinking)' },
-  { value: 'opus-4.6', label: 'Claude 4.6 Opus' },
-  { value: 'sonnet-4.5', label: 'Claude 4.5 Sonnet' },
-  { value: 'gpt-5.2', label: 'GPT-5.2' },
-  { value: 'gpt-5.2-codex', label: 'GPT-5.2 Codex' },
-  { value: 'gemini-3-pro', label: 'Gemini 3 Pro' },
-  { value: 'grok', label: 'Grok' },
-];
+/**
+ * Default enabled models for the Cursor provider.
+ * Canonical source is `cursorProvider.defaultEnabledModels` — this re-export
+ * is kept for backward compatibility with existing consumers.
+ */
+export { cursorProvider } from './providers/cursor';
+import { cursorProvider } from './providers/cursor';
+export const DEFAULT_ENABLED_MODELS: string[] = cursorProvider.defaultEnabledModels;
+export const FALLBACK_MODELS: ModelOption[] = cursorProvider.fallbackModels;
 
 // ---------------------------------------------------------------------------
 // FitView Configurations
@@ -439,6 +436,7 @@ export interface CursorChatSubmitPayload {
   skillPrompts: string[];
   skillIds: string[];
   model: string;
+  provider?: import('./providers/types').ProviderId;
   targetNodeId: string | null;
   targetComponentId: string | null;
   targetComponentName: string | null;
@@ -483,6 +481,8 @@ export interface GenerationStartPayload {
   };
   /** Model used for this generation (for presence bubbles) */
   model?: string;
+  /** Provider used for this generation */
+  provider?: import('./providers/types').ProviderId;
   /** Flow-space position where the generation was initiated */
   flowPosition?: { x: number; y: number };
 }
@@ -505,6 +505,7 @@ export interface GenerationErrorPayload {
 export interface GenerationQueuedPayload {
   componentId: string;
   model: string;
+  provider?: import('./providers/types').ProviderId;
   flowPosition: { x: number; y: number } | null;
 }
 
@@ -517,5 +518,6 @@ export interface DragIteratePayload {
   rows: number;
   cols: number;
   model?: string;
+  provider?: import('./providers/types').ProviderId;
   sourceFilename?: string;
 }

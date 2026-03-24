@@ -1,14 +1,16 @@
 import { NextResponse } from 'next/server';
-import { spawn, ChildProcess } from 'child_process';
+import { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import fs from 'fs';
 import path from 'path';
 import { TEMP_DIR_RELATIVE, GENERATION_LOCKFILE_FILENAME } from '../../lib/constants';
+import type { ProviderId } from '../../lib/providers';
+import { spawnAgent, getProviderNotFoundMessage, getProviderDisplayName } from '../../lib/providers';
 
 /**
- * Playground generation API - Cursor Agent Integration
+ * Playground generation API - Agent CLI Integration
  *
- * POST: Start generation (spawns cursor agent, waits for completion)
+ * POST: Start generation (spawns agent CLI, waits for completion)
  * DELETE: Cancel running generation
  * GET?action=download-chat: Download agent output log
  * GET?action=events: SSE stream for progressive iteration detection
@@ -158,6 +160,10 @@ export async function POST(req: Request) {
       componentId?: string;
       iterationCount?: number;
       model?: string;
+      provider?: ProviderId;
+      effort?: string;
+      maxBudgetUsd?: number;
+      maxTurns?: number;
     } | null;
 
     if (!body || !body.prompt || !body.componentId) {
@@ -168,6 +174,7 @@ export async function POST(req: Request) {
     }
 
     const { prompt, model } = body;
+    const providerId: ProviderId = body.provider ?? 'cursor';
     // Sanitize componentId for use in file paths (prevent path traversal)
     const componentId = String(body.componentId).replace(/[^A-Za-z0-9-_]/g, '_').slice(0, 200) || 'component';
     const timestamp = Date.now();
@@ -176,10 +183,12 @@ export async function POST(req: Request) {
     // Create chat log file
     ensureTempDir();
     currentChatLogPath = path.join(TEMP_DIR, `chat-${componentId}-${timestamp}.txt`);
-    
+
     // Initialize log file with header
+    const providerName = getProviderDisplayName(providerId);
     const header = [
       `=== Generation started at ${new Date().toISOString()} ===`,
+      `Provider: ${providerName}`,
       `Component: ${componentId}`,
       ...(model ? [`Model: ${model}`] : []),
       ``,
@@ -195,20 +204,15 @@ export async function POST(req: Request) {
 
     isGenerating = true;
 
-    // Build cursor agent command arguments
-    const args = ['agent', '--print', '--force'];
-    if (model) {
-      args.push('--model', model);
-    }
-
-    // Spawn cursor agent process
+    // Spawn agent process via provider abstraction
     return new Promise<NextResponse>((resolve) => {
       try {
-        currentProcess = spawn('cursor', args, {
-          cwd: process.cwd(),
-          stdio: ['pipe', 'pipe', 'pipe'],
-          env: { ...process.env },
-        });
+        currentProcess = spawnAgent(providerId, {
+          model,
+          effort: body.effort as 'low' | 'medium' | 'high' | 'max' | undefined,
+          maxBudgetUsd: body.maxBudgetUsd,
+          maxTurns: body.maxTurns,
+        }, process.cwd());
 
         // Write lockfile so we can recover from HMR
         if (currentProcess.pid) {
@@ -257,7 +261,7 @@ export async function POST(req: Request) {
             resolve(NextResponse.json(
               {
                 success: false,
-                error: stderr || `Cursor agent exited with code ${code}`,
+                error: stderr || `${providerName} agent exited with code ${code}`,
                 generationId,
               },
               { status: 500 }
@@ -268,7 +272,7 @@ export async function POST(req: Request) {
         // Handle process errors
         currentProcess.on('error', (error) => {
           const errorMessage = error.message.includes('ENOENT')
-            ? 'Cursor CLI not found. Make sure `cursor` is installed and in your PATH. Run `cursor agent login` if needed.'
+            ? getProviderNotFoundMessage(providerId)
             : error.message;
 
           currentLogStream?.write(`\n=== Error: ${errorMessage} ===\n`);
@@ -292,7 +296,7 @@ export async function POST(req: Request) {
         isGenerating = false;
         currentProcess = null;
         
-        const message = spawnError instanceof Error ? spawnError.message : 'Failed to spawn cursor agent';
+        const message = spawnError instanceof Error ? spawnError.message : `Failed to spawn ${providerName} agent`;
         resolve(NextResponse.json(
           { success: false, error: message },
           { status: 500 }

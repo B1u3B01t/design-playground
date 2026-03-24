@@ -18,6 +18,7 @@ import {
 } from '../../ui/inline-reference';
 import type { PlaygroundSkill } from '../../skills';
 import { matchesAction } from '../../lib/keybindings';
+import { getProviderFields } from '../../lib/generation-body';
 import {
   GENERATION_START_EVENT,
   GENERATION_COMPLETE_EVENT,
@@ -92,6 +93,14 @@ export default function IterateDialog({
     setSelectedModel(model);
     saveSelectedModel(model);
   }, []);
+
+  // When the provider changes, auto-select the first enabled model if the
+  // current selection isn't valid for the new provider.
+  useEffect(() => {
+    if (models.length > 0 && !models.some(m => m.value === selectedModel)) {
+      handleModelChange(models[0].value);
+    }
+  }, [models, selectedModel, handleModelChange]);
 
   // Load available skills when the dialog opens (once)
   useEffect(() => {
@@ -327,6 +336,7 @@ export default function IterateDialog({
           componentId,
           iterationCount,
           model: selectedModel || undefined,
+          ...getProviderFields(),
         }),
       });
 

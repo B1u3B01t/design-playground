@@ -13,16 +13,7 @@ export async function captureAndSaveScreenshot(
   filename: string,
 ): Promise<string | null> {
   try {
-    // Check if the image already exists
-    const checkRes = await fetch(
-      `/playground/api/screenshot?filename=${encodeURIComponent(filename)}`,
-    );
-    if (checkRes.ok) {
-      const checkData = (await checkRes.json()) as { exists: boolean; path?: string };
-      if (checkData.exists && checkData.path) {
-        return checkData.path;
-      }
-    }
+    // Always recapture — the node may have been resized since the last capture.
 
     // Find the node's DOM element
     const nodeEl = document.querySelector(`[data-id="${nodeId}"]`);

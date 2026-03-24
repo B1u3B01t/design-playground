@@ -8,11 +8,11 @@ import {
   SELECTED_MODEL_STORAGE_KEY,
   ITERATION_COUNT_OPTIONS,
   DEPTH_OPTIONS,
-  DEFAULT_ENABLED_MODELS,
   type ModelOption,
   type GenerationErrorPayload,
 } from '../../lib/constants';
 import { useModelSettingsStore } from '../../lib/model-settings-store';
+import { getProvider } from '../../lib/providers/registry';
 
 // Re-export ModelOption for consumers
 export type { ModelOption } from '../../lib/constants';
@@ -42,19 +42,23 @@ export function saveSelectedModel(model: string) {
 // ---------------------------------------------------------------------------
 
 export function useAvailableModels() {
-  const availableModels = useModelSettingsStore((s) => s.availableModels);
+  const activeProvider = useModelSettingsStore((s) => s.activeProvider);
+  const providerState = useModelSettingsStore((s) => s.providerState[s.activeProvider]);
   const isLoading = useModelSettingsStore((s) => s.isLoadingModels);
   const fetchModels = useModelSettingsStore((s) => s.fetchModels);
-  const hasFetched = useModelSettingsStore((s) => s.hasFetched);
+
+  const availableModels = providerState?.availableModels ?? [];
+  const enabledModels = providerState?.enabledModels ?? [];
+  const hasFetched = providerState?.hasFetched ?? false;
 
   useEffect(() => {
     if (!hasFetched) fetchModels();
   }, [hasFetched, fetchModels]);
 
-  // Filter by enabled models from settings (subscribes to store for reactivity)
-  const enabledModels = useModelSettingsStore((s) => s.enabledModels);
+  // Filter by enabled models — fall back to provider defaults if empty
+  const config = getProvider(activeProvider);
   const models = enabledModels.length === 0
-    ? availableModels.filter((m) => DEFAULT_ENABLED_MODELS.includes(m.value))
+    ? availableModels.filter((m) => config.defaultEnabledModels.includes(m.value))
     : availableModels.filter((m) => enabledModels.includes(m.value));
 
   return { models, allModels: availableModels, isLoading };

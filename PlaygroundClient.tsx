@@ -7,6 +7,7 @@ import PlaygroundSidebar from './PlaygroundSidebar';
 import PlaygroundCanvas from './PlaygroundCanvas';
 import PlaygroundHeader from './PlaygroundHeader';
 import DiscoveryModal, { type DiscoveryEntry } from './DiscoveryModal';
+import { getProviderFields } from './lib/generation-body';
 
 export interface PendingChild {
   id: string;
@@ -46,7 +47,11 @@ export default function PlaygroundClient() {
           });
 
           try {
-            const scanRes = await fetch('/playground/api/discover', { method: 'POST' });
+            const scanRes = await fetch('/playground/api/discover', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...getProviderFields() }),
+            });
             const scanData = await scanRes.json();
 
             if (scanData.success && scanData.entries) {
@@ -163,6 +168,7 @@ export default function PlaygroundClient() {
             // Pass parent's registry ID so the child's registry entry references
             // the correct parent ID for sidebar nesting.
             parentId: parentRegistryId,
+            ...getProviderFields(),
           }),
         });
         const childData = await childRes.json();
@@ -254,6 +260,7 @@ export default function PlaygroundClient() {
           path: entry.path,
           name: entry.name,
           type: entry.type,
+          ...getProviderFields(),
         }),
       });
 

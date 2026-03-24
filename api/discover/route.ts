@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { spawn, ChildProcess } from 'child_process';
+import { ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import {
@@ -9,13 +9,15 @@ import {
 } from '../../lib/constants';
 import { resolvePlaygroundDir } from '../../lib/resolve-playground-dir';
 import { discoveryPrompt } from '../../prompts/discovery.prompt';
+import type { ProviderId } from '../../lib/providers';
+import { spawnAgent, getProviderNotFoundMessage, getProviderDisplayName } from '../../lib/providers';
 
 /**
  * Discovery API — scans the project for visual components and pages
- * using the Cursor agent CLI.
+ * using an agent CLI (Cursor or Claude Code).
  *
  * GET:  Returns cached discovery.json or {status: "not_scanned"}
- * POST: Spawns cursor agent to scan the project and write discovery.json
+ * POST: Spawns agent to scan the project and write discovery.json
  */
 
 const LOG_PREFIX = '[Playground][discover]';
@@ -159,9 +161,11 @@ export async function POST(req: Request) {
   }
 
   let model: string | undefined;
+  let providerId: ProviderId = 'cursor';
   try {
     const body = await req.json().catch(() => null);
     model = body?.model;
+    if (body?.provider) providerId = body.provider;
   } catch { /* no body */ }
 
   // Collect IDs of already-added entries to preserve them during re-scan
@@ -185,22 +189,15 @@ export async function POST(req: Request) {
 
   isScanning = true;
 
-  const args = ['agent', '--print', '--force'];
-  if (model) {
-    args.push('--model', model);
-    log(` Using model: ${model}`);
-  }
+  const providerName = getProviderDisplayName(providerId);
+  if (model) log(` Using model: ${model}`);
+  log(` Using provider: ${providerName}`);
 
   const startTime = Date.now();
-  log(` Spawning: cursor ${args.join(' ')}`);
 
   return new Promise<NextResponse>((resolve) => {
     try {
-      currentProcess = spawn('cursor', args, {
-        cwd: process.cwd(),
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env },
-      });
+      currentProcess = spawnAgent(providerId, { model }, process.cwd());
 
       if (currentProcess.pid) {
         writeLockfile(currentProcess.pid);
@@ -256,7 +253,7 @@ export async function POST(req: Request) {
         } else {
           console.error(`${LOG_PREFIX} Agent failed — code=${code}, stderr: ${stderr.slice(0, 500)}`);
           resolve(NextResponse.json(
-            { success: false, error: stderr || `Cursor agent exited with code ${code}` },
+            { success: false, error: stderr || `${providerName} agent exited with code ${code}` },
             { status: 500 },
           ));
         }
@@ -271,7 +268,7 @@ export async function POST(req: Request) {
         currentProcess = null;
 
         const message = error.message.includes('ENOENT')
-          ? 'Cursor CLI not found. Install it and ensure `cursor` is in your PATH.'
+          ? getProviderNotFoundMessage(providerId)
           : error.message;
 
         resolve(NextResponse.json({ success: false, error: message }, { status: 500 }));
@@ -281,7 +278,7 @@ export async function POST(req: Request) {
       removeLockfile();
       isScanning = false;
       currentProcess = null;
-      const message = spawnError instanceof Error ? spawnError.message : 'Failed to spawn cursor agent';
+      const message = spawnError instanceof Error ? spawnError.message : `Failed to spawn ${providerName} agent`;
       resolve(NextResponse.json({ success: false, error: message }, { status: 500 }));
     }
   });

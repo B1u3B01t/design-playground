@@ -53,19 +53,20 @@ export default function PlaygroundHeader({
 }: PlaygroundHeaderProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [presenceBubbles, setPresenceBubbles] = useState<PresenceBubble[]>(() => {
-    if (typeof window === 'undefined') return [];
+  const [presenceBubbles, setPresenceBubbles] = useState<PresenceBubble[]>([]);
+  const removeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  // Hydrate presence bubbles from localStorage after mount to avoid SSR mismatch
+  useEffect(() => {
     try {
       const stored = localStorage.getItem(PRESENCE_BUBBLES_STORAGE_KEY);
       if (stored) {
         const bubbles = JSON.parse(stored) as PresenceBubble[];
         // On reload, drop queued bubbles (queue state is lost), keep generating and done
-        return bubbles.filter(b => b.status !== 'queued');
+        setPresenceBubbles(bubbles.filter(b => b.status !== 'queued'));
       }
     } catch { /* ignore */ }
-    return [];
-  });
-  const removeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  }, []);
 
   // Persist presence bubbles to localStorage
   useEffect(() => {

@@ -11,6 +11,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from './ui/dialog';
+import { getProviderFields } from './lib/generation-body';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -250,7 +251,11 @@ export default function DiscoveryModal({
     setIsRefreshing(true);
     setError(null);
     try {
-      const res = await fetch('/playground/api/discover', { method: 'POST' });
+      const res = await fetch('/playground/api/discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...getProviderFields() }),
+      });
       if (res.status === 409) {
         // A scan is already running — switch to scanning state and poll
         setIsScanning(true);

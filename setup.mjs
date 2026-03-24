@@ -92,23 +92,39 @@ function main() {
     process.exit(1);
   }
 
-  // 4b. Check for Cursor CLI (optional — needed for "Run with Cursor" / variation generation)
+  // 4b. Check for agent CLI providers (at least one needed for generation)
   console.log('');
-  console.log(bold('  Cursor CLI (optional):'));
-  let cursorFound = false;
-  try {
-    execSync('cursor --version', { encoding: 'utf-8', timeout: 5000 });
-    cursorFound = true;
-  } catch {
-    // not in PATH or not installed
+  console.log(bold('  Agent CLI Providers:'));
+
+  const providers = [
+    { name: 'Cursor', cmd: 'cursor --version', installHint: 'https://cursor.com/docs/cli/installation' },
+    { name: 'Claude Code', cmd: 'claude --version', installHint: 'npm install -g @anthropic-ai/claude-code' },
+  ];
+
+  let anyProviderFound = false;
+  for (const p of providers) {
+    let found = false;
+    try {
+      execSync(p.cmd, { encoding: 'utf-8', timeout: 5000 });
+      found = true;
+    } catch {
+      // not in PATH or not installed
+    }
+    if (found) {
+      console.log(`    ${green('+')} ${p.name} (found)`);
+      anyProviderFound = true;
+    } else {
+      console.log(`    ${dim('-')} ${p.name} ${dim('(not found)')}`);
+    }
   }
-  if (cursorFound) {
-    console.log(`    ${green('+')} cursor (found — "Run with Cursor" will work)`);
-  } else {
-    console.log(`    ${red('x')} cursor ${red('(not found)')}`);
+
+  if (!anyProviderFound) {
     console.log('');
-    console.log(dim('  Cursor is required for generating variations from the UI.'));
-    console.log(dim('  Install the Cursor CLI: https://cursor.com/docs/cli/installation'));
+    console.log(dim('  At least one agent CLI provider is required for generating variations.'));
+    console.log(dim('  Install one of:'));
+    for (const p of providers) {
+      console.log(dim(`    - ${p.name}: ${p.installHint}`));
+    }
     console.log('');
   }
 

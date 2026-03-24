@@ -176,7 +176,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
 
   return (
     <div
-      className={`flex flex-col ${isLargeComponent ? '' : 'min-w-[280px] max-w-[400px]'}`}
+      className={`flex flex-col ${isLargeComponent ? '' : 'min-w-[280px]'}`}
       style={{
         ...(isPreset ? { width: displayDims.width } : {}),
         ...(isFillMode ? { width: '100%', height: '100%' } : {}),

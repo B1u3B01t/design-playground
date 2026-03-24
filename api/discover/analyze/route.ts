@@ -1,15 +1,16 @@
 import { NextResponse } from 'next/server';
-import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { DISCOVERY_MANIFEST_FILENAME } from '../../../lib/constants';
 import { resolvePlaygroundDir } from '../../../lib/resolve-playground-dir';
 import { discoveryAnalyzePrompt } from '../../../prompts/discovery-analyze.prompt';
 import { fetchPropsSnapshot } from '../../../lib/props-fetchers.server';
+import type { ProviderId } from '../../../lib/providers';
+import { spawnAgent, getProviderNotFoundMessage, getProviderDisplayName } from '../../../lib/providers';
 
 /**
  * Discovery Analyze API — prepares a single discovered component
- * for the playground by running the Cursor agent CLI.
+ * for the playground by running an agent CLI (Cursor or Claude Code).
  *
  * POST: Analyze a component, create wrapper file, update discovery.json
  * DELETE: Remove a discovered component wrapper and reset its status
@@ -57,7 +58,7 @@ function toKebabCase(str: string): string {
 // ---------------------------------------------------------------------------
 
 export async function POST(req: Request) {
-  let body: { id?: string; path?: string; name?: string; type?: 'page' | 'component'; model?: string; parentId?: string } | null = null;
+  let body: { id?: string; path?: string; name?: string; type?: 'page' | 'component'; model?: string; parentId?: string; provider?: ProviderId } | null = null;
 
   try {
     body = await req.json();
@@ -76,6 +77,7 @@ export async function POST(req: Request) {
   }
 
   const { id, name, type, model, parentId } = body;
+  const providerId: ProviderId = body.provider ?? 'cursor';
   const componentPath = body.path;
 
   log(` POST — analyzing component "${name}" (id=${id}, type=${type})`);
@@ -123,22 +125,15 @@ export async function POST(req: Request) {
 
   analyzingIds.add(id);
 
-  const args = ['agent', '--print', '--force'];
-  if (model) {
-    args.push('--model', model);
-    log(` Using model: ${model}`);
-  }
+  const providerName = getProviderDisplayName(providerId);
+  if (model) log(` Using model: ${model}`);
+  log(` Using provider: ${providerName}`);
 
   const startTime = Date.now();
-  log(` Spawning: cursor ${args.join(' ')}`);
 
   return new Promise<NextResponse>((resolve) => {
     try {
-      const agentProcess = spawn('cursor', args, {
-        cwd: process.cwd(),
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env },
-      });
+      const agentProcess = spawnAgent(providerId, { model }, process.cwd());
 
       log(` Agent process started — PID=${agentProcess.pid}`);
 
@@ -242,7 +237,7 @@ export async function POST(req: Request) {
           console.error(`${LOG_PREFIX} Analysis failed for "${name}" — code=${code}`);
           if (stderr) console.error(`${LOG_PREFIX} stderr: ${stderr.slice(0, 1000)}`);
           resolve(NextResponse.json(
-            { success: false, error: stderr || `Cursor agent exited with code ${code}` },
+            { success: false, error: stderr || `${providerName} agent exited with code ${code}` },
             { status: 500 },
           ));
         }
@@ -254,14 +249,14 @@ export async function POST(req: Request) {
 
         analyzingIds.delete(id);
         const message = error.message.includes('ENOENT')
-          ? 'Cursor CLI not found. Install it and ensure `cursor` is in your PATH.'
+          ? getProviderNotFoundMessage(providerId)
           : error.message;
         resolve(NextResponse.json({ success: false, error: message }, { status: 500 }));
       });
     } catch (spawnError) {
       console.error(`${LOG_PREFIX} Failed to spawn agent:`, spawnError);
       analyzingIds.delete(id);
-      const message = spawnError instanceof Error ? spawnError.message : 'Failed to spawn cursor agent';
+      const message = spawnError instanceof Error ? spawnError.message : `Failed to spawn ${providerName} agent`;
       resolve(NextResponse.json({ success: false, error: message }, { status: 500 }));
     }
   });

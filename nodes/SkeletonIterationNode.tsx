@@ -24,7 +24,7 @@ function SkeletonIterationNode({ data }: SkeletonIterationNodeProps) {
       style={
         hasExplicitSize
           ? { width: data.width, height: data.height, fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif' }
-          : { minWidth: 280, maxWidth: 400, fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif' }
+          : { minWidth: 280, fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif' }
       }
     >
       {/* Top bar — mirrors ComponentNode's label bar */}

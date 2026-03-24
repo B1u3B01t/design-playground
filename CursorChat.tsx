@@ -18,6 +18,7 @@ import { getModelIconConfig } from './lib/model-icons';
 import { ITERATION_COUNT_OPTIONS, CURSOR_CHAT_DEFAULT_COUNT, type CursorChatSubmitPayload } from './lib/constants';
 import { matchesAction } from './lib/keybindings';
 import type { SelectedElement } from './lib/element-context';
+import { useModelSettingsStore } from './lib/model-settings-store';
 import type { SelectedNodeContext } from './hooks/useNodeSelection';
 
 // ---------------------------------------------------------------------------
@@ -201,6 +202,7 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
       skillPrompts,
       skillIds,
       model,
+      provider: useModelSettingsStore.getState().activeProvider,
       targetNodeId: effectiveTarget?.nodeId ?? null,
       targetComponentId: effectiveTarget?.componentId ?? null,
       targetComponentName: effectiveTarget?.componentName ?? null,

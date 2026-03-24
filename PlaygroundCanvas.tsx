@@ -28,6 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from './ui/alert-dialog';
+import { getProviderFields } from './lib/generation-body';
 
 import ComponentNode from './nodes/ComponentNode';
 import IterationNode from './nodes/IterationNode';
@@ -249,6 +250,8 @@ export default function PlaygroundCanvas() {
   );
   const collapsedNodeIdsRef = useRef<Set<string>>(new Set(initialState?.collapsedNodeIds || []));
   const [isScanning, setIsScanning] = useState(false);
+  const scanLockRef = useRef(false);
+  const scanQueuedRef = useRef(false);
   const [isPolling, setIsPolling] = useState(false);
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -513,6 +516,11 @@ export default function PlaygroundCanvas() {
   // Scan for iterations (single check) -- tree-aware: connects to parent iteration or component
   // During active generation, progressively replaces skeleton nodes with real iteration nodes.
   const scanForIterations = useCallback(async (resetTimeoutOnFind = false) => {
+    if (scanLockRef.current) {
+      scanQueuedRef.current = true;
+      return;
+    }
+    scanLockRef.current = true;
     setIsScanning(true);
     try {
       const response = await fetch('/playground/api/iterations');
@@ -670,6 +678,7 @@ export default function PlaygroundCanvas() {
           ...eds.filter(e => !skeletonSet.has(e.target)),
           ...newEdges,
         ]);
+        knownIterationsRef.current = [...knownIterationsRef.current, ...newKnownFilenames];
         setKnownIterations(prev => [...prev, ...newKnownFilenames]);
 
         if (resetTimeoutOnFind) {
@@ -679,7 +688,12 @@ export default function PlaygroundCanvas() {
     } catch (error) {
       console.error('Error scanning iterations:', error);
     } finally {
+      scanLockRef.current = false;
       setIsScanning(false);
+      if (scanQueuedRef.current) {
+        scanQueuedRef.current = false;
+        scanForIterations(resetTimeoutOnFind);
+      }
     }
   }, [findParentNode, findIterationNodeByFilename, getNodeId, handleIterationDelete, handleIterationAdopt, setNodes, setEdges, resetPollTimeout]);
 
@@ -1250,6 +1264,7 @@ export default function PlaygroundCanvas() {
             componentId,
             iterationCount,
             model: model || undefined,
+            ...getProviderFields(),
           }),
         });
 
@@ -1500,6 +1515,7 @@ export default function PlaygroundCanvas() {
             componentId,
             iterationCount,
             model: payloadModel || undefined,
+            ...getProviderFields(),
           }),
         });
 
@@ -1577,6 +1593,7 @@ export default function PlaygroundCanvas() {
             componentId: 'cursor-chat-freeform',
             iterationCount: 0,
             model: payloadModel || undefined,
+            ...getProviderFields(),
           }),
         });
 

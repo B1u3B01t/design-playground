@@ -1,4 +1,17 @@
 {
   "version": 1,
-  "entries": {}
+  "entries": {
+    "PlanCards.iteration-1.tsx": {
+      "parent": "plan-cards"
+    },
+    "Team.iteration-1.tsx": {
+      "parent": "team"
+    },
+    "Team.iteration-2.tsx": {
+      "parent": "team"
+    },
+    "Team.iteration-3.tsx": {
+      "parent": "team"
+    }
+  }
 }

@@ -20,11 +20,11 @@ export function PlaygroundToaster() {
         },
         classNames: {
           toast:
-            "group toast !bg-white !text-stone-800 !border !border-stone-200/80 !shadow-lg !rounded-xl !py-3 !px-4",
+            "group toast !bg-white !text-stone-800 !border !border-stone-200/80 !shadow-md !rounded-lg !py-2 !px-3 !min-h-0",
           title:
-            "!text-stone-800 !text-sm !font-medium",
+            "!text-stone-800 !text-xs !font-medium !leading-tight",
           description:
-            "!text-stone-500 !text-xs",
+            "!text-stone-500 !text-[11px] !leading-tight",
           error:
             "!bg-white !text-stone-800 !border !border-red-200/80",
           actionButton:
