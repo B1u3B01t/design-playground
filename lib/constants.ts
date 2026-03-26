@@ -31,6 +31,12 @@ export const GENERATION_ERROR_EVENT = 'playground:generation-error';
 /** Fired when a generation request is queued behind an in-progress generation */
 export const GENERATION_QUEUED_EVENT = 'playground:generation-queued';
 
+/** Fired when an adoption completes successfully */
+export const ADOPTION_COMPLETE_EVENT = 'playground:adoption-complete';
+
+/** Fired when an adoption encounters an error */
+export const ADOPTION_ERROR_EVENT = 'playground:adoption-error';
+
 /** Fired to pan the canvas to a specific flow position */
 export const PAN_TO_POSITION_EVENT = 'playground:pan-to-position';
 
@@ -335,13 +341,28 @@ export const MINIMAP_MASK_COLOR = 'rgba(0, 0, 0, 0.08)';
 // ---------------------------------------------------------------------------
 
 /** Gap between background dots (px) */
-export const BACKGROUND_GAP = 20;
+export const BACKGROUND_GAP = 10;
 
 /** Size of each background dot (px) */
 export const BACKGROUND_DOT_SIZE = 1;
 
 /** Color of background dots */
 export const BACKGROUND_COLOR = '#d1d5db';
+
+/** Minimum computed gap in flow coordinates (at max zoom-in) */
+export const BACKGROUND_MIN_GAP = 10;
+
+/** Maximum computed gap in flow coordinates (at max zoom-out) */
+export const BACKGROUND_MAX_GAP = 300;
+
+/** Minimum computed dot size in flow coordinates */
+export const BACKGROUND_MIN_DOT_SIZE = 1;
+
+/** Maximum computed dot size in flow coordinates */
+export const BACKGROUND_MAX_DOT_SIZE = 30;
+
+/** Number of discrete zoom steps for background dot scaling */
+export const BACKGROUND_ZOOM_STEPS = 6;
 
 // ---------------------------------------------------------------------------
 // Server-Side API Constants (used in route handlers)
@@ -535,6 +556,8 @@ export interface GenerationStartPayload {
   htmlFolder?: string;
   /** When true, this is an edit-in-place operation — no skeleton nodes should be created */
   editMode?: boolean;
+  /** When true, this is an adoption operation — presence bubbles show green spinner */
+  adoptionMode?: boolean;
 }
 
 /** Payload for GENERATION_COMPLETE_EVENT */
@@ -572,4 +595,23 @@ export interface DragIteratePayload {
   sourceFilename?: string;
   renderMode?: 'react' | 'html';
   htmlFolder?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Adoption Event Payload Types
+// ---------------------------------------------------------------------------
+
+/** Payload for ADOPTION_COMPLETE_EVENT */
+export interface AdoptionCompletePayload {
+  iterationNodeId: string;
+  componentId: string;
+  parentNodeId: string;
+}
+
+/** Payload for ADOPTION_ERROR_EVENT */
+export interface AdoptionErrorPayload {
+  iterationNodeId: string;
+  componentId: string;
+  parentNodeId: string;
+  error: string;
 }

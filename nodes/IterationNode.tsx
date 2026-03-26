@@ -2,8 +2,20 @@
 
 import { memo, useState, useCallback, Suspense, useMemo, useRef, useEffect } from 'react';
 import { useReactFlow, NodeResizeControl } from '@xyflow/react';
-import { Check, Trash2, Loader2, ArrowUpRight, ChevronRight } from 'lucide-react';
+import { toPng } from 'html-to-image';
+import { Check, CheckCheck, Trash2, Loader2, ArrowUpRight, ChevronRight } from 'lucide-react';
+import { toast } from 'sonner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../ui/alert-dialog';
 import { resolveRegistryItem, generateAdoptPrompt } from '../registry';
 import { getIterationComponent } from '../iterations';
 import { CancelGenerationButton } from './shared/IterateDialogParts';
@@ -15,13 +27,21 @@ import {
   GENERATION_ERROR_EVENT,
   EDIT_COMPLETE_EVENT,
   ITERATION_COLLAPSE_TOGGLE_EVENT,
+  ADOPTION_COMPLETE_EVENT,
+  ADOPTION_ERROR_EVENT,
+  FIT_COMPONENT_NODES_EVENT,
   SIZE_CONFIG,
   getDisplayDimensions,
-  COPIED_FEEDBACK_DURATION,
   RESIZE_MIN_WIDTH,
   RESIZE_MIN_HEIGHT,
   type ComponentSize,
+  type GenerationStartPayload,
+  type GenerationCompletePayload,
+  type GenerationErrorPayload,
+  type AdoptionCompletePayload,
+  type AdoptionErrorPayload,
 } from '../lib/constants';
+import { getProviderFields } from '../lib/generation-body';
 import { generateHtmlAdoptPrompt } from '../lib/html-prompts';
 import { useAsyncProps, useScrollCapture } from '../hooks/useNodeShared';
 import { useTunnelShare } from '../hooks/useTunnelShare';
@@ -44,6 +64,8 @@ interface IterationNodeProps {
     customResized?: boolean;
     hasChildren?: boolean;
     isCollapsed?: boolean;
+    /** Whether this iteration has been adopted into the original component */
+    adopted?: boolean;
     onDelete?: (filename: string) => void;
     onAdopt?: (filename: string, componentName: string) => void;
     /** Render mode: 'react' (default) or 'html' for iframe-based rendering */
@@ -59,7 +81,11 @@ interface IterationNodeProps {
 function IterationNode({ id, data, selected = false }: IterationNodeProps) {
   const { deleteElements, updateNodeData, setNodes } = useReactFlow();
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isAdopting, setIsAdopting] = useState(false);
+  const [adoptionStatus, setAdoptionStatus] = useState<'idle' | 'adopting' | 'adopted' | 'error'>(
+    () => data.adopted ? 'adopted' : 'idle',
+  );
+  const [showAdoptConfirm, setShowAdoptConfirm] = useState(false);
+  const [adoptThumbnail, setAdoptThumbnail] = useState<string | null>(null);
   const [isGlobalGenerating, setIsGlobalGenerating] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [iframeKey, setIframeKey] = useState(() => Date.now());
@@ -190,22 +216,145 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
     }
   };
 
-  const handleAdopt = async () => {
-    if (isAdopting) return;
-    setIsAdopting(true);
+  // Capture thumbnail when adopt dialog opens
+  const openAdoptConfirm = useCallback(() => {
+    setShowAdoptConfirm(true);
+    setAdoptThumbnail(null);
+    // Capture a thumbnail of the iteration's rendered frame
+    const nodeEl = document.querySelector(`[data-id="${id}"]`);
+    const frameEl = nodeEl?.querySelector('[data-screenshot-target]');
+    if (frameEl instanceof HTMLElement) {
+      const rect = frameEl.getBoundingClientRect();
+      // Temporarily patch cssRules to avoid SecurityError from cross-origin sheets
+      const desc = Object.getOwnPropertyDescriptor(CSSStyleSheet.prototype, 'cssRules');
+      const descRules = Object.getOwnPropertyDescriptor(CSSStyleSheet.prototype, 'rules');
+      const safeGetter = function (this: CSSStyleSheet) {
+        try { return desc!.get!.call(this); } catch { return [] as unknown as CSSRuleList; }
+      };
+      Object.defineProperty(CSSStyleSheet.prototype, 'cssRules', { get: safeGetter, configurable: true });
+      Object.defineProperty(CSSStyleSheet.prototype, 'rules', { get: safeGetter, configurable: true });
+      const w = Math.ceil(rect.width);
+      const h = Math.ceil(rect.height);
+      toPng(frameEl, { pixelRatio: 1, width: w, height: h })
+        .catch(() => null as string | null)
+        .then(() => toPng(frameEl, { pixelRatio: 2, width: w, height: h }))
+        .then((url) => { if (url) setAdoptThumbnail(url); })
+        .catch(() => {})
+        .finally(() => {
+          if (desc) Object.defineProperty(CSSStyleSheet.prototype, 'cssRules', desc);
+          if (descRules) Object.defineProperty(CSSStyleSheet.prototype, 'rules', descRules);
+        });
+    }
+  }, [id]);
+
+  const handleAdoptConfirm = async () => {
+    setShowAdoptConfirm(false);
+    setAdoptionStatus('adopting');
+
+    const toastId = `adopt-${id}`;
+
+    // Generate the adopt prompt
     let adoptPrompt: string;
     if (isHtml && data.htmlFolder && data.htmlIterationFolder) {
       adoptPrompt = generateHtmlAdoptPrompt(data.htmlFolder, data.htmlIterationFolder);
     } else {
       adoptPrompt = generateAdoptPrompt(registryId, data.filename);
     }
+
+    const componentId = isHtml ? `html:${data.htmlFolder}` : registryId;
+
+    // Dispatch start event (for presence bubbles — editMode prevents skeleton nodes)
+    window.dispatchEvent(
+      new CustomEvent<GenerationStartPayload>(GENERATION_START_EVENT, {
+        detail: {
+          componentId,
+          componentName: data.componentName,
+          parentNodeId: data.parentNodeId,
+          iterationCount: 0,
+          editMode: true,
+          adoptionMode: true,
+          ...(isHtml ? { renderMode: 'html' as const, htmlFolder: data.htmlFolder } : {}),
+          ...getProviderFields() as Pick<GenerationStartPayload, 'model' | 'provider'>,
+        },
+      }),
+    );
+
     try {
-      await navigator.clipboard.writeText(adoptPrompt);
+      const response = await fetch('/playground/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: adoptPrompt,
+          componentId: `adopt-${componentId}`,
+          ...getProviderFields(),
+          ...(isHtml ? { htmlFolder: data.htmlFolder } : {}),
+        }),
+      });
+
+      const result = await response.json().catch(() => ({ success: false, error: 'Invalid response' }));
+
+      if (!response.ok || !result.success) {
+        const errorMsg = result?.error || 'Adoption failed';
+        window.dispatchEvent(
+          new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+            detail: { componentId, parentNodeId: data.parentNodeId, error: errorMsg },
+          }),
+        );
+        window.dispatchEvent(
+          new CustomEvent<AdoptionErrorPayload>(ADOPTION_ERROR_EVENT, {
+            detail: { iterationNodeId: id, componentId, parentNodeId: data.parentNodeId, error: errorMsg },
+          }),
+        );
+        toast.error(`Adoption failed: ${errorMsg}`, { id: toastId, duration: 6000 });
+        setAdoptionStatus('error');
+        setTimeout(() => setAdoptionStatus('idle'), 3000);
+      } else {
+        // Success — refresh the original component
+        if (isHtml) {
+          window.dispatchEvent(
+            new CustomEvent(EDIT_COMPLETE_EVENT, { detail: { nodeId: data.parentNodeId } }),
+          );
+        }
+        window.dispatchEvent(
+          new CustomEvent<GenerationCompletePayload>(GENERATION_COMPLETE_EVENT, {
+            detail: { componentId, parentNodeId: data.parentNodeId, output: result.output || '' },
+          }),
+        );
+        window.dispatchEvent(
+          new CustomEvent<AdoptionCompletePayload>(ADOPTION_COMPLETE_EVENT, {
+            detail: { iterationNodeId: id, componentId, parentNodeId: data.parentNodeId },
+          }),
+        );
+        toast.success('Variation adopted! The original component has been updated.', { id: toastId });
+        setAdoptionStatus('adopted');
+        updateNodeData(id, { adopted: true });
+        data.onAdopt?.(data.filename, data.componentName);
+
+        // Pan canvas to the original (parent) component so the user sees the update
+        setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent(FIT_COMPONENT_NODES_EVENT, {
+              detail: { componentId },
+            }),
+          );
+        }, 600);
+      }
     } catch (err) {
-      console.error('[IterationNode] Failed to copy adopt prompt:', err);
+      const errorMsg = err instanceof Error ? err.message : 'Network error';
+      window.dispatchEvent(
+        new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+          detail: { componentId, parentNodeId: data.parentNodeId, error: errorMsg },
+        }),
+      );
+      window.dispatchEvent(
+        new CustomEvent<AdoptionErrorPayload>(ADOPTION_ERROR_EVENT, {
+          detail: { iterationNodeId: id, componentId, parentNodeId: data.parentNodeId, error: errorMsg },
+        }),
+      );
+      toast.error(`Adoption failed: ${errorMsg}`, { id: toastId, duration: 6000 });
+      setAdoptionStatus('error');
+      setTimeout(() => setAdoptionStatus('idle'), 3000);
     }
-    data.onAdopt?.(data.filename, data.componentName);
-    setTimeout(() => setIsAdopting(false), COPIED_FEEDBACK_DURATION);
   };
 
   // e.g. "PricingCard" + 3 → "pricing-card #3", or "landing #1" for HTML
@@ -273,6 +422,17 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
           >
             {iterationLabel}
           </span>
+          {adoptionStatus === 'adopted' && (
+            <span className="text-[9px] font-medium text-green-600 bg-green-50 border border-green-200 rounded-full px-1.5 py-0.5 leading-none select-none shrink-0">
+              Adopted
+            </span>
+          )}
+          {adoptionStatus === 'adopting' && (
+            <span className="flex items-center gap-1 text-[9px] text-stone-400 select-none shrink-0">
+              <Loader2 className="w-2.5 h-2.5 animate-spin" />
+              adopting
+            </span>
+          )}
           <div className={`flex items-center gap-1.5 transition-opacity nodrag ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
             <div className="w-px h-3 bg-stone-200 shrink-0" />
             <SizeButtons currentSize={size} onSizeChange={handleSizeChange} />
@@ -307,7 +467,8 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
         <div
           data-screenshot-target
           className={`app-theme bg-background overflow-hidden rounded-xl ${isResizing ? '' : 'transition-all'} ${
-            selected ? `ring-2 ${isHtml ? 'ring-orange-400' : 'ring-[#0B99FF]'}` : ''
+            adoptionStatus === 'adopted' ? 'ring-2 ring-green-400'
+              : selected ? `ring-2 ${isHtml ? 'ring-orange-400' : 'ring-[#0B99FF]'}` : ''
           } ${isFillMode ? 'w-full h-full' : ''}`}
         >
           {isHtml ? (
@@ -451,18 +612,79 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  onClick={handleAdopt}
-                  disabled={isAdopting}
-                  className="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-stone-200 text-stone-400 hover:text-green-600 hover:border-green-300 transition-colors disabled:opacity-50"
-                  aria-label={isAdopting ? 'Copied!' : 'Use this variation'}
+                  onClick={openAdoptConfirm}
+                  disabled={adoptionStatus === 'adopting' || isGlobalGenerating}
+                  className={`w-8 h-8 flex items-center justify-center rounded-full border transition-colors disabled:opacity-50 ${
+                    adoptionStatus === 'adopted'
+                      ? 'bg-green-50 border-green-300 text-green-600'
+                      : adoptionStatus === 'error'
+                        ? 'bg-red-50 border-red-300 text-red-500'
+                        : 'bg-white border-stone-200 text-stone-400 hover:text-green-600 hover:border-green-300'
+                  }`}
+                  aria-label={
+                    adoptionStatus === 'adopting' ? 'Adopting...'
+                      : adoptionStatus === 'adopted' ? 'Adopted'
+                        : 'Adopt this variation'
+                  }
                 >
-                  <Check className="w-3.5 h-3.5" />
+                  {adoptionStatus === 'adopting' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : adoptionStatus === 'adopted' ? (
+                    <CheckCheck className="w-3.5 h-3.5" />
+                  ) : (
+                    <Check className="w-3.5 h-3.5" />
+                  )}
                 </button>
               </TooltipTrigger>
               <TooltipContent side="right">
-                <p>{isAdopting ? 'Prompt copied!' : 'Use this variation'}</p>
+                <p>
+                  {adoptionStatus === 'adopting' ? 'Adopting variation...'
+                    : adoptionStatus === 'adopted' ? 'Adopted'
+                      : isGlobalGenerating ? 'Cannot adopt during generation'
+                        : 'Adopt this variation'}
+                </p>
               </TooltipContent>
             </Tooltip>
+
+            {/* Adopt confirmation dialog */}
+            <AlertDialog open={showAdoptConfirm} onOpenChange={setShowAdoptConfirm}>
+              <AlertDialogContent className="max-w-md">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Adopt this variation?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {isHtml
+                      ? 'This will overwrite the original index.html with this variation. You can revert using git if needed.'
+                      : "This will replace the original component's UI with this variation's layout and styling. Props, hooks, and logic will be preserved."}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                {/* Iteration preview thumbnail */}
+                {adoptThumbnail ? (
+                  <div className="rounded-lg border border-stone-200 overflow-hidden bg-stone-50">
+                    <img
+                      src={adoptThumbnail}
+                      alt={`Preview of ${iterationLabel}`}
+                      className="w-full max-h-[240px] object-contain object-top"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-24 rounded-lg border border-dashed border-stone-200 bg-stone-50">
+                    <span className="text-xs text-stone-400">Capturing preview…</span>
+                  </div>
+                )}
+                <p className="text-xs text-stone-500 text-center -mt-1">
+                  {iterationLabel}
+                </p>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleAdoptConfirm}
+                    className="bg-green-600 text-white hover:bg-green-700"
+                  >
+                    Adopt
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
 
             {/* Delete */}
             <Tooltip>

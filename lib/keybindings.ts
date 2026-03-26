@@ -21,6 +21,7 @@ export interface KeyCombo {
 export type PlaygroundAction =
   | 'cursor-chat.activate'
   | 'cursor-chat.cycle-model'
+  | 'cursor-chat.toggle-edit-mode'
   | 'iterate.copy-prompt'
   | 'iterate.run'
   | 'element-select.hold'
@@ -52,6 +53,13 @@ export const DEFAULT_KEYBINDINGS: KeybindingDefinition[] = [
     description: 'Switch to the next AI model',
     category: 'Cursor Chat',
     defaultCombo: { key: 'Tab', shift: true },
+  },
+  {
+    action: 'cursor-chat.toggle-edit-mode',
+    label: 'Toggle Edit/Iterate Mode',
+    description: 'Switch between edit and iterate mode',
+    category: 'Cursor Chat',
+    defaultCombo: { key: 'e', meta: true },
   },
   {
     action: 'iterate.copy-prompt',

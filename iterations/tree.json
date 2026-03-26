@@ -19,9 +19,6 @@
     "KeyboardShortcutsModal.iteration-2.tsx": {
       "parent": "keyboard-shortcuts-modal"
     },
-    "KeyboardShortcutsModal.iteration-3.tsx": {
-      "parent": "keyboard-shortcuts-modal"
-    },
     "KeyboardShortcutsModal.iteration-4.tsx": {
       "parent": "keyboard-shortcuts-modal"
     }

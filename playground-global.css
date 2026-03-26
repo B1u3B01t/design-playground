@@ -318,6 +318,31 @@
   animation: presence-spin 0.9s linear infinite;
 }
 
+/* Green spinner variant for adoption — bolder ring for visibility */
+.presence-bubble-spinner--adopt {
+  position: absolute;
+  inset: -1px;
+  border-radius: 50% 50% 50% 4px;
+  overflow: hidden;
+  background: rgba(34, 197, 94, 0.35);
+}
+
+.presence-bubble-spinner--adopt::before {
+  content: '';
+  position: absolute;
+  inset: -50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    transparent 30%,
+    rgba(34, 197, 94, 0.6) 50%,
+    rgba(74, 222, 128, 0.9) 70%,
+    #22c55e 85%,
+    #16a34a 100%
+  );
+  animation: presence-spin 0.9s linear infinite;
+}
+
 @keyframes presence-spin {
   to { transform: rotate(360deg); }
 }

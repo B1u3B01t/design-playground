@@ -33,6 +33,8 @@ interface PresenceBubble {
   provider?: string;
   status: 'queued' | 'generating' | 'done';
   flowPosition: { x: number; y: number } | null;
+  /** Distinguishes adopt operations from normal generation */
+  type?: 'iterate' | 'edit' | 'adopt';
 }
 
 // ---------------------------------------------------------------------------
@@ -94,6 +96,7 @@ export default function PlaygroundHeader({
 
     const handleStart = (e: Event) => {
       const detail = (e as CustomEvent<GenerationStartPayload>).detail;
+      const bubbleType = detail.adoptionMode ? 'adopt' as const : detail.editMode ? 'edit' as const : 'iterate' as const;
 
       setPresenceBubbles(prev => {
         // Try to transition a queued bubble for this component
@@ -104,7 +107,7 @@ export default function PlaygroundHeader({
         if (queuedIdx !== -1) {
           return prev.map((b, i) =>
             i === queuedIdx
-              ? { ...b, status: 'generating' as const, model: detail.model || b.model, provider: detail.provider ?? b.provider, flowPosition: detail.flowPosition ?? b.flowPosition }
+              ? { ...b, status: 'generating' as const, model: detail.model || b.model, provider: detail.provider ?? b.provider, flowPosition: detail.flowPosition ?? b.flowPosition, type: bubbleType }
               : b
           );
         }
@@ -118,6 +121,7 @@ export default function PlaygroundHeader({
           provider: detail.provider,
           status: 'generating',
           flowPosition: detail.flowPosition ?? null,
+          type: bubbleType,
         };
         return [...prev, bubble];
       });
@@ -295,7 +299,9 @@ export default function PlaygroundHeader({
               const displayName = bubble.provider === 'claude-code' ? `Claude Code (${bubble.model})` : bubble.model;
               const tooltipText = bubble.status === 'queued'
                 ? 'Queued — will run after current generation'
-                : `${displayName} — ${bubble.status}`;
+                : bubble.type === 'adopt'
+                  ? `Adopting — ${displayName}`
+                  : `${displayName} — ${bubble.status}`;
                return (
                 <Tooltip key={bubble.id}>
                   <TooltipTrigger asChild>
@@ -304,7 +310,7 @@ export default function PlaygroundHeader({
                   onClick={() => handleBubbleClick(bubble)}
                 >
                   {bubble.status === 'generating' && (
-                    <div className="presence-bubble-spinner" />
+                    <div className={bubble.type === 'adopt' ? 'presence-bubble-spinner--adopt' : 'presence-bubble-spinner'} />
                   )}
                   <div
                     className="presence-bubble-face"

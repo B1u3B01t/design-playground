@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   InlineReference,
   InlineReferenceInput,
@@ -16,7 +16,7 @@ import { useAvailableModels } from './nodes/shared/IterateDialogParts';
 import { useCursorChat } from './hooks/useCursorChat';
 import { getModelIconConfig } from './lib/model-icons';
 import { ITERATION_COUNT_OPTIONS, CURSOR_CHAT_DEFAULT_COUNT, type CursorChatSubmitPayload } from './lib/constants';
-import { matchesAction } from './lib/keybindings';
+import { matchesAction, formatKeyCombo, getCombo } from './lib/keybindings';
 import type { SelectedElement } from './lib/element-context';
 import { useModelSettingsStore } from './lib/model-settings-store';
 import type { SelectedNodeContext } from './hooks/useNodeSelection';
@@ -52,6 +52,57 @@ function BracketIcon() {
 function FrameIcon() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Iteration Count Dragger
+// ---------------------------------------------------------------------------
+
+const DRAG_STEP_PX = 24; // pixels of vertical drag per ±1 count
+const MIN_COUNT = ITERATION_COUNT_OPTIONS[0];
+const MAX_COUNT = ITERATION_COUNT_OPTIONS[ITERATION_COUNT_OPTIONS.length - 1];
+
+function IterationCountDragger({ count, onChange }: { count: number; onChange: (n: number) => void }) {
+  const dragStartY = useRef(0);
+  const dragStartCount = useRef(count);
+
+  const onPointerDown = useCallback((e: ReactPointerEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    dragStartY.current = e.clientY;
+    dragStartCount.current = count;
+  }, [count]);
+
+  const onPointerMove = useCallback((e: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!(e.target as HTMLElement).hasPointerCapture(e.pointerId)) return;
+    const delta = dragStartY.current - e.clientY; // up = positive
+    const steps = Math.round(delta / DRAG_STEP_PX);
+    const next = Math.min(MAX_COUNT, Math.max(MIN_COUNT, dragStartCount.current + steps));
+    onChange(next);
+  }, [onChange]);
+
+  const onPointerUp = useCallback((e: ReactPointerEvent<HTMLButtonElement>) => {
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+  }, []);
+
+  return (
+    <button
+      type="button"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      className="inline-flex items-center justify-center py-1 pl-1.5 pr-2 gap-1 rounded-full text-[9px] font-medium transition-transform duration-150 ease-out select-none bg-stone-50 text-stone-500 border border-stone-100 hover:text-stone-700 hover:scale-[1.05] active:scale-[0.95]"
+      style={{ cursor: 'ns-resize', touchAction: 'none' }}
+    >
+      <span className="cursor-ns-resize flex items-center">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 20 20">
+          <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" d="M15.6 3.396H4.25c-.314 0-.568.283-.568.633v12.665c0 .35.254.633.568.633H15.6c.314 0 .568-.284.568-.633V4.029c0-.35-.254-.633-.567-.633ZM6.8 10.361h6.25M9.925 7.236v6.25" />
+          <path stroke="currentColor" strokeLinecap="round" d="M17.747 5.02v10.682M19.312 6.019v8.685" />
+        </svg>
+      </span>
+      <span className="text-nowrap">{count}x</span>
+    </button>
   );
 }
 
@@ -280,6 +331,13 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
         return;
       }
 
+      // Toggle edit/iterate mode (default: Cmd+E)
+      if (matchesAction(e, 'cursor-chat.toggle-edit-mode')) {
+        e.preventDefault();
+        setEditMode(m => !m);
+        return;
+      }
+
       // Enter: submit
       if (e.key === 'Enter' && !e.shiftKey) {
         const pickerOpen = document.querySelector('[data-slot="inline-reference-content"]');
@@ -390,29 +448,33 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
             : 'none',
         }}
       >
-        {/* Element chip — placed mode + target only */}
-        {isPlaced && targetNode && (!selectedElements || selectedElements.length === 0) && (
-          <div
-            className="flex items-center gap-1 px-1.5 py-px mb-1 self-start select-none"
-            style={{
-              background: 'rgb(250, 250, 249)',
-              border: '1px solid rgb(147, 197, 253)',
-              borderRadius: '12px',
-              color: 'rgb(59, 130, 246)',
-              fontSize: '10px',
-              fontWeight: 500,
-              marginBottom: '8px',
-            }}
-          >
-            <FrameIcon/>
-            <span>{targetNode.componentName}</span>
-          </div>
-        )}
+        {/* Selection pills — all in one wrapping row */}
+        {(
+          (isPlaced && targetNode && (!selectedElements || selectedElements.length === 0)) ||
+          (selectedElements && selectedElements.length > 0) ||
+          (selectedNodes && selectedNodes.length > 1)
+        ) && (
+          <div className="flex flex-wrap items-center gap-1 mb-2">
+            {/* Target component chip */}
+            {isPlaced && targetNode && (!selectedElements || selectedElements.length === 0) && (
+              <div
+                className="flex items-center gap-1 px-1.5 py-px select-none"
+                style={{
+                  background: 'rgb(250, 250, 249)',
+                  border: '1px solid rgb(147, 197, 253)',
+                  borderRadius: '12px',
+                  color: 'rgb(59, 130, 246)',
+                  fontSize: '10px',
+                  fontWeight: 500,
+                }}
+              >
+                <FrameIcon/>
+                <span>{targetNode.componentName}</span>
+              </div>
+            )}
 
-        {/* Selected element chips */}
-        {selectedElements && selectedElements.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1 mb-1">
-            {selectedElements.map((sel, i) => (
+            {/* Selected element chips */}
+            {selectedElements && selectedElements.length > 0 && selectedElements.map((sel, i) => (
               <div
                 key={i}
                 className="flex items-center gap-1 px-1.5 py-px select-none group"
@@ -423,7 +485,6 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
                   color: 'rgb(59, 130, 246)',
                   fontSize: '10px',
                   fontWeight: 500,
-                  marginBottom: '4px',
                 }}
               >
                 <BracketIcon />
@@ -439,7 +500,7 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
                 )}
               </div>
             ))}
-            {selectedElements.length >= 2 && onClearElements && (
+            {selectedElements && selectedElements.length >= 2 && onClearElements && (
               <button
                 onClick={onClearElements}
                 className="px-1.5 py-px text-[10px] text-stone-400 hover:text-stone-600 transition-colors pointer-events-auto select-none"
@@ -447,13 +508,9 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
                 × clear
               </button>
             )}
-          </div>
-        )}
 
-        {/* Node reference chips */}
-        {selectedNodes && selectedNodes.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1 mb-1">
-            {selectedNodes.map((node) => (
+            {/* Node reference chips — hidden for single selection */}
+            {selectedNodes && selectedNodes.length > 1 && selectedNodes.map((node) => (
               <div
                 key={node.nodeId}
                 className="flex items-center gap-1 px-1.5 py-px select-none group"
@@ -482,7 +539,7 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
                 )}
               </div>
             ))}
-            {selectedNodes.length >= 2 && onClearNodes && (
+            {selectedNodes && selectedNodes.length >= 2 && onClearNodes && (
               <button
                 onClick={onClearNodes}
                 className="px-1.5 py-px text-[9px] text-stone-400 hover:text-stone-600 transition-colors pointer-events-auto select-none"
@@ -562,15 +619,15 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
           <div className="flex items-center justify-between mt-4 pt-2 gap-2 whitespace-nowrap">
             <button
               onClick={cycleModel}
-              className="inline-flex items-center gap-1 px-1.5 py-px text-[9px] font-medium select-none transition-colors hover:bg-stone-100 whitespace-nowrap"
+              className="inline-flex items-center gap-1 px-1.5 py-px text-[9px] font-medium select-none transition-colors hover:bg-stone-100 whitespace-nowrap overflow-hidden"
               style={{
                 background: 'transparent',
                 borderRadius: '6px',
                 color: 'rgb(87, 83, 78)',
               }}
             >
-              {modelLabel}
-              <span style={{ opacity: 0.5 }}>Shift+Tab</span>
+              <span className="overflow-hidden text-ellipsis">{modelLabel}</span>
+              <span className="flex-shrink-0" style={{ opacity: 0.5 }}>Shift+Tab</span>
             </button>
 
             {/* Edit/Iterate toggle */}
@@ -583,29 +640,20 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
               }`}
             >
               {editMode ? 'Edit' : 'Iterate'}
+              <span style={{ display: 'inline-block', width: 10 }} />
+              <span style={{ opacity: 0.5 }}>{formatKeyCombo(getCombo('cursor-chat.toggle-edit-mode'))}</span>
             </button>
 
-            {/* Iteration count pills — hidden in edit mode */}
+            {/* Iteration count — drag to adjust, hidden in edit mode */}
             {!editMode && (
-              <div className="flex items-center gap-0.5 bg-stone-50 rounded-full px-1 py-1 border border-stone-100">
-                {(ITERATION_COUNT_OPTIONS as readonly number[]).map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setIterationCount(n)}
-                    className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium transition-colors ${
-                      iterationCount === n
-                        ? 'bg-stone-800 text-white'
-                        : 'text-stone-500 hover:text-stone-800'
-                    }`}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
+              <IterationCountDragger
+                count={iterationCount}
+                onChange={setIterationCount}
+              />
             )}
             <button
               onClick={handleSubmit}
-              className="flex items-center justify-center transition-colors hover:bg-stone-200"
+              className="flex items-center justify-center flex-shrink-0 transition-colors hover:bg-stone-200"
               style={{
                 width: '28px',
                 height: '28px',

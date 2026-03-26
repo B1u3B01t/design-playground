@@ -86,8 +86,6 @@ import {
   MINIMAP_ITERATION_COLOR,
   MINIMAP_COMPONENT_COLOR,
   MINIMAP_MASK_COLOR,
-  BACKGROUND_GAP,
-  BACKGROUND_DOT_SIZE,
   BACKGROUND_COLOR,
   DND_DATA_KEY,
   HTML_ID_PREFIX,
@@ -117,6 +115,7 @@ import CursorChat from './CursorChat';
 import ElementHighlight from './ElementHighlight';
 import { useElementSelection } from './hooks/useElementSelection';
 import { useNodeSelection } from './hooks/useNodeSelection';
+import { useDynamicBackground } from './hooks/useDynamicBackground';
 import { toast } from 'sonner';
 
 const nodeTypes = {
@@ -249,6 +248,7 @@ interface GenerationInfo {
 }
 
 export default function PlaygroundCanvas() {
+  const dynamicBg = useDynamicBackground();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
   const initialState = loadCanvasState();
@@ -501,11 +501,11 @@ export default function PlaygroundCanvas() {
     setKnownIterations(prev => prev.filter(f => f !== filename));
   }, []);
 
-  // Handle iteration adoption
-  const handleIterationAdopt = useCallback((filename: string) => {
-    // Copy the import path to clipboard
-    const importPath = `@/app/playground/iterations/${filename.replace('.tsx', '')}`;
-    navigator.clipboard.writeText(importPath).catch(() => {});
+  // Handle iteration adoption — IterationNode now owns the full adoption flow
+  // (agent execution, toasts, presence bubbles). This callback is kept for
+  // any canvas-level bookkeeping needed after a successful adoption.
+  const handleIterationAdopt = useCallback((_filename: string, _componentName: string) => {
+    // No-op: IterationNode handles everything via events + API calls
   }, []);
 
   // Stop polling - defined first so it can be referenced
@@ -2621,8 +2621,8 @@ export default function PlaygroundCanvas() {
           />
         <Background
           variant={BackgroundVariant.Dots}
-          gap={BACKGROUND_GAP}
-          size={BACKGROUND_DOT_SIZE}
+          gap={dynamicBg.gap}
+          size={dynamicBg.size}
           color={BACKGROUND_COLOR}
         />
       </ReactFlow>
