@@ -173,7 +173,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
       </NodeResizeControl>
 
       {/* ── Top bar — always visible label, controls only when selected ── */}
-      <div className="flex items-center justify-between px-0.5 pb-1.5 nodrag cursor-default">
+      <div className="flex items-center justify-between px-0.5 pb-1.5 cursor-grab">
         {/* Left: label (always) + size buttons (selected only) */}
         <div className="flex items-center gap-1.5">
           <span
@@ -185,14 +185,14 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
           >
             {label}
           </span>
-          <div className={`flex items-center gap-1.5 transition-opacity ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+          <div className={`flex items-center gap-1.5 transition-opacity nodrag ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
             <div className="w-px h-3 bg-stone-200 shrink-0" />
             <SizeButtons currentSize={size} onSizeChange={handleSizeChange} />
           </div>
         </div>
 
         {/* Right: expand icon — invisible when not selected, always occupies space */}
-        <div className={`transition-opacity ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+        <div className={`transition-opacity nodrag ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
           <Tooltip>
             <TooltipTrigger asChild>
               <button

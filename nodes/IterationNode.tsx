@@ -400,7 +400,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
       </NodeResizeControl>
 
       {/* ── Top bar — label always, controls only when selected ── */}
-      <div className="flex items-center justify-between px-0.5 pb-1.5 nodrag cursor-default">
+      <div className="flex items-center justify-between px-0.5 pb-1.5 cursor-grab">
         {/* Left: collapse toggle + label + size buttons */}
         <div className="flex items-center gap-1.5 min-w-0">
           {data.hasChildren && (
@@ -440,7 +440,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
         </div>
 
         {/* Right: expand icon — invisible when not selected, always occupies space */}
-        <div className={`transition-opacity ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+        <div className={`transition-opacity nodrag ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
