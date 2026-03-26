@@ -2696,11 +2696,11 @@ export default function PlaygroundCanvas() {
       {/* Right-click context menu */}
       {contextMenu && (
         <div
-          className="fixed z-50 min-w-[180px] bg-white rounded-lg border border-stone-200 shadow-lg py-1 animate-in fade-in-0 zoom-in-95 duration-100"
+          className="fixed z-50 min-w-[180px] bg-white rounded-2xl border border-stone-200 shadow-lg py-1 animate-in fade-in-0 zoom-in-95 duration-100"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
-            className="flex items-center gap-2 w-full px-3 py-2 text-[13px] text-stone-700 hover:bg-stone-100 transition-colors text-left"
+            className="flex items-center gap-2 w-full px-3 py-2 text-[13px] text-stone-700 hover:bg-stone-100 transition-colors text-left rounded-3xl"
             onClick={(e) => {
               e.stopPropagation();
               setCreateHtmlDialog({ screenX: contextMenu.x, screenY: contextMenu.y });
@@ -2713,7 +2713,7 @@ export default function PlaygroundCanvas() {
               <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
               <polyline points="13 2 13 9 20 9" />
             </svg>
-            Create HTML page
+            create new frame
           </button>
         </div>
       )}
@@ -2722,11 +2722,11 @@ export default function PlaygroundCanvas() {
       {createHtmlDialog && (
         <div className="fixed inset-0 z-50 flex items-start justify-start" onClick={() => { setCreateHtmlDialog(null); setNewHtmlPageName(''); setCreateHtmlError(''); }}>
           <div
-            className="bg-white rounded-xl border border-stone-200 shadow-xl p-4 w-[280px] animate-in fade-in-0 zoom-in-95 duration-150"
+            className="bg-white rounded-2xl border border-stone-200 shadow-xl p-4 w-[280px] animate-in fade-in-0 zoom-in-95 duration-150"
             style={{ position: 'fixed', left: createHtmlDialog.screenX, top: createHtmlDialog.screenY }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-[13px] font-semibold text-stone-800 mb-3">New HTML Page</h3>
+            <h3 className="text-[13px] font-semibold text-stone-800 mb-3">New Frame</h3>
             <input
               ref={newHtmlInputRef}
               type="text"
@@ -2737,7 +2737,7 @@ export default function PlaygroundCanvas() {
                 if (e.key === 'Enter') { e.preventDefault(); handleCreateHtmlPage(); }
                 if (e.key === 'Escape') { setCreateHtmlDialog(null); setNewHtmlPageName(''); setCreateHtmlError(''); }
               }}
-              className="w-full px-3 py-2 text-[13px] bg-stone-50 border border-stone-200 rounded-lg text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20 transition-colors"
+              className="w-full px-3 py-2 text-[13px] bg-stone-50 border border-stone-200 rounded-xl text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20 transition-colors"
             />
             {createHtmlError && (
               <p className="text-[11px] text-red-500 mt-1.5">{createHtmlError}</p>
@@ -2745,14 +2745,14 @@ export default function PlaygroundCanvas() {
             <div className="flex justify-end gap-2 mt-3">
               <button
                 onClick={() => { setCreateHtmlDialog(null); setNewHtmlPageName(''); setCreateHtmlError(''); }}
-                className="px-3 py-1.5 text-[12px] text-stone-500 hover:text-stone-700 rounded-md hover:bg-stone-100 transition-colors"
+                className="px-3 py-1.5 text-[12px] text-stone-500 hover:text-stone-700 rounded-xl hover:bg-stone-100 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleCreateHtmlPage}
                 disabled={!newHtmlPageName.trim()}
-                className="px-3 py-1.5 text-[12px] bg-orange-500 text-white rounded-md hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="px-3 py-1.5 text-[12px] bg-orange-500 text-white rounded-xl hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 Create
               </button>
