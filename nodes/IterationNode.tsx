@@ -13,6 +13,7 @@ import {
   GENERATION_START_EVENT,
   GENERATION_COMPLETE_EVENT,
   GENERATION_ERROR_EVENT,
+  EDIT_COMPLETE_EVENT,
   ITERATION_COLLAPSE_TOGGLE_EVENT,
   SIZE_CONFIG,
   getDisplayDimensions,
@@ -21,6 +22,7 @@ import {
   RESIZE_MIN_HEIGHT,
   type ComponentSize,
 } from '../lib/constants';
+import { generateHtmlAdoptPrompt } from '../lib/html-prompts';
 import { useAsyncProps, useScrollCapture } from '../hooks/useNodeShared';
 import { useTunnelShare } from '../hooks/useTunnelShare';
 import ComponentErrorBoundary from './ComponentErrorBoundary';
@@ -44,6 +46,12 @@ interface IterationNodeProps {
     isCollapsed?: boolean;
     onDelete?: (filename: string) => void;
     onAdopt?: (filename: string, componentName: string) => void;
+    /** Render mode: 'react' (default) or 'html' for iframe-based rendering */
+    renderMode?: 'react' | 'html';
+    /** HTML page folder name (when renderMode is 'html') */
+    htmlFolder?: string;
+    /** HTML iteration folder (when renderMode is 'html') */
+    htmlIterationFolder?: string;
   };
   selected?: boolean;
 }
@@ -54,22 +62,27 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
   const [isAdopting, setIsAdopting] = useState(false);
   const [isGlobalGenerating, setIsGlobalGenerating] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [iframeKey, setIframeKey] = useState(() => Date.now());
 
   const isInteractive = !!selected;
+  const isHtml = data.renderMode === 'html';
 
-  const IterationComponent = useMemo(() => getIterationComponent(data.filename), [data.filename]);
+  const IterationComponent = useMemo(() => isHtml ? null : getIterationComponent(data.filename), [data.filename, isHtml]);
 
   const registryId = useMemo(
-    () => data.registryId
-      ?? data.componentName.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, ''),
-    [data.registryId, data.componentName],
+    () => isHtml ? '' : (data.registryId
+      ?? data.componentName.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '')),
+    [data.registryId, data.componentName, isHtml],
   );
 
-  const iterationSlug = useMemo(() => data.filename.replace(/\.tsx$/, ''), [data.filename]);
+  const iterationSlug = useMemo(() => isHtml
+    ? `${data.htmlFolder}/${data.htmlIterationFolder}`
+    : data.filename.replace(/\.tsx$/, ''),
+    [data.filename, isHtml, data.htmlFolder, data.htmlIterationFolder]);
   const { share: handleShare, state: shareState } = useTunnelShare(iterationSlug);
 
-  const { resolvedProps, isLoadingProps, propsError } = useAsyncProps(registryId);
-  const registryItem = useMemo(() => resolveRegistryItem(registryId), [registryId]);
+  const { resolvedProps, isLoadingProps, propsError } = useAsyncProps(isHtml ? '' : registryId);
+  const registryItem = useMemo(() => isHtml ? null : resolveRegistryItem(registryId), [registryId, isHtml]);
   const staticProps = useMemo(() => registryItem?.props || {}, [registryItem]);
   const effectiveProps = (resolvedProps ?? staticProps) as Record<string, unknown>;
   // Independent size — persisted in node data, initially from parent at creation time
@@ -102,6 +115,19 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
       window.removeEventListener(GENERATION_ERROR_EVENT,    off);
     };
   }, []);
+
+  // Listen for edit-complete to refresh iframe
+  useEffect(() => {
+    if (!isHtml) return;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.nodeId === id) {
+        setIframeKey(Date.now());
+      }
+    };
+    window.addEventListener(EDIT_COMPLETE_EVENT, handler);
+    return () => window.removeEventListener(EDIT_COMPLETE_EVENT, handler);
+  }, [isHtml, id]);
 
   const handleResizeStart = useCallback(() => {
     setIsResizing(true);
@@ -139,11 +165,20 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
     if (isDeleting) return;
     setIsDeleting(true);
     try {
-      const response = await fetch('/playground/api/iterations', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: data.filename }),
-      });
+      let response: Response;
+      if (isHtml) {
+        response = await fetch('/playground/api/html-pages', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pageFolder: data.htmlFolder, iterationFolder: data.htmlIterationFolder }),
+        });
+      } else {
+        response = await fetch('/playground/api/iterations', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: data.filename }),
+        });
+      }
       if (response.ok) {
         deleteElements({ nodes: [{ id }] });
         data.onDelete?.(data.filename);
@@ -158,7 +193,12 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
   const handleAdopt = async () => {
     if (isAdopting) return;
     setIsAdopting(true);
-    const adoptPrompt = generateAdoptPrompt(registryId, data.filename);
+    let adoptPrompt: string;
+    if (isHtml && data.htmlFolder && data.htmlIterationFolder) {
+      adoptPrompt = generateHtmlAdoptPrompt(data.htmlFolder, data.htmlIterationFolder);
+    } else {
+      adoptPrompt = generateAdoptPrompt(registryId, data.filename);
+    }
     try {
       await navigator.clipboard.writeText(adoptPrompt);
     } catch (err) {
@@ -168,11 +208,12 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
     setTimeout(() => setIsAdopting(false), COPIED_FEEDBACK_DURATION);
   };
 
-  // e.g. "PricingCard" + 3 → "pricing-card #3"
+  // e.g. "PricingCard" + 3 → "pricing-card #3", or "landing #1" for HTML
   const iterationLabel = useMemo(() => {
+    if (isHtml) return `${data.htmlFolder} #${data.iterationNumber}`;
     const key = data.componentName.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '');
     return `${key} #${data.iterationNumber}`;
-  }, [data.componentName, data.iterationNumber]);
+  }, [data.componentName, data.iterationNumber, isHtml, data.htmlFolder]);
 
   return (
     <div
@@ -228,7 +269,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
           )}
           <span
             className="text-[11px] font-medium select-none leading-none truncate"
-            style={{ fontFamily: 'var(--font-geist-mono), monospace', color: '#0B99FF' }}
+            style={{ fontFamily: 'var(--font-geist-mono), monospace', color: isHtml ? '#F97316' : '#0B99FF' }}
           >
             {iterationLabel}
           </span>
@@ -244,8 +285,10 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => {
-                  const slug = data.filename.replace(/\.tsx$/, '');
-                  window.open(`/playground/iterations/${slug}`, '_blank', 'noopener,noreferrer');
+                  const url = isHtml
+                    ? `/${data.htmlFolder}/${data.htmlIterationFolder}/`
+                    : `/playground/iterations/${data.filename.replace(/\.tsx$/, '')}`;
+                  window.open(url, '_blank', 'noopener,noreferrer');
                 }}
                 className="p-1 rounded text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
                 aria-label="Open in new tab"
@@ -263,10 +306,34 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
         {/* Component frame */}
         <div
           className={`app-theme bg-background overflow-hidden rounded-xl ${isResizing ? '' : 'transition-all'} ${
-            selected ? 'ring-2 ring-[#0B99FF]' : ''
+            selected ? `ring-2 ${isHtml ? 'ring-orange-400' : 'ring-[#0B99FF]'}` : ''
           } ${isFillMode ? 'w-full h-full' : ''}`}
         >
-          {isFillMode ? (
+          {isHtml ? (
+            /* HTML iframe rendering */
+            <div
+              className="relative"
+              style={isPreset
+                ? { width: displayDims.width, height: displayDims.height }
+                : isFillMode
+                  ? { width: '100%', height: '100%' }
+                  : { minWidth: '400px', minHeight: '300px' }
+              }
+            >
+              <iframe
+                key={iframeKey}
+                src={`/${data.htmlFolder}/${data.htmlIterationFolder}/index.html?t=${iframeKey}`}
+                className="w-full h-full border-0"
+                style={isPreset
+                  ? { width: config.width, height: config.height, transform: `scale(${config.scale})`, transformOrigin: 'top left' }
+                  : { width: '100%', height: '100%' }
+                }
+                sandbox="allow-scripts allow-same-origin"
+                title={`${data.htmlFolder} #${data.iterationNumber}`}
+              />
+              {!isInteractive && <div className="absolute inset-0" />}
+            </div>
+          ) : isFillMode ? (
             /* Freeform / active resize: fill the node with centered content */
             <div
               ref={scrollContainerRef}
@@ -368,11 +435,14 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
               <CancelGenerationButton />
             ) : (
               <IterateDialog
-                componentId={registryId}
+                componentId={isHtml ? `html:${data.htmlFolder}` : registryId}
                 componentName={data.componentName}
                 parentNodeId={id}
                 sourceFilename={data.filename}
                 isGlobalGenerating={isGlobalGenerating}
+                renderMode={data.renderMode}
+                htmlFolder={data.htmlFolder}
+                htmlIterationFolder={data.htmlIterationFolder}
               />
             )}
 

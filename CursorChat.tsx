@@ -63,6 +63,7 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
   const [segments, setSegments] = useState<Segment[]>([]);
   const [skills, setSkills] = useState<PlaygroundSkill[]>([]);
   const [iterationCount, setIterationCount] = useState(CURSOR_CHAT_DEFAULT_COUNT);
+  const [editMode, setEditMode] = useState(false);
   const inlineRefContainerRef = useRef<HTMLDivElement | null>(null);
 
   const { models, isLoading: isLoadingModels } = useAvailableModels();
@@ -208,8 +209,12 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
       targetComponentName: effectiveTarget?.componentName ?? null,
       targetType: effectiveTarget?.type ?? null,
       sourceFilename: effectiveTarget?.sourceFilename,
-      iterationCount,
+      iterationCount: editMode ? 1 : iterationCount,
       canvasPosition: flowPosition ?? { x: 0, y: 0 },
+      editMode,
+      renderMode: effectiveTarget?.renderMode,
+      htmlPageSlug: effectiveTarget?.htmlPageSlug,
+      htmlIterationFolder: effectiveTarget?.htmlIterationFolder,
       elementSelections: selectedElements && selectedElements.length > 0
         ? selectedElements.map((sel) => ({
             tagName: sel.context.tagName,
@@ -567,23 +572,37 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
               {modelLabel}
               <span style={{ opacity: 0.5 }}>Shift+Tab</span>
             </button>
-            
-            
-            <div className="flex items-center gap-0.5 bg-stone-50 rounded-full px-1 py-1 border border-stone-100">
-              {(ITERATION_COUNT_OPTIONS as readonly number[]).map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setIterationCount(n)}
-                  className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium transition-colors ${
-                    iterationCount === n
-                      ? 'bg-stone-800 text-white'
-                      : 'text-stone-500 hover:text-stone-800'
-                  }`}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
+
+            {/* Edit/Iterate toggle */}
+            <button
+              onClick={() => setEditMode(m => !m)}
+              className={`px-2 py-1 rounded-full text-[9px] font-medium transition-colors select-none ${
+                editMode
+                  ? 'bg-amber-100 text-amber-700 border border-amber-200'
+                  : 'bg-stone-50 text-stone-500 border border-stone-100 hover:text-stone-700'
+              }`}
+            >
+              {editMode ? 'Edit' : 'Iterate'}
+            </button>
+
+            {/* Iteration count pills — hidden in edit mode */}
+            {!editMode && (
+              <div className="flex items-center gap-0.5 bg-stone-50 rounded-full px-1 py-1 border border-stone-100">
+                {(ITERATION_COUNT_OPTIONS as readonly number[]).map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setIterationCount(n)}
+                    className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium transition-colors ${
+                      iterationCount === n
+                        ? 'bg-stone-800 text-white'
+                        : 'text-stone-500 hover:text-stone-800'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            )}
             <button
               onClick={handleSubmit}
               className="flex items-center justify-center transition-colors hover:bg-stone-200"

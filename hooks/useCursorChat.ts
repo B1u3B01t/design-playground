@@ -20,6 +20,9 @@ export interface CursorChatTargetNode {
   componentName: string;
   type: 'component' | 'iteration';
   sourceFilename?: string;
+  renderMode?: 'react' | 'html';
+  htmlPageSlug?: string;
+  htmlIterationFolder?: string;
 }
 
 export interface CursorChatState {
@@ -185,19 +188,32 @@ export function useCursorChat(models: ModelOption[]) {
         flowPos.y <= nodeY + nodeH
       ) {
         if (node.type === 'component') {
+          const isHtml = node.data.renderMode === 'html';
           return {
             nodeId: node.id,
             componentId: (node.data.componentId as string) || '',
-            componentName: flatRegistry[(node.data.componentId as string)]?.label || (node.data.componentId as string) || '',
+            componentName: isHtml
+              ? (node.data.htmlFolder as string) || (node.data.componentId as string) || ''
+              : flatRegistry[(node.data.componentId as string)]?.label || (node.data.componentId as string) || '',
             type: 'component',
+            renderMode: isHtml ? 'html' : 'react',
+            htmlPageSlug: isHtml ? (node.data.htmlFolder as string) : undefined,
           };
         } else {
+          const isHtml = node.data.renderMode === 'html';
           return {
             nodeId: node.id,
-            componentId: (node.data.componentName as string)?.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '') || '',
-            componentName: (node.data.componentName as string) || '',
+            componentId: isHtml
+              ? `html:${node.data.htmlFolder as string}`
+              : (node.data.componentName as string)?.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '') || '',
+            componentName: isHtml
+              ? (node.data.htmlFolder as string) || ''
+              : (node.data.componentName as string) || '',
             type: 'iteration',
             sourceFilename: (node.data.filename as string) || undefined,
+            renderMode: isHtml ? 'html' : 'react',
+            htmlPageSlug: isHtml ? (node.data.htmlFolder as string) : undefined,
+            htmlIterationFolder: isHtml ? (node.data.htmlIterationFolder as string) : undefined,
           };
         }
       }

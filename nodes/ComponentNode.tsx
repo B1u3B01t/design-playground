@@ -17,6 +17,7 @@ import {
   GENERATION_START_EVENT,
   GENERATION_COMPLETE_EVENT,
   GENERATION_ERROR_EVENT,
+  EDIT_COMPLETE_EVENT,
   SIZE_CONFIG,
   getDisplayDimensions,
   RESIZE_MIN_WIDTH,
@@ -31,27 +32,33 @@ interface ComponentNodeProps {
     size?: ComponentSize;
     /** Whether this node has been freeform-resized */
     customResized?: boolean;
+    /** Render mode: 'react' (default) or 'html' for iframe-based rendering */
+    renderMode?: 'react' | 'html';
+    /** HTML page folder name (when renderMode is 'html') */
+    htmlFolder?: string;
   };
   selected?: boolean;
 }
 
 function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   const componentId = data.componentId;
-  const registryItem = resolveRegistryItem(componentId);
+  const isHtml = data.renderMode === 'html';
+  const registryItem = isHtml ? null : resolveRegistryItem(componentId);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isGlobalGenerating, setIsGlobalGenerating] = useState(false);
+  const [iframeKey, setIframeKey] = useState(() => Date.now());
 
-  const { resolvedProps, isLoadingProps, propsError } = useAsyncProps(componentId);
+  const { resolvedProps, isLoadingProps, propsError } = useAsyncProps(isHtml ? '' : componentId);
   const handleWheel = useScrollCapture(scrollContainerRef);
 
   const nodeId = useNodeId();
   const { updateNodeData, setNodes } = useReactFlow();
   const isInteractive = !!selected;
 
-  const { share: handleShare, state: shareState } = useTunnelShare(componentId);
+  const { share: handleShare, state: shareState } = useTunnelShare(isHtml ? (data.htmlFolder || componentId) : componentId);
 
   // Prefer the persisted size from node data (survives reload), then registry default
-  const [size, setSize] = useState<ComponentSize>(data.size || registryItem?.size || 'default');
+  const [size, setSize] = useState<ComponentSize>(data.size || registryItem?.size || (isHtml ? 'laptop' : 'default'));
   const [isResizing, setIsResizing] = useState(false);
   const [isCustomResized, setIsCustomResized] = useState(!!data.customResized);
 
@@ -67,6 +74,19 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
       window.removeEventListener(GENERATION_ERROR_EVENT,    off);
     };
   }, []);
+
+  // Listen for edit-complete to refresh iframe
+  useEffect(() => {
+    if (!isHtml) return;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.nodeId === nodeId) {
+        setIframeKey(Date.now());
+      }
+    };
+    window.addEventListener(EDIT_COMPLETE_EVENT, handler);
+    return () => window.removeEventListener(EDIT_COMPLETE_EVENT, handler);
+  }, [isHtml, nodeId]);
 
   const handleResizeStart = useCallback(() => {
     setIsResizing(true);
@@ -98,7 +118,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
     }));
   };
 
-  if (!registryItem) {
+  if (!isHtml && !registryItem) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4 min-w-[200px]">
         <p className="text-red-600 text-sm">Unknown component: {componentId}</p>
@@ -106,13 +126,16 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
     );
   }
 
-  const { Component, props, label } = registryItem;
+  const Component = registryItem?.Component;
+  const props = registryItem?.props;
+  const label = isHtml ? (data.htmlFolder || componentId) : (registryItem?.label || componentId);
   const effectiveProps = (resolvedProps ?? props ?? {}) as Record<string, unknown>;
   const config = SIZE_CONFIG[size];
   const isPreset = size !== 'default';
   const isFillMode = isResizing || isCustomResized;
   const isLargeComponent = isPreset || isFillMode;
   const displayDims = getDisplayDimensions(size);
+  const htmlSrc = isHtml ? `/${data.htmlFolder}/index.html?t=${iframeKey}` : '';
 
   return (
     <div
@@ -157,10 +180,10 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
             className="text-[11px] font-medium select-none leading-none"
             style={{
               fontFamily: 'var(--font-geist-mono), monospace',
-              color: '#0B99FF',
+              color: isHtml ? '#F97316' : '#0B99FF',
             }}
           >
-            {componentId}
+            {label}
           </span>
           <div className={`flex items-center gap-1.5 transition-opacity ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
             <div className="w-px h-3 bg-stone-200 shrink-0" />
@@ -174,7 +197,8 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => {
-                  window.open(`/playground/iterations/${componentId}`, '_blank', 'noopener,noreferrer');
+                  const url = isHtml ? `/${data.htmlFolder}/` : `/playground/iterations/${componentId}`;
+                  window.open(url, '_blank', 'noopener,noreferrer');
                 }}
                 className="p-1 rounded text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
                 aria-label="Open in new tab"
@@ -192,10 +216,35 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
         {/* Component frame */}
         <div
           className={`app-theme bg-background overflow-hidden rounded-xl ${isResizing ? '' : 'transition-all'} ${
-            selected ? 'ring-2 ring-[#0B99FF]' : ''
+            selected ? `ring-2 ${isHtml ? 'ring-orange-400' : 'ring-[#0B99FF]'}` : ''
           } ${isFillMode ? 'w-full h-full' : ''}`}
         >
-          {isFillMode ? (
+          {isHtml ? (
+            /* HTML iframe rendering */
+            <div
+              className="relative"
+              style={isPreset
+                ? { width: displayDims.width, height: displayDims.height }
+                : isFillMode
+                  ? { width: '100%', height: '100%' }
+                  : { minWidth: '400px', minHeight: '300px', width: isPreset ? displayDims.width : undefined, height: isPreset ? displayDims.height : undefined }
+              }
+            >
+              <iframe
+                key={iframeKey}
+                src={htmlSrc}
+                className="w-full h-full border-0"
+                style={isPreset
+                  ? { width: config.width, height: config.height, transform: `scale(${config.scale})`, transformOrigin: 'top left' }
+                  : { width: '100%', height: '100%' }
+                }
+                sandbox="allow-scripts allow-same-origin"
+                title={data.htmlFolder}
+              />
+              {/* Pointer overlay prevents iframe from capturing clicks when not selected */}
+              {!isInteractive && <div className="absolute inset-0" />}
+            </div>
+          ) : isFillMode ? (
             /* Freeform / active resize: fill the node with centered content */
             <div
               ref={scrollContainerRef}
@@ -206,11 +255,11 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                 <div className="text-xs text-gray-500">Loading live data…</div>
               ) : propsError && !Object.keys(effectiveProps).length ? (
                 <div className="text-xs text-red-600">Failed to load data: {propsError}</div>
-              ) : (
+              ) : Component ? (
                 <ComponentErrorBoundary componentName={label}>
                   <Component {...effectiveProps} />
                 </ComponentErrorBoundary>
-              )}
+              ) : null}
             </div>
           ) : isPreset ? (
             /* Preset mode (Desktop/Mobile): fixed viewport with zoom scaling */
@@ -228,11 +277,11 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                   <div className="p-6 text-xs text-gray-500">Loading live data…</div>
                 ) : propsError && !Object.keys(effectiveProps).length ? (
                   <div className="p-6 text-xs text-red-600">Failed to load data: {propsError}</div>
-                ) : (
+                ) : Component ? (
                   <ComponentErrorBoundary componentName={label}>
                     <Component {...effectiveProps} />
                   </ComponentErrorBoundary>
-                )}
+                ) : null}
               </div>
             </div>
           ) : (
@@ -242,11 +291,11 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                 <div className="text-xs text-gray-500">Loading live data…</div>
               ) : propsError && !Object.keys(effectiveProps).length ? (
                 <div className="text-xs text-red-600">Failed to load data: {propsError}</div>
-              ) : (
+              ) : Component ? (
                 <ComponentErrorBoundary componentName={label}>
                   <Component {...effectiveProps} />
                 </ComponentErrorBoundary>
-              )}
+              ) : null}
             </div>
           )}
         </div>
@@ -260,9 +309,11 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                 {/* Iterate — circle blue button with bolt */}
                 <IterateDialog
                   componentId={componentId}
-                  componentName={label.replace(/\s*\(.*\)/, '')}
+                  componentName={isHtml ? (data.htmlFolder || componentId) : label.replace(/\s*\(.*\)/, '')}
                   parentNodeId={nodeId ?? ''}
                   isGlobalGenerating={isGlobalGenerating}
+                  renderMode={data.renderMode}
+                  htmlFolder={data.htmlFolder}
                 />
 
                 {/* Share public link */}

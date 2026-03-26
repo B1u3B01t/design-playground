@@ -12,6 +12,9 @@ export interface SelectedNodeContext {
   componentName: string;
   type: 'component' | 'iteration';
   sourceFilename?: string;
+  renderMode?: 'react' | 'html';
+  htmlPageSlug?: string;
+  htmlIterationFolder?: string;
 }
 
 export interface UseNodeSelectionReturn {

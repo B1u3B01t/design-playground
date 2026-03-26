@@ -37,6 +37,9 @@ function makeDefaultProviderStates(): Record<ProviderId, PerProviderState> {
 // ---------------------------------------------------------------------------
 
 interface ModelSettingsState {
+  // Hydration tracking
+  hasHydrated: boolean;
+
   // Provider selection
   activeProvider: ProviderId;
   setActiveProvider: (id: ProviderId) => void;
@@ -68,10 +71,32 @@ interface ModelSettingsState {
 
 const STORE_KEY = 'playground-model-settings-v2';
 
+/**
+ * Read activeProvider directly from localStorage so the initial state
+ * is correct before Zustand persist hydrates. This avoids a brief
+ * window where the default 'cursor' is visible / triggers side-effects.
+ */
+function getPersistedProvider(): ProviderId {
+  if (typeof window === 'undefined') return DEFAULT_PROVIDER_ID;
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const id = parsed?.state?.activeProvider;
+      if (id && getAllProviderIds().includes(id)) return id;
+    }
+  } catch {
+    // ignore — fall back to default
+  }
+  return DEFAULT_PROVIDER_ID;
+}
+
 export const useModelSettingsStore = create<ModelSettingsState>()(
   persist(
     (set, get) => ({
-      activeProvider: DEFAULT_PROVIDER_ID,
+      hasHydrated: false,
+
+      activeProvider: getPersistedProvider(),
 
       setActiveProvider: (id: ProviderId) => {
         set({ activeProvider: id });
@@ -191,6 +216,9 @@ export const useModelSettingsStore = create<ModelSettingsState>()(
     {
       name: STORE_KEY,
       version: 1,
+      onRehydrateStorage: () => () => {
+        useModelSettingsStore.setState({ hasHydrated: true });
+      },
       migrate: (persisted: unknown, version: number) => {
         // v0 → v1: migrate from flat shape to provider-scoped
         if (version === 0 && persisted && typeof persisted === 'object') {

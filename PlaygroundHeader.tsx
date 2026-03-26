@@ -30,6 +30,7 @@ interface PresenceBubble {
   id: string;
   componentId: string;
   model: string;
+  provider?: string;
   status: 'queued' | 'generating' | 'done';
   flowPosition: { x: number; y: number } | null;
 }
@@ -84,6 +85,7 @@ export default function PlaygroundHeader({
         id,
         componentId: detail.componentId,
         model: detail.model || 'auto',
+        provider: detail.provider,
         status: 'queued',
         flowPosition: detail.flowPosition ?? null,
       };
@@ -102,7 +104,7 @@ export default function PlaygroundHeader({
         if (queuedIdx !== -1) {
           return prev.map((b, i) =>
             i === queuedIdx
-              ? { ...b, status: 'generating' as const, flowPosition: detail.flowPosition ?? b.flowPosition }
+              ? { ...b, status: 'generating' as const, model: detail.model || b.model, provider: detail.provider ?? b.provider, flowPosition: detail.flowPosition ?? b.flowPosition }
               : b
           );
         }
@@ -113,6 +115,7 @@ export default function PlaygroundHeader({
           id,
           componentId: detail.componentId,
           model: detail.model || 'auto',
+          provider: detail.provider,
           status: 'generating',
           flowPosition: detail.flowPosition ?? null,
         };
@@ -286,10 +289,13 @@ export default function PlaygroundHeader({
           {presenceBubbles.length > 0 && (
          <div className="flex items-center ml-1.5 gap-0.5">
             {presenceBubbles.map((bubble) => {
-              const iconConfig = getModelIconConfig(bubble.model);
+              // Resolve icon: if model is generic ('auto') but provider is claude-code, show Claude icon
+              const iconKey = (bubble.model === 'auto' && bubble.provider === 'claude-code') ? 'claude' : bubble.model;
+              const iconConfig = getModelIconConfig(iconKey);
+              const displayName = bubble.provider === 'claude-code' ? `Claude Code (${bubble.model})` : bubble.model;
               const tooltipText = bubble.status === 'queued'
                 ? 'Queued — will run after current generation'
-                : `${bubble.model} — ${bubble.status}`;
+                : `${displayName} — ${bubble.status}`;
                return (
                 <Tooltip key={bubble.id}>
                   <TooltipTrigger asChild>

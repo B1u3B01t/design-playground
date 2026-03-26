@@ -40,11 +40,33 @@ export async function captureAndSaveScreenshot(
     const minDim = Math.min(rect.width, rect.height);
     const pixelRatio = minDim < 150 ? 4 : minDim < 300 ? 3 : minDim < 700 ? 2 : 1;
 
-    // Capture screenshot
-    const dataUrl = await toPng(frameEl, {
-      cacheBust: true,
-      pixelRatio,
-    });
+    // html-to-image clones the DOM and reads cssRules from every stylesheet.
+    // Turbopack / cross-origin sheets throw SecurityError on that access.
+    // Temporarily patch the getter to return an empty list instead of throwing,
+    // so all stylesheets are kept (preserving styles) but the error is silenced.
+    const desc = Object.getOwnPropertyDescriptor(CSSStyleSheet.prototype, 'cssRules');
+    const descRules = Object.getOwnPropertyDescriptor(CSSStyleSheet.prototype, 'rules');
+    const safeGetter = function (this: CSSStyleSheet) {
+      try {
+        return desc!.get!.call(this);
+      } catch {
+        return [] as unknown as CSSRuleList;
+      }
+    };
+    Object.defineProperty(CSSStyleSheet.prototype, 'cssRules', { get: safeGetter, configurable: true });
+    Object.defineProperty(CSSStyleSheet.prototype, 'rules', { get: safeGetter, configurable: true });
+
+    let dataUrl: string;
+    try {
+      dataUrl = await toPng(frameEl, {
+        cacheBust: true,
+        pixelRatio,
+      });
+    } finally {
+      // Restore original getters
+      if (desc) Object.defineProperty(CSSStyleSheet.prototype, 'cssRules', desc);
+      if (descRules) Object.defineProperty(CSSStyleSheet.prototype, 'rules', descRules);
+    }
 
     // Save via API
     const saveRes = await fetch('/playground/api/screenshot', {

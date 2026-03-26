@@ -369,6 +369,42 @@ export const ITERATION_FILENAME_PATTERN = /^[A-Za-z0-9]+\.iteration-\d+\.tsx$/;
 export const ITERATION_FILENAME_PARSE_PATTERN = /^(.+)\.iteration-(\d+)\.tsx$/;
 
 // ---------------------------------------------------------------------------
+// HTML Pages Constants
+// ---------------------------------------------------------------------------
+
+/** Prefix for HTML page IDs in drag-and-drop and canvas state */
+export const HTML_ID_PREFIX = 'html:';
+
+/** Directory name inside /public for the HTML tree manifest */
+export const HTML_TREE_DIR = '.playground';
+
+/** Filename for the HTML iteration tree manifest */
+export const HTML_TREE_FILENAME = 'html-tree.json';
+
+/** Info about a static HTML page discovered in /public */
+export interface HtmlPageInfo {
+  id: string;           // "html:landing"
+  label: string;        // "landing"
+  folder: string;       // "landing"
+  iterations: { folder: string; number: number }[];
+}
+
+/** An iteration file within an HTML page directory */
+export interface HtmlIterationFile {
+  folder: string;       // "iteration-1"
+  number: number;
+  pageFolder: string;   // "landing"
+  parentId: string;     // "html:landing" or "iteration-1" (for sub-iterations)
+}
+
+// ---------------------------------------------------------------------------
+// Edit Mode Constants
+// ---------------------------------------------------------------------------
+
+/** Fired when an in-place edit completes (iframe refresh trigger) */
+export const EDIT_COMPLETE_EVENT = 'playground:edit-complete';
+
+// ---------------------------------------------------------------------------
 // Drag & Drop
 // ---------------------------------------------------------------------------
 
@@ -462,6 +498,14 @@ export interface CursorChatSubmitPayload {
     sourceFilename?: string;
     screenshotPath?: string;
   }[];
+  /** When true, edit the target file in-place instead of creating iterations */
+  editMode?: boolean;
+  /** Render mode of the target node */
+  renderMode?: 'react' | 'html';
+  /** HTML page folder for the target (when renderMode is 'html') */
+  htmlPageSlug?: string;
+  /** HTML iteration folder (when targeting an HTML iteration) */
+  htmlIterationFolder?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -485,6 +529,12 @@ export interface GenerationStartPayload {
   provider?: import('./providers/types').ProviderId;
   /** Flow-space position where the generation was initiated */
   flowPosition?: { x: number; y: number };
+  /** Render mode for generated nodes */
+  renderMode?: 'react' | 'html';
+  /** HTML page folder name (when renderMode is 'html') */
+  htmlFolder?: string;
+  /** When true, this is an edit-in-place operation — no skeleton nodes should be created */
+  editMode?: boolean;
 }
 
 /** Payload for GENERATION_COMPLETE_EVENT */
@@ -520,4 +570,6 @@ export interface DragIteratePayload {
   model?: string;
   provider?: import('./providers/types').ProviderId;
   sourceFilename?: string;
+  renderMode?: 'react' | 'html';
+  htmlFolder?: string;
 }

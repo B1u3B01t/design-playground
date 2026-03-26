@@ -48,6 +48,8 @@ import {
   getStylingConstraint,
 } from './prompts/shared-sections';
 import { freeformReferencePrompt } from './prompts/freeform-reference.prompt';
+import { editPrompt } from './prompts/edit.prompt';
+import { generateHtmlIterationPrompt, generateHtmlIterationFromIterationPrompt } from './lib/html-prompts';
 import { captureAndSaveScreenshot, getScreenshotFilename } from './lib/captureAndSaveScreenshot';
 import { loadSelectedModel } from './nodes/shared/IterateDialogParts';
 import {
@@ -63,7 +65,7 @@ import {
 
   POLL_INTERVAL,
   POLL_DURATION,
-  ITERATION_HORIZONTAL_SPACING,
+
   ARRANGE_START_X,
   ARRANGE_START_Y,
   ARRANGE_VERTICAL_GAP,
@@ -88,6 +90,8 @@ import {
   BACKGROUND_DOT_SIZE,
   BACKGROUND_COLOR,
   DND_DATA_KEY,
+  HTML_ID_PREFIX,
+  EDIT_COMPLETE_EVENT,
   CANVAS_MAX_ZOOM,
   CANVAS_MIN_ZOOM,
   ITERATION_COLLAPSE_TOGGLE_EVENT,
@@ -238,6 +242,10 @@ interface GenerationInfo {
   gridPositions?: { x: number; y: number }[];
   /** Parent node cell size so real iteration nodes can match ghost/skeleton sizing */
   gridCellSize?: { width: number; height: number };
+  /** Render mode for this generation */
+  renderMode?: 'react' | 'html';
+  /** HTML page folder (when renderMode is 'html') */
+  htmlFolder?: string;
 }
 
 export default function PlaygroundCanvas() {
@@ -270,6 +278,13 @@ export default function PlaygroundCanvas() {
     collapsedNodeIdsRef.current = collapsedNodeIds;
   }, [collapsedNodeIds]);
   
+  // Right-click context menu
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [createHtmlDialog, setCreateHtmlDialog] = useState<{ screenX: number; screenY: number } | null>(null);
+  const [newHtmlPageName, setNewHtmlPageName] = useState('');
+  const [createHtmlError, setCreateHtmlError] = useState('');
+  const newHtmlInputRef = useRef<HTMLInputElement>(null);
+
   // Delete cascade/reparent dialog
   const [deleteDialogNode, setDeleteDialogNode] = useState<Node | null>(null);
   
@@ -446,7 +461,7 @@ export default function PlaygroundCanvas() {
   }, []);
 
   // Calculate position for iteration node
-  const calculateIterationPosition = useCallback((parentNode: Node, iterationNumber: number, totalIterations: number): { x: number; y: number } => {
+  const calculateIterationPosition = useCallback((parentNode: Node, iterationNumber: number, _totalIterations: number): { x: number; y: number } => {
     const parentX = parentNode.position.x;
     const parentY = parentNode.position.y;
     const parentW = parentNode.measured?.width ?? (parentNode.type === 'component' ? DEFAULT_COMPONENT_NODE_WIDTH : DEFAULT_ITERATION_NODE_WIDTH);
@@ -472,8 +487,11 @@ export default function PlaygroundCanvas() {
       startX = parentX + parentW + ARRANGE_HORIZONTAL_GAP;
     }
 
+    // Use actual parent width + gap so large nodes don't overlap
+    const stepW = parentW + ARRANGE_HORIZONTAL_GAP;
+
     return {
-      x: startX + (iterationNumber - 1) * ITERATION_HORIZONTAL_SPACING,
+      x: startX + (iterationNumber - 1) * stepW,
       y: parentY,
     };
   }, []);
@@ -523,6 +541,133 @@ export default function PlaygroundCanvas() {
     scanLockRef.current = true;
     setIsScanning(true);
     try {
+      // ------------------------------------------------------------------
+      // HTML iteration scanning (when active generation is for HTML)
+      // ------------------------------------------------------------------
+      const info = generationInfoRef.current;
+      if (info?.renderMode === 'html' && info.htmlFolder) {
+        const htmlFolder = info.htmlFolder;
+        try {
+          const htmlResponse = await fetch('/playground/api/html-pages');
+          if (htmlResponse.ok) {
+            const { pages } = await htmlResponse.json() as { pages: { folder: string; iterations: { folder: string; number: number }[] }[] };
+            const page = pages.find((p: { folder: string }) => p.folder === htmlFolder);
+            if (page) {
+              const currentNodes = nodesRef.current;
+              const currentKnownIterations = knownIterationsRef.current;
+              const existingHtmlKeys = new Set([
+                ...currentKnownIterations,
+                ...currentNodes
+                  .filter(n => n.type === 'iteration' && n.data.renderMode === 'html')
+                  .map(n => `${n.data.htmlFolder}/${n.data.htmlIterationFolder}` as string),
+              ]);
+
+              const newHtmlIterations = page.iterations.filter(
+                (iter: { folder: string; number: number }) => !existingHtmlKeys.has(`${htmlFolder}/${iter.folder}`)
+              );
+
+              if (newHtmlIterations.length > 0) {
+                const remainingSkeletonIds = info
+                  ? info.skeletonNodeIds.filter(id => currentNodes.some(n => n.id === id))
+                  : [];
+                const skeletonsToRemove: string[] = [];
+                const newNodes: Node[] = [];
+                const newEdges: Edge[] = [];
+                const newKnownFilenames: string[] = [];
+
+                newHtmlIterations.sort((a: { number: number }, b: { number: number }) => a.number - b.number);
+
+                for (const iter of newHtmlIterations) {
+                  const sourceNodeId = info.parentNodeId
+                    ? (currentNodes.find(n => n.id === info.parentNodeId)?.id || undefined)
+                    : undefined;
+                  const sourceNode = sourceNodeId
+                    ? (currentNodes.find(n => n.id === sourceNodeId) || newNodes.find(n => n.id === sourceNodeId))
+                    : undefined;
+
+                  let position: { x: number; y: number };
+                  if (remainingSkeletonIds.length > 0) {
+                    const skeletonId = remainingSkeletonIds.shift()!;
+                    const skeletonNode = currentNodes.find(n => n.id === skeletonId);
+                    if (skeletonNode) {
+                      position = { ...skeletonNode.position };
+                      skeletonsToRemove.push(skeletonId);
+                    } else if (sourceNode) {
+                      const srcW = sourceNode.measured?.width ?? DEFAULT_COMPONENT_NODE_WIDTH;
+                      position = { x: sourceNode.position.x + srcW + ARRANGE_HORIZONTAL_GAP, y: sourceNode.position.y };
+                    } else {
+                      position = { x: 400, y: 200 };
+                    }
+                  } else if (sourceNode) {
+                    const srcW = sourceNode.measured?.width ?? DEFAULT_COMPONENT_NODE_WIDTH;
+                    position = { x: sourceNode.position.x + srcW + ARRANGE_HORIZONTAL_GAP, y: sourceNode.position.y };
+                  } else {
+                    position = { x: 400, y: 200 };
+                  }
+
+                  const nodeId = getNodeId();
+                  const parentSize = (sourceNode?.data?.size as string | undefined) as import('./lib/constants').ComponentSize | undefined;
+
+                  newNodes.push({
+                    id: nodeId,
+                    type: 'iteration',
+                    position,
+                    data: {
+                      componentName: htmlFolder,
+                      iterationNumber: iter.number,
+                      filename: `${htmlFolder}/iteration-${iter.number}`,
+                      description: '',
+                      parentNodeId: sourceNodeId || undefined,
+                      parentSize,
+                      renderMode: 'html',
+                      htmlFolder,
+                      htmlIterationFolder: iter.folder,
+                      onDelete: handleIterationDelete,
+                      onAdopt: handleIterationAdopt,
+                    },
+                  });
+
+                  if (sourceNodeId) {
+                    newEdges.push({
+                      id: `edge_${sourceNodeId}_${nodeId}`,
+                      source: sourceNodeId,
+                      target: nodeId,
+                      type: 'smoothstep',
+                      animated: false,
+                      style: ITERATION_EDGE_STYLE,
+                    });
+                  }
+
+                  newKnownFilenames.push(`${htmlFolder}/${iter.folder}`);
+                }
+
+                if (newNodes.length > 0) {
+                  const skeletonSet = new Set(skeletonsToRemove);
+                  setNodes(nds => [
+                    ...nds.filter(n => !skeletonSet.has(n.id)),
+                    ...newNodes,
+                  ]);
+                  setEdges(eds => [
+                    ...eds.filter(e => !skeletonSet.has(e.target)),
+                    ...newEdges,
+                  ]);
+                  knownIterationsRef.current = [...knownIterationsRef.current, ...newKnownFilenames];
+                  setKnownIterations(prev => [...prev, ...newKnownFilenames]);
+                  if (resetTimeoutOnFind) resetPollTimeout();
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error scanning HTML iterations:', error);
+        }
+        // For HTML generations, skip the React iteration scan
+        return;
+      }
+
+      // ------------------------------------------------------------------
+      // React iteration scanning
+      // ------------------------------------------------------------------
       const response = await fetch('/playground/api/iterations');
       if (!response.ok) {
         console.error('[Playground] Failed to fetch iterations:', response.status);
@@ -553,9 +698,9 @@ export default function PlaygroundCanvas() {
       // Progressive skeleton replacement: during active generation, find
       // remaining skeleton nodes so we can position real nodes at their
       // locations and remove them one-by-one.
-      const info = generationInfoRef.current;
-      const remainingSkeletonIds = info
-        ? info.skeletonNodeIds.filter(id => currentNodes.some(n => n.id === id))
+      const reactInfo = generationInfoRef.current;
+      const remainingSkeletonIds = reactInfo
+        ? reactInfo.skeletonNodeIds.filter(id => currentNodes.some(n => n.id === id))
         : [];
       // Track which skeletons to remove during this scan
       const skeletonsToRemove: string[] = [];
@@ -610,16 +755,20 @@ export default function PlaygroundCanvas() {
             position = { ...skeletonNode.position };
             skeletonsToRemove.push(skeletonId);
           } else {
-            // Skeleton already gone — fall back
-            position = sourceNode
-              ? { x: sourceNode.position.x + ITERATION_HORIZONTAL_SPACING, y: sourceNode.position.y }
-              : { x: 400, y: 200 };
+            // Skeleton already gone — fall back using actual source width
+            if (sourceNode) {
+              const srcW = sourceNode.measured?.width ?? (sourceNode.type === 'component' ? DEFAULT_COMPONENT_NODE_WIDTH : DEFAULT_ITERATION_NODE_WIDTH);
+              position = { x: sourceNode.position.x + srcW + ARRANGE_HORIZONTAL_GAP, y: sourceNode.position.y };
+            } else {
+              position = { x: 400, y: 200 };
+            }
           }
         } else if (sourceNode) {
-          position = { x: sourceNode.position.x + ITERATION_HORIZONTAL_SPACING, y: sourceNode.position.y };
+          const srcW = sourceNode.measured?.width ?? (sourceNode.type === 'component' ? DEFAULT_COMPONENT_NODE_WIDTH : DEFAULT_ITERATION_NODE_WIDTH);
+          position = { x: sourceNode.position.x + srcW + ARRANGE_HORIZONTAL_GAP, y: sourceNode.position.y };
         } else {
           // Orphan iteration (e.g. freeform generation) — use skeleton position if available
-          const skeletonPos = info?.skeletonPositions?.[0];
+          const skeletonPos = reactInfo?.skeletonPositions?.[0];
           position = skeletonPos ?? { x: 400, y: 200 };
         }
 
@@ -861,8 +1010,16 @@ export default function PlaygroundCanvas() {
     };
 
     const handleGenerationStart = (e: CustomEvent<GenerationStartPayload>) => {
-      const { componentId, componentName, parentNodeId, iterationCount, gridLayout } = e.detail;
+      const { componentId, componentName, parentNodeId, iterationCount, gridLayout, renderMode: genRenderMode, htmlFolder: genHtmlFolder, editMode: isEditMode } = e.detail;
 
+      // Edit mode: presence bubble is handled via the event, but no skeletons
+      if (isEditMode) {
+        setIsGenerating(true);
+        isGeneratingRef.current = true;
+        generationInfoRef.current = { componentId, componentName, parentNodeId: '', iterationCount: 0, skeletonNodeIds: [], startTime: Date.now(), renderMode: genRenderMode, htmlFolder: genHtmlFolder };
+        setGenerationInfo(generationInfoRef.current);
+        return;
+      }
 
       // Freeform generations have no parent — create a standalone skeleton
       if (!parentNodeId) {
@@ -892,6 +1049,8 @@ export default function PlaygroundCanvas() {
           skeletonNodeIds: [skeletonId],
           startTime: Date.now(),
           skeletonPositions: [{ x: flowPos.x, y: flowPos.y }],
+          renderMode: genRenderMode,
+          htmlFolder: genHtmlFolder,
         };
         generationInfoRef.current = newInfo;
         setIsGenerating(true);
@@ -1013,6 +1172,8 @@ export default function PlaygroundCanvas() {
           ? skeletonNodes.map(n => ({ x: n.position.x, y: n.position.y }))
           : undefined,
         gridCellSize: gridLayout ? { width: cellW, height: cellH } : undefined,
+        renderMode: genRenderMode,
+        htmlFolder: genHtmlFolder,
       };
       generationInfoRef.current = newInfo;
       setIsGenerating(true);
@@ -1159,29 +1320,43 @@ export default function PlaygroundCanvas() {
         iterationCount,
         model,
         sourceFilename,
+        renderMode: dragRenderMode,
+        htmlFolder: dragHtmlFolder,
       } = e.detail;
+      const isDragHtml = dragRenderMode === 'html' && !!dragHtmlFolder;
 
       // Build the prompt
       let prompt: string;
       const defaultSkillPrompt = await loadDefaultSkillPrompt();
 
       // Fetch next available iteration number
-      // Compare with spaces stripped since filenames use "PricingCard" not "Pricing Card"
-      const cleanName = componentName.replace(/\s+/g, '');
       let startNumber = 1;
       try {
-        const response = await fetch('/playground/api/iterations');
-        if (response.ok) {
-          const { iterations } = await response.json();
-          const componentIterations = iterations.filter(
-            (i: { componentName: string }) => i.componentName === cleanName
-          );
-          const maxNumber = componentIterations.reduce(
-            (max: number, i: { iterationNumber: number }) =>
-              Math.max(max, i.iterationNumber),
-            0
-          );
-          startNumber = maxNumber + 1;
+        if (isDragHtml) {
+          const response = await fetch('/playground/api/html-pages');
+          if (response.ok) {
+            const { pages } = await response.json();
+            const page = pages.find((p: { folder: string }) => p.folder === dragHtmlFolder);
+            const maxNumber = page?.iterations.reduce(
+              (max: number, i: { number: number }) => Math.max(max, i.number), 0
+            ) ?? 0;
+            startNumber = maxNumber + 1;
+          }
+        } else {
+          const cleanName = componentName.replace(/\s+/g, '');
+          const response = await fetch('/playground/api/iterations');
+          if (response.ok) {
+            const { iterations } = await response.json();
+            const componentIterations = iterations.filter(
+              (i: { componentName: string }) => i.componentName === cleanName
+            );
+            const maxNumber = componentIterations.reduce(
+              (max: number, i: { iterationNumber: number }) =>
+                Math.max(max, i.iterationNumber),
+              0
+            );
+            startNumber = maxNumber + 1;
+          }
         }
       } catch { /* use default */ }
 
@@ -1189,7 +1364,30 @@ export default function PlaygroundCanvas() {
       const screenshotFilename = getScreenshotFilename(componentName, sourceFilename);
       const screenshotPath = await captureAndSaveScreenshot(parentNodeId, screenshotFilename);
 
-      if (sourceFilename) {
+      if (isDragHtml) {
+        // HTML mode prompt
+        if (sourceFilename && sourceFilename.includes('iteration-')) {
+          const iterFolder = sourceFilename.split('/').pop() || sourceFilename;
+          prompt = generateHtmlIterationFromIterationPrompt(
+            dragHtmlFolder,
+            iterFolder,
+            iterationCount,
+            startNumber,
+            DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
+            defaultSkillPrompt || undefined,
+            screenshotPath ?? undefined,
+          );
+        } else {
+          prompt = generateHtmlIterationPrompt(
+            dragHtmlFolder,
+            iterationCount,
+            startNumber,
+            DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
+            defaultSkillPrompt || undefined,
+            screenshotPath ?? undefined,
+          );
+        }
+      } else if (sourceFilename) {
         try {
           prompt = generateIterationFromIterationPrompt(
             componentId,
@@ -1234,7 +1432,9 @@ export default function PlaygroundCanvas() {
             detail: {
               componentId,
               parentNodeId,
-              error: `Component "${componentId}" is not registered. Add it to the registry or re-run discovery before iterating.`,
+              error: isDragHtml
+                ? `HTML page "${dragHtmlFolder}" not found.`
+                : `Component "${componentId}" is not registered. Add it to the registry or re-run discovery before iterating.`,
             },
           }),
         );
@@ -1250,6 +1450,7 @@ export default function PlaygroundCanvas() {
             parentNodeId,
             iterationCount,
             gridLayout: { rows: e.detail.rows, cols: e.detail.cols },
+            ...(isDragHtml ? { renderMode: 'html' as const, htmlFolder: dragHtmlFolder } : {}),
           },
         }),
       );
@@ -1265,6 +1466,7 @@ export default function PlaygroundCanvas() {
             iterationCount,
             model: model || undefined,
             ...getProviderFields(),
+            ...(isDragHtml ? { htmlFolder: dragHtmlFolder } : {}),
           }),
         });
 
@@ -1339,6 +1541,131 @@ export default function PlaygroundCanvas() {
       return;
     }
 
+    // ── Edit Mode: modify file in-place, no iterations ──
+    if (payload.editMode && payload.targetNodeId) {
+      const isHtmlEdit = payload.renderMode === 'html';
+      const editComponentId = payload.targetComponentId || 'edit-mode';
+      const editComponentName = payload.targetComponentName || editComponentId;
+      let filePath: string;
+
+      if (isHtmlEdit) {
+        if (payload.htmlIterationFolder) {
+          filePath = `public/${payload.htmlPageSlug}/${payload.htmlIterationFolder}/index.html`;
+        } else {
+          filePath = `public/${payload.htmlPageSlug}/index.html`;
+        }
+      } else if (payload.targetType === 'iteration' && payload.sourceFilename) {
+        filePath = `src/app/playground/iterations/${payload.sourceFilename}`;
+      } else {
+        const item = resolveRegistryItem(editComponentId);
+        filePath = item?.sourcePath || `src/app/playground/iterations/${editComponentId}`;
+      }
+
+      // Gather skill prompts (same logic as normal path)
+      let editSkillPrompt: string | undefined;
+      if (payload.skillPrompts.length > 0) {
+        editSkillPrompt = payload.skillPrompts.join('\n\n');
+      } else if (!payload.text) {
+        const defaultPrompt = await loadDefaultSkillPrompt();
+        editSkillPrompt = defaultPrompt || undefined;
+      }
+
+      // Capture screenshot of the target node
+      const editScreenshotFilename = getScreenshotFilename(editComponentName, payload.sourceFilename);
+      const editScreenshotPath = await captureAndSaveScreenshot(payload.targetNodeId, editScreenshotFilename);
+
+      // Build reference nodes section
+      let editRefSection = '';
+      if (payload.referenceNodes && payload.referenceNodes.length > 0) {
+        const refNodes = payload.referenceNodes.filter((n) => n.nodeId !== payload.targetNodeId);
+        if (refNodes.length > 0) {
+          const refNodesWithScreenshots = await Promise.all(
+            refNodes.map(async (node) => {
+              const ssFilename = getScreenshotFilename(node.componentName, node.sourceFilename);
+              const ssPath = await captureAndSaveScreenshot(node.nodeId, ssFilename);
+              let sourcePath: string | undefined;
+              if (node.type === 'component') {
+                const regItem = resolveRegistryItem(node.componentId);
+                sourcePath = regItem?.sourcePath;
+              }
+              return { ...node, screenshotPath: ssPath ?? undefined, sourcePath };
+            }),
+          );
+          editRefSection = formatReferenceNodesSection(refNodesWithScreenshots);
+        }
+      }
+
+      const prompt = editPrompt({
+        filePath,
+        customInstructions: payload.text || 'Improve the design',
+        skillPrompt: editSkillPrompt,
+        screenshotPath: editScreenshotPath ?? undefined,
+        referenceNodesSection: editRefSection || undefined,
+        elementSelections: payload.elementSelections,
+      });
+
+      // Dispatch GENERATION_START_EVENT so the presence bubble appears
+      window.dispatchEvent(
+        new CustomEvent<GenerationStartPayload>(GENERATION_START_EVENT, {
+          detail: {
+            componentId: editComponentId,
+            componentName: editComponentName,
+            parentNodeId: payload.targetNodeId,
+            iterationCount: 0,
+            model: payload.model || undefined,
+            flowPosition: payload.canvasPosition,
+            editMode: true,
+            ...(isHtmlEdit ? { renderMode: 'html' as const, htmlFolder: payload.htmlPageSlug } : {}),
+          },
+        }),
+      );
+
+      try {
+        const response = await fetch('/playground/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt,
+            componentId: editComponentId,
+            model: payload.model || undefined,
+            ...getProviderFields(),
+            ...(isHtmlEdit ? { htmlFolder: payload.htmlPageSlug } : {}),
+          }),
+        });
+        const data = await response.json().catch(() => ({ success: false }));
+        if (!response.ok || !data.success) {
+          console.error('[EditMode] Generation failed:', data?.error, 'status:', response.status, 'data:', data);
+          toast.error(data?.error || `Edit failed (${response.status})`, { duration: 6000 });
+          window.dispatchEvent(
+            new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+              detail: { componentId: editComponentId, parentNodeId: payload.targetNodeId, error: data?.error || 'Edit failed' },
+            }),
+          );
+        } else {
+          if (isHtmlEdit) {
+            // Dispatch edit complete to refresh iframes
+            window.dispatchEvent(new CustomEvent(EDIT_COMPLETE_EVENT, {
+              detail: { nodeId: payload.targetNodeId },
+            }));
+          }
+          window.dispatchEvent(
+            new CustomEvent<GenerationCompletePayload>(GENERATION_COMPLETE_EVENT, {
+              detail: { componentId: editComponentId, parentNodeId: payload.targetNodeId, output: '' },
+            }),
+          );
+        }
+      } catch (err) {
+        console.error('[EditMode] Error:', err);
+        toast.error(err instanceof Error ? err.message : 'Unknown error', { duration: 6000 });
+        window.dispatchEvent(
+          new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+            detail: { componentId: editComponentId, parentNodeId: payload.targetNodeId, error: String(err) },
+          }),
+        );
+      }
+      return;
+    }
+
     const {
       text,
       skillPrompts,
@@ -1400,6 +1727,8 @@ export default function PlaygroundCanvas() {
       }
     }
 
+    const isHtmlTarget = payload.renderMode === 'html' && !!payload.htmlPageSlug;
+
     if (targetNodeId && targetComponentId && targetComponentName && targetType) {
       // --- WITH TARGET NODE ---
       let prompt: string;
@@ -1407,23 +1736,34 @@ export default function PlaygroundCanvas() {
       const componentName = targetComponentName;
       const iterationCount = payload.iterationCount ?? CURSOR_CHAT_DEFAULT_COUNT;
 
-      // Fetch next available iteration number once for all paths
-      // Compare with spaces stripped since filenames use "PricingCard" not "Pricing Card"
-      const cleanName = componentName.replace(/\s+/g, '');
+      // Fetch next available iteration number
       let startNumber = 1;
       try {
-        const response = await fetch('/playground/api/iterations');
-        if (response.ok) {
-          const { iterations } = await response.json();
-          const componentIterations = iterations.filter(
-            (i: { componentName: string }) => i.componentName === cleanName
-          );
-          const maxNumber = componentIterations.reduce(
-            (max: number, i: { iterationNumber: number }) =>
-              Math.max(max, i.iterationNumber),
-            0
-          );
-          startNumber = maxNumber + 1;
+        if (isHtmlTarget) {
+          const response = await fetch('/playground/api/html-pages');
+          if (response.ok) {
+            const { pages } = await response.json();
+            const page = pages.find((p: { folder: string }) => p.folder === payload.htmlPageSlug);
+            const maxNumber = page?.iterations.reduce(
+              (max: number, i: { number: number }) => Math.max(max, i.number), 0
+            ) ?? 0;
+            startNumber = maxNumber + 1;
+          }
+        } else {
+          const cleanName = componentName.replace(/\s+/g, '');
+          const response = await fetch('/playground/api/iterations');
+          if (response.ok) {
+            const { iterations } = await response.json();
+            const componentIterations = iterations.filter(
+              (i: { componentName: string }) => i.componentName === cleanName
+            );
+            const maxNumber = componentIterations.reduce(
+              (max: number, i: { iterationNumber: number }) =>
+                Math.max(max, i.iterationNumber),
+              0
+            );
+            startNumber = maxNumber + 1;
+          }
         }
       } catch { /* use default */ }
 
@@ -1431,7 +1771,29 @@ export default function PlaygroundCanvas() {
       const screenshotFilename = getScreenshotFilename(componentName, sourceFilename);
       const screenshotPath = await captureAndSaveScreenshot(targetNodeId, screenshotFilename);
 
-      if (targetType === 'iteration' && sourceFilename) {
+      if (isHtmlTarget && payload.htmlPageSlug) {
+        // HTML iteration
+        if (targetType === 'iteration' && payload.htmlIterationFolder) {
+          prompt = generateHtmlIterationFromIterationPrompt(
+            payload.htmlPageSlug,
+            payload.htmlIterationFolder,
+            iterationCount,
+            startNumber,
+            customInstructions,
+            combinedSkillPrompt,
+            screenshotPath ?? undefined,
+          );
+        } else {
+          prompt = generateHtmlIterationPrompt(
+            payload.htmlPageSlug,
+            iterationCount,
+            startNumber,
+            customInstructions,
+            combinedSkillPrompt,
+            screenshotPath ?? undefined,
+          );
+        }
+      } else if (targetType === 'iteration' && sourceFilename) {
         // Iterate from iteration
         if (hasElementSelections) {
           prompt = generateElementIterationFromIterationPrompt(
@@ -1501,6 +1863,7 @@ export default function PlaygroundCanvas() {
             iterationCount,
             model: payloadModel || undefined,
             flowPosition: payload.canvasPosition,
+            ...(isHtmlTarget ? { renderMode: 'html' as const, htmlFolder: payload.htmlPageSlug } : {}),
           },
         }),
       );
@@ -1516,6 +1879,7 @@ export default function PlaygroundCanvas() {
             iterationCount,
             model: payloadModel || undefined,
             ...getProviderFields(),
+            ...(isHtmlTarget ? { htmlFolder: payload.htmlPageSlug } : {}),
           }),
         });
 
@@ -1716,11 +2080,18 @@ export default function PlaygroundCanvas() {
         y: event.clientY,
       });
 
+      const isHtml = componentId.startsWith(HTML_ID_PREFIX);
       const newNode: Node = {
         id: getNodeId(),
         type: 'component',
         position,
-        data: { componentId },
+        data: {
+          componentId,
+          ...(isHtml ? {
+            renderMode: 'html' as const,
+            htmlFolder: componentId.slice(HTML_ID_PREFIX.length),
+          } : {}),
+        },
       };
 
       setNodes((nds) => nds.concat(newNode));
@@ -1729,8 +2100,72 @@ export default function PlaygroundCanvas() {
   );
 
   const handlePaneClick = useCallback(() => {
-    // No-op: clicking the pane does not change fullscreen state
+    setContextMenu(null);
   }, []);
+
+  // Right-click context menu on canvas pane
+  const handlePaneContextMenu = useCallback((event: MouseEvent | React.MouseEvent) => {
+    event.preventDefault();
+    setContextMenu({ x: event.clientX, y: event.clientY });
+  }, []);
+
+  // Close context menu on any click outside
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [contextMenu]);
+
+  // Create HTML page from context menu
+  const handleCreateHtmlPage = useCallback(async () => {
+    const name = newHtmlPageName.trim();
+    if (!name) return;
+    setCreateHtmlError('');
+    try {
+      const res = await fetch('/playground/api/html-pages', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCreateHtmlError(data.error || 'Failed to create page');
+        return;
+      }
+
+      // Place the new node where the user right-clicked
+      const position = screenToFlowPosition({
+        x: createHtmlDialog!.screenX,
+        y: createHtmlDialog!.screenY,
+      });
+      const pageId = data.page.id as string;
+      const folder = data.page.folder as string;
+      const newNode: Node = {
+        id: getNodeId(),
+        type: 'component',
+        position,
+        data: {
+          componentId: pageId,
+          renderMode: 'html' as const,
+          htmlFolder: folder,
+        },
+      };
+      setNodes((nds) => nds.concat(newNode));
+      setCreateHtmlDialog(null);
+      setNewHtmlPageName('');
+    } catch {
+      setCreateHtmlError('Failed to create page');
+    }
+  }, [newHtmlPageName, createHtmlDialog, screenToFlowPosition, getNodeId, setNodes]);
+
+  // Focus input when dialog opens
+  useEffect(() => {
+    if (createHtmlDialog && newHtmlInputRef.current) {
+      // Small delay to ensure the element is rendered
+      requestAnimationFrame(() => newHtmlInputRef.current?.focus());
+    }
+  }, [createHtmlDialog]);
 
   // Handle node deletion - check for children first
   const onNodesDelete = useCallback(async (deletedNodes: Node[]) => {
@@ -2151,6 +2586,7 @@ export default function PlaygroundCanvas() {
           onDragOver={onDragOver}
           onDrop={onDrop}
           onPaneClick={handlePaneClick}
+          onPaneContextMenu={handlePaneContextMenu}
           nodeTypes={nodeTypes}
           {...(initialState?.viewport
             ? { defaultViewport: initialState.viewport }
@@ -2232,6 +2668,74 @@ export default function PlaygroundCanvas() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Right-click context menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 min-w-[180px] bg-white rounded-lg border border-stone-200 shadow-lg py-1 animate-in fade-in-0 zoom-in-95 duration-100"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            className="flex items-center gap-2 w-full px-3 py-2 text-[13px] text-stone-700 hover:bg-stone-100 transition-colors text-left"
+            onClick={(e) => {
+              e.stopPropagation();
+              setCreateHtmlDialog({ screenX: contextMenu.x, screenY: contextMenu.y });
+              setContextMenu(null);
+              setNewHtmlPageName('');
+              setCreateHtmlError('');
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-orange-500">
+              <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+              <polyline points="13 2 13 9 20 9" />
+            </svg>
+            Create HTML page
+          </button>
+        </div>
+      )}
+
+      {/* Create HTML page dialog */}
+      {createHtmlDialog && (
+        <div className="fixed inset-0 z-50 flex items-start justify-start" onClick={() => { setCreateHtmlDialog(null); setNewHtmlPageName(''); setCreateHtmlError(''); }}>
+          <div
+            className="bg-white rounded-xl border border-stone-200 shadow-xl p-4 w-[280px] animate-in fade-in-0 zoom-in-95 duration-150"
+            style={{ position: 'fixed', left: createHtmlDialog.screenX, top: createHtmlDialog.screenY }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-[13px] font-semibold text-stone-800 mb-3">New HTML Page</h3>
+            <input
+              ref={newHtmlInputRef}
+              type="text"
+              placeholder="page-name"
+              value={newHtmlPageName}
+              onChange={(e) => { setNewHtmlPageName(e.target.value); setCreateHtmlError(''); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); handleCreateHtmlPage(); }
+                if (e.key === 'Escape') { setCreateHtmlDialog(null); setNewHtmlPageName(''); setCreateHtmlError(''); }
+              }}
+              className="w-full px-3 py-2 text-[13px] bg-stone-50 border border-stone-200 rounded-lg text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20 transition-colors"
+            />
+            {createHtmlError && (
+              <p className="text-[11px] text-red-500 mt-1.5">{createHtmlError}</p>
+            )}
+            <div className="flex justify-end gap-2 mt-3">
+              <button
+                onClick={() => { setCreateHtmlDialog(null); setNewHtmlPageName(''); setCreateHtmlError(''); }}
+                className="px-3 py-1.5 text-[12px] text-stone-500 hover:text-stone-700 rounded-md hover:bg-stone-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateHtmlPage}
+                disabled={!newHtmlPageName.trim()}
+                className="px-3 py-1.5 text-[12px] bg-orange-500 text-white rounded-md hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete iteration with children - cascade / reparent dialog */}
       <AlertDialog open={!!deleteDialogNode} onOpenChange={(open) => { if (!open) setDeleteDialogNode(null); }}>

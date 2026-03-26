@@ -42,6 +42,7 @@ export function saveSelectedModel(model: string) {
 // ---------------------------------------------------------------------------
 
 export function useAvailableModels() {
+  const hasHydrated = useModelSettingsStore((s) => s.hasHydrated);
   const activeProvider = useModelSettingsStore((s) => s.activeProvider);
   const providerState = useModelSettingsStore((s) => s.providerState[s.activeProvider]);
   const isLoading = useModelSettingsStore((s) => s.isLoadingModels);
@@ -52,8 +53,8 @@ export function useAvailableModels() {
   const hasFetched = providerState?.hasFetched ?? false;
 
   useEffect(() => {
-    if (!hasFetched) fetchModels();
-  }, [hasFetched, fetchModels]);
+    if (hasHydrated && !hasFetched) fetchModels();
+  }, [hasHydrated, hasFetched, fetchModels]);
 
   // Filter by enabled models — fall back to provider defaults if empty
   const config = getProvider(activeProvider);

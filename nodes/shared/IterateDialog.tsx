@@ -5,6 +5,7 @@ import { Check, Copy, Loader2, Zap } from 'lucide-react';
 import { useReactFlow } from '@xyflow/react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../ui/tooltip';
 import { generateIterationPrompt, generateIterationFromIterationPrompt } from '../../registry';
+import { generateHtmlIterationPrompt, generateHtmlIterationFromIterationPrompt } from '../../lib/html-prompts';
 import { captureAndSaveScreenshot, getScreenshotFilename } from '../../lib/captureAndSaveScreenshot';
 import {
   InlineReference,
@@ -62,6 +63,9 @@ export interface IterateDialogProps {
   parentNodeId: string;
   sourceFilename?: string;
   isGlobalGenerating: boolean;
+  renderMode?: 'react' | 'html';
+  htmlFolder?: string;
+  htmlIterationFolder?: string;
 }
 
 export default function IterateDialog({
@@ -70,7 +74,11 @@ export default function IterateDialog({
   parentNodeId,
   sourceFilename,
   isGlobalGenerating,
+  renderMode,
+  htmlFolder,
+  htmlIterationFolder,
 }: IterateDialogProps) {
+  const isHtmlMode = renderMode === 'html';
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [iterationCount, setIterationCount] = useState(4);
@@ -208,15 +216,25 @@ export default function IterateDialog({
     const fetchMaxIteration = async () => {
       setIsFetchingMax(true);
       try {
-        const response = await fetch('/playground/api/iterations');
-        if (!response.ok) { setStartNumber(1); return; }
-        const { iterations } = (await response.json()) as {
-          iterations: { filename: string; componentName: string; iterationNumber: number }[];
-        };
-        const cleanName = componentName.replace(/\s+/g, '');
-        const componentIterations = iterations.filter(i => i.componentName === cleanName);
-        const maxNumber = componentIterations.reduce((max, i) => Math.max(max, i.iterationNumber), 0);
-        setStartNumber(maxNumber + 1);
+        if (isHtmlMode && htmlFolder) {
+          // HTML mode: fetch from html-pages API
+          const response = await fetch('/playground/api/html-pages');
+          if (!response.ok) { setStartNumber(1); return; }
+          const { pages } = (await response.json()) as { pages: { folder: string; iterations: { number: number }[] }[] };
+          const page = pages.find((p: { folder: string }) => p.folder === htmlFolder);
+          const maxNumber = page?.iterations.reduce((max: number, i: { number: number }) => Math.max(max, i.number), 0) ?? 0;
+          setStartNumber(maxNumber + 1);
+        } else {
+          const response = await fetch('/playground/api/iterations');
+          if (!response.ok) { setStartNumber(1); return; }
+          const { iterations } = (await response.json()) as {
+            iterations: { filename: string; componentName: string; iterationNumber: number }[];
+          };
+          const cleanName = componentName.replace(/\s+/g, '');
+          const componentIterations = iterations.filter(i => i.componentName === cleanName);
+          const maxNumber = componentIterations.reduce((max, i) => Math.max(max, i.iterationNumber), 0);
+          setStartNumber(maxNumber + 1);
+        }
       } catch {
         setStartNumber(1);
       } finally {
@@ -224,10 +242,29 @@ export default function IterateDialog({
       }
     };
     fetchMaxIteration();
-  }, [open, componentName]);
+  }, [open, componentName, isHtmlMode, htmlFolder]);
 
   const generatedPrompt = useMemo(() => {
     if (startNumber === null) return '';
+    if (isHtmlMode && htmlFolder) {
+      if (isFromIteration && htmlIterationFolder) {
+        return generateHtmlIterationFromIterationPrompt(
+          htmlFolder,
+          htmlIterationFolder,
+          iterationCount,
+          startNumber,
+          customInstructionsText,
+          skillPrompt,
+        );
+      }
+      return generateHtmlIterationPrompt(
+        htmlFolder,
+        iterationCount,
+        startNumber,
+        customInstructionsText,
+        skillPrompt,
+      );
+    }
     if (isFromIteration) {
       return generateIterationFromIterationPrompt(
         componentId,
@@ -256,6 +293,9 @@ export default function IterateDialog({
     isFromIteration,
     customInstructionsText,
     skillPrompt,
+    isHtmlMode,
+    htmlFolder,
+    htmlIterationFolder,
   ]);
 
   const handleCopyPrompt = useCallback(async (prompt: string) => {
@@ -294,7 +334,28 @@ export default function IterateDialog({
 
     // Build a fresh prompt that includes the screenshot path
     let promptWithScreenshot: string;
-    if (isFromIteration && startNumber !== null) {
+    if (isHtmlMode && htmlFolder) {
+      if (isFromIteration && htmlIterationFolder && startNumber !== null) {
+        promptWithScreenshot = generateHtmlIterationFromIterationPrompt(
+          htmlFolder,
+          htmlIterationFolder,
+          iterationCount,
+          startNumber,
+          customInstructionsText,
+          skillPrompt,
+          screenshotPath ?? undefined,
+        );
+      } else {
+        promptWithScreenshot = generateHtmlIterationPrompt(
+          htmlFolder,
+          iterationCount,
+          startNumber ?? 1,
+          customInstructionsText,
+          skillPrompt,
+          screenshotPath ?? undefined,
+        );
+      }
+    } else if (isFromIteration && startNumber !== null) {
       promptWithScreenshot = generateIterationFromIterationPrompt(
         componentId,
         sourceFilename!,
@@ -319,9 +380,18 @@ export default function IterateDialog({
       );
     }
 
+    const providerFields = getProviderFields();
     window.dispatchEvent(
       new CustomEvent<GenerationStartPayload>(GENERATION_START_EVENT, {
-        detail: { componentId, componentName, parentNodeId, iterationCount },
+        detail: {
+          componentId,
+          componentName,
+          parentNodeId,
+          iterationCount,
+          model: selectedModel || undefined,
+          provider: providerFields.provider as GenerationStartPayload['provider'],
+          ...(isHtmlMode ? { renderMode: 'html' as const, htmlFolder } : {}),
+        },
       }),
     );
 
@@ -336,7 +406,8 @@ export default function IterateDialog({
           componentId,
           iterationCount,
           model: selectedModel || undefined,
-          ...getProviderFields(),
+          ...providerFields,
+          ...(isHtmlMode ? { htmlFolder } : {}),
         }),
       });
 
@@ -530,6 +601,7 @@ export default function IterateDialog({
             cols: grid.cols,
             model: model || undefined,
             sourceFilename: sourceFilename || undefined,
+            ...(isHtmlMode ? { renderMode: 'html' as const, htmlFolder } : {}),
           },
         }),
       );

@@ -34,8 +34,9 @@ let isGenerating = false;
 // a debounced event is emitted so SSE clients can trigger a scan immediately.
 const generationEvents = new EventEmitter();
 let fileWatcher: fs.FSWatcher | null = null;
+let htmlFileWatcher: fs.FSWatcher | null = null;
 
-function startFileWatcher() {
+function startFileWatcher(htmlPageFolder?: string) {
   stopFileWatcher();
   let debounceTimer: NodeJS.Timeout | null = null;
   try {
@@ -54,12 +55,37 @@ function startFileWatcher() {
   } catch {
     // iterations dir might not exist yet
   }
+
+  // Watch HTML page directory for iteration changes
+  if (htmlPageFolder) {
+    const htmlDir = path.join(process.cwd(), 'public', htmlPageFolder);
+    let htmlDebounceTimer: NodeJS.Timeout | null = null;
+    try {
+      htmlFileWatcher = fs.watch(htmlDir, { recursive: true }, (eventType, filename) => {
+        if (filename && filename.includes('iteration-') && filename.endsWith('.html')) {
+          if (htmlDebounceTimer) clearTimeout(htmlDebounceTimer);
+          htmlDebounceTimer = setTimeout(() => {
+            generationEvents.emit('iteration-added');
+          }, 500);
+        }
+      });
+      htmlFileWatcher.on('error', () => {
+        // dir might not exist yet — ignore
+      });
+    } catch {
+      // dir might not exist yet
+    }
+  }
 }
 
 function stopFileWatcher() {
   if (fileWatcher) {
     fileWatcher.close();
     fileWatcher = null;
+  }
+  if (htmlFileWatcher) {
+    htmlFileWatcher.close();
+    htmlFileWatcher = null;
   }
 }
 
@@ -164,6 +190,7 @@ export async function POST(req: Request) {
       effort?: string;
       maxBudgetUsd?: number;
       maxTurns?: number;
+      htmlFolder?: string;
     } | null;
 
     if (!body || !body.prompt || !body.componentId) {
@@ -220,7 +247,7 @@ export async function POST(req: Request) {
         }
 
         // Start watching iterations directory for progressive detection
-        startFileWatcher();
+        startFileWatcher(body.htmlFolder);
 
         let stderr = '';
 
