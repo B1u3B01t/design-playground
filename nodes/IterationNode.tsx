@@ -446,7 +446,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
               <button
                 onClick={() => {
                   const url = isHtml
-                    ? `/${data.htmlFolder}/${data.htmlIterationFolder}/`
+                    ? `/${data.htmlFolder}/${data.htmlIterationFolder}/index.html`
                     : `/playground/iterations/${data.filename.replace(/\.tsx$/, '')}`;
                   window.open(url, '_blank', 'noopener,noreferrer');
                 }}

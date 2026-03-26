@@ -197,7 +197,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => {
-                  const url = isHtml ? `/${data.htmlFolder}/` : `/playground/iterations/${componentId}`;
+                  const url = isHtml ? `/${data.htmlFolder}/index.html` : `/playground/iterations/${componentId}`;
                   window.open(url, '_blank', 'noopener,noreferrer');
                 }}
                 className="p-1 rounded text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
