@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, DragEvent } from 'react';
-import { ChevronRight, ChevronDown, ChevronLeft, Plus, Loader2, RefreshCw, Frame, Component } from 'lucide-react';
+import { ChevronRight, ChevronDown, ChevronLeft, Plus, Loader2, RefreshCw, Frame, Component, Folder } from 'lucide-react';
 import { registry, RegistryItem, RegistryLeafItem, isGroup, isLeaf } from './registry';
 import { DND_DATA_KEY, HTML_ID_PREFIX } from './lib/constants';
 import type { HtmlPageInfo } from './lib/constants';
@@ -103,7 +103,14 @@ function TreeNode({ item, depth = 0, childrenMap, pendingChildren }: TreeNodePro
             className="flex items-center gap-1 px-2 py-1.5 text-[13px] text-stone-700 hover:text-stone-900 hover:bg-stone-100 rounded-2xl transition-colors group select-none"
             style={{ paddingLeft: `${depth * 10 + 8}px` }}
           >
-            <button
+            <div
+              draggable
+              onDragStart={(e) => handleDragStart(e, item.id)}
+              className="flex items-center gap-1.5 flex-1 min-w-0 cursor-grab active:cursor-grabbing"
+            >
+              <Component className="w-3.5 h-3.5 shrink-0" />
+              <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{item.label}</span>
+              <button
               onClick={() => setExpanded(!expanded)}
               className="shrink-0 p-0 text-stone-400 hover:text-stone-600"
             >
@@ -113,13 +120,6 @@ function TreeNode({ item, depth = 0, childrenMap, pendingChildren }: TreeNodePro
                 <ChevronRight className="w-3.5 h-3.5" />
               )}
             </button>
-            <div
-              draggable
-              onDragStart={(e) => handleDragStart(e, item.id)}
-              className="flex items-center gap-1.5 flex-1 min-w-0 cursor-grab active:cursor-grabbing"
-            >
-              <Component className="w-3.5 h-3.5 shrink-0" />
-              <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{item.label}</span>
             </div>
           </div>
           {expanded && (
@@ -154,6 +154,16 @@ function TreeNode({ item, depth = 0, childrenMap, pendingChildren }: TreeNodePro
         className="flex items-center gap-1.5 px-2 py-1.5 text-[13px] text-stone-700 hover:text-stone-900 hover:bg-stone-100 rounded-2xl cursor-grab active:cursor-grabbing transition-colors group select-none"
         style={{ paddingLeft: `${depth * 10 + 8}px` }}
       >
+        {/* {item.parentId ?
+          <>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-stone-400 shrink-0">
+              <path fill-rule="evenodd" clip-rule="evenodd" d="M9.87737 12H9.9H11.5C11.7761 12 12 11.7761 12 11.5C12 11.2239 11.7761 11 11.5 11H9.9C8.77164 11 7.95545 10.9996 7.31352 10.9472C6.67744 10.8952 6.25662 10.7946 5.91103 10.6185C5.25247 10.283 4.71703 9.74753 4.38148 9.08897C4.20539 8.74338 4.10481 8.32256 4.05284 7.68648C4.00039 7.04455 4 6.22836 4 5.1V3.5C4 3.22386 3.77614 3 3.5 3C3.22386 3 3 3.22386 3 3.5V5.1V5.12263C3 6.22359 3 7.08052 3.05616 7.76791C3.11318 8.46584 3.23058 9.0329 3.49047 9.54296C3.9219 10.3897 4.61031 11.0781 5.45704 11.5095C5.9671 11.7694 6.53416 11.8868 7.23209 11.9438C7.91948 12 8.77641 12 9.87737 12Z" fill="currentColor"/>
+            </svg>
+            <Component className="w-3.5 h-3.5 shrink-0" />
+          </>
+        :
+          <Component className="w-3.5 h-3.5 shrink-0" />
+        } */}
         <Component className="w-3.5 h-3.5 shrink-0" />
         <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{item.label}</span>
       </div>
