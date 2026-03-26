@@ -2,7 +2,6 @@ import { toPng } from 'html-to-image';
 
 /**
  * Capture a screenshot of a React Flow node's component frame and save it.
- * If an image with the given filename already exists, returns its path without recapturing.
  *
  * @param nodeId - The React Flow node ID (used to find the DOM element via data-id)
  * @param filename - Target filename, e.g. "PricingCard.png" or "PricingCard.iteration-3.png"
@@ -13,8 +12,6 @@ export async function captureAndSaveScreenshot(
   filename: string,
 ): Promise<string | null> {
   try {
-    // Always recapture — the node may have been resized since the last capture.
-
     // Find the node's DOM element
     const nodeEl = document.querySelector(`[data-id="${nodeId}"]`);
     if (!nodeEl) {
@@ -22,11 +19,8 @@ export async function captureAndSaveScreenshot(
       return null;
     }
 
-    // Find the inner component frame
-    const frameEl =
-      nodeEl.querySelector('.bg-white.overflow-hidden.rounded-xl') ??
-      nodeEl.querySelector('.bg-white.overflow-hidden') ??
-      nodeEl;
+    // Find the inner component frame via dedicated data attribute
+    const frameEl = nodeEl.querySelector('[data-screenshot-target]') ?? nodeEl;
 
     if (!(frameEl instanceof HTMLElement)) {
       console.warn(`[screenshot] Frame element is not an HTMLElement`);
@@ -34,16 +28,36 @@ export async function captureAndSaveScreenshot(
     }
 
     // Use a higher pixel ratio for small elements so the AI can read details.
-    // Scale up small components (< 300px in either dimension) to ensure
-    // the output image is at least ~600px on its shortest side.
     const rect = frameEl.getBoundingClientRect();
     const minDim = Math.min(rect.width, rect.height);
     const pixelRatio = minDim < 150 ? 4 : minDim < 300 ? 3 : minDim < 700 ? 2 : 1;
 
+    // Wait for all images inside the frame to load
+    const images = frameEl.querySelectorAll('img');
+    const pendingImages = Array.from(images)
+      .filter((img) => !img.complete)
+      .map(
+        (img) =>
+          new Promise<void>((resolve) => {
+            img.addEventListener('load', () => resolve(), { once: true });
+            img.addEventListener('error', () => resolve(), { once: true });
+          }),
+      );
+    if (pendingImages.length > 0) {
+      await Promise.race([
+        Promise.all(pendingImages),
+        new Promise<void>((resolve) => setTimeout(resolve, 3000)),
+      ]);
+    }
+
+    // Wait for fonts to be ready
+    await document.fonts.ready;
+
     // html-to-image clones the DOM and reads cssRules from every stylesheet.
     // Turbopack / cross-origin sheets throw SecurityError on that access.
     // Temporarily patch the getter to return an empty list instead of throwing,
-    // so all stylesheets are kept (preserving styles) but the error is silenced.
+    // so the cloning process doesn't crash. Styles from cross-origin sheets
+    // won't be captured, but same-origin and inline styles will be preserved.
     const desc = Object.getOwnPropertyDescriptor(CSSStyleSheet.prototype, 'cssRules');
     const descRules = Object.getOwnPropertyDescriptor(CSSStyleSheet.prototype, 'rules');
     const safeGetter = function (this: CSSStyleSheet) {
@@ -58,9 +72,20 @@ export async function captureAndSaveScreenshot(
 
     let dataUrl: string;
     try {
+      // First call is a warm-up — html-to-image often returns a blank image
+      // on the first attempt because resources haven't been fully resolved
+      // in the cloned DOM. Discard the result and capture again.
+      // Use the element's current rendered dimensions so the clone
+      // matches what's on screen (the clone loses parent constraints).
+      const captureWidth = Math.ceil(rect.width);
+      const captureHeight = Math.ceil(rect.height);
+
+      await toPng(frameEl, { pixelRatio: 1, width: captureWidth, height: captureHeight }).catch(() => {});
+
       dataUrl = await toPng(frameEl, {
-        cacheBust: true,
         pixelRatio,
+        width: captureWidth,
+        height: captureHeight,
       });
     } finally {
       // Restore original getters
@@ -96,9 +121,9 @@ export function getScreenshotFilename(
   sourceFilename?: string,
 ): string {
   if (sourceFilename) {
-    // Iteration node: "PricingCard.iteration-3.tsx" → "PricingCard.iteration-3.png"
-    return sourceFilename.replace(/\.tsx$/, '.png');
+    // Iteration node: "PricingCard.iteration-3.tsx" -> "PricingCard.iteration-3.png"
+    return sourceFilename.replace(/\.\w+$/, '.png');
   }
-  // Component node: "Pricing Card" → "PricingCard.png"
+  // Component node: "Pricing Card" -> "PricingCard.png"
   return `${componentName.replace(/\s+/g, '')}.png`;
 }

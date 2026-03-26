@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
+import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 
 const IMAGES_DIR = path.join(
@@ -7,9 +8,9 @@ const IMAGES_DIR = path.join(
   'src/app/playground/iterations/iterations-images',
 );
 
-function ensureImagesDir() {
-  if (!fs.existsSync(IMAGES_DIR)) {
-    fs.mkdirSync(IMAGES_DIR, { recursive: true });
+async function ensureImagesDir() {
+  if (!fsSync.existsSync(IMAGES_DIR)) {
+    await fs.mkdir(IMAGES_DIR, { recursive: true });
   }
 }
 
@@ -29,7 +30,7 @@ export async function GET(req: Request) {
   const filePath = path.join(IMAGES_DIR, filename);
   const relativePath = path.relative(process.cwd(), filePath);
 
-  if (fs.existsSync(filePath)) {
+  if (fsSync.existsSync(filePath)) {
     return NextResponse.json({ exists: true, path: relativePath });
   }
 
@@ -60,12 +61,12 @@ export async function POST(req: Request) {
     }
 
     // Strip data URL prefix if present
-    const base64Data = imageBase64.replace(/^data:image\/png;base64,/, '');
+    const base64Data = imageBase64.replace(/^data:[^;]+;base64,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
 
-    ensureImagesDir();
+    await ensureImagesDir();
     const filePath = path.join(IMAGES_DIR, filename);
-    fs.writeFileSync(filePath, buffer);
+    await fs.writeFile(filePath, buffer);
 
     const relativePath = path.relative(process.cwd(), filePath);
 

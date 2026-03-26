@@ -49,6 +49,7 @@ function SkeletonIterationNode({ data }: SkeletonIterationNodeProps) {
 
       {/* Frame — mirrors ComponentNode's white rounded frame */}
       <div
+        data-screenshot-target
         className="bg-white overflow-hidden rounded-xl border border-stone-200/60"
         style={hasExplicitSize ? { flex: 1 } : { minHeight: 150 }}
       >

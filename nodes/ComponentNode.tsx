@@ -215,6 +215,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
       <div className={`relative flex items-start ${isFillMode ? 'flex-1 min-h-0' : ''}`}>
         {/* Component frame */}
         <div
+          data-screenshot-target
           className={`app-theme bg-background overflow-hidden rounded-xl ${isResizing ? '' : 'transition-all'} ${
             selected ? `ring-2 ${isHtml ? 'ring-orange-400' : 'ring-[#0B99FF]'}` : ''
           } ${isFillMode ? 'w-full h-full' : ''}`}
