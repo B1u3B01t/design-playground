@@ -41,6 +41,7 @@ export interface RegistryLeafItem {
   Component: ComponentType<Record<string, unknown>>;
   props?: Record<string, unknown>;
   getProps?: () => Promise<Record<string, unknown>> | Record<string, unknown>;
+  parentId?: string; // Optional parent component id for nested discovered components
   // Iteration metadata
   sourcePath: string;
   propsInterface: string;
