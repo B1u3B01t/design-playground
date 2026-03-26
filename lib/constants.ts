@@ -55,6 +55,16 @@ export const PLAYGROUND_CLEAR_EVENT = 'playground:clear-requested';
 /** Fired when drag-to-iterate releases (triggers toast + generation) */
 export const DRAG_ITERATE_EVENT = 'playground:drag-iterate';
 
+/** Fired to programmatically open cursor chat on a target node */
+export const CURSOR_CHAT_OPEN_EVENT = 'playground:cursor-chat-open';
+
+export interface CursorChatOpenPayload {
+  targetNode: import('../hooks/useCursorChat').CursorChatTargetNode;
+  screenX: number;
+  screenY: number;
+  editMode?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // localStorage Keys
 // ---------------------------------------------------------------------------

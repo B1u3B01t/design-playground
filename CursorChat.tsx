@@ -15,7 +15,7 @@ import type { PlaygroundSkill } from './skills';
 import { useAvailableModels } from './nodes/shared/IterateDialogParts';
 import { useCursorChat } from './hooks/useCursorChat';
 import { getModelIconConfig } from './lib/model-icons';
-import { ITERATION_COUNT_OPTIONS, CURSOR_CHAT_DEFAULT_COUNT, type CursorChatSubmitPayload } from './lib/constants';
+import { ITERATION_COUNT_OPTIONS, CURSOR_CHAT_DEFAULT_COUNT, CURSOR_CHAT_OPEN_EVENT, type CursorChatSubmitPayload, type CursorChatOpenPayload } from './lib/constants';
 import { matchesAction, formatKeyCombo, getCombo } from './lib/keybindings';
 import type { SelectedElement } from './lib/element-context';
 import { useModelSettingsStore } from './lib/model-settings-store';
@@ -215,6 +215,23 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
       });
     }
   }, [selectedElements, modeRef, activate, place, hitTestNode]);
+
+  // Programmatic open via custom event (e.g. after HTML page creation)
+  useEffect(() => {
+    const handleOpen = (e: Event) => {
+      const { targetNode: target, screenX, screenY, editMode: shouldEdit } =
+        (e as CustomEvent<CursorChatOpenPayload>).detail;
+
+      activate();
+      requestAnimationFrame(() => {
+        place(screenX + 16, screenY, target);
+        if (shouldEdit) setEditMode(true);
+      });
+    };
+
+    window.addEventListener(CURSOR_CHAT_OPEN_EVENT, handleOpen);
+    return () => window.removeEventListener(CURSOR_CHAT_OPEN_EVENT, handleOpen);
+  }, [activate, place]);
 
   // Extract text and skill prompts from segments
   const extractPayload = useCallback(() => {

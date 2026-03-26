@@ -102,6 +102,7 @@ import {
   DEFAULT_STYLING_MODE,
   CURSOR_CHAT_DEFAULT_COUNT,
   CURSOR_CHAT_DEFAULT_DEPTH,
+  CURSOR_CHAT_OPEN_EVENT,
   type StylingMode,
   type GenerationStartPayload,
   type GenerationCompletePayload,
@@ -2151,9 +2152,32 @@ export default function PlaygroundCanvas() {
           htmlFolder: folder,
         },
       };
+      const screenX = createHtmlDialog!.screenX;
+      const screenY = createHtmlDialog!.screenY;
       setNodes((nds) => nds.concat(newNode));
       setCreateHtmlDialog(null);
       setNewHtmlPageName('');
+
+      // Auto-open cursor chat in edit mode on the new node
+      requestAnimationFrame(() => {
+        window.dispatchEvent(
+          new CustomEvent(CURSOR_CHAT_OPEN_EVENT, {
+            detail: {
+              targetNode: {
+                nodeId: newNode.id,
+                componentId: pageId,
+                componentName: folder,
+                type: 'component' as const,
+                renderMode: 'html' as const,
+                htmlPageSlug: folder,
+              },
+              screenX,
+              screenY,
+              editMode: true,
+            },
+          })
+        );
+      });
     } catch {
       setCreateHtmlError('Failed to create page');
     }
