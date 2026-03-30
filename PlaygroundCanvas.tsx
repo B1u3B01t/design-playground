@@ -34,6 +34,7 @@ import ComponentNode from './nodes/ComponentNode';
 import IterationNode from './nodes/IterationNode';
 import SkeletonIterationNode from './nodes/SkeletonIterationNode';
 import DragGhostNode from './nodes/DragGhostNode';
+import ImageNode from './nodes/ImageNode';
 import {
   generateIterationPrompt,
   generateIterationFromIterationPrompt,
@@ -89,6 +90,7 @@ import {
   BACKGROUND_COLOR,
   DND_DATA_KEY,
   HTML_ID_PREFIX,
+  IMAGE_DROP_ID,
   EDIT_COMPLETE_EVENT,
   CANVAS_MAX_ZOOM,
   CANVAS_MIN_ZOOM,
@@ -124,6 +126,7 @@ const nodeTypes = {
   iteration: IterationNode,
   skeleton: SkeletonIterationNode,
   'drag-ghost': DragGhostNode,
+  image: ImageNode,
 };
 
 const DEFAULT_SKILL_IDS = ['design-variations', 'frontend-design'] as const;
@@ -285,6 +288,8 @@ export default function PlaygroundCanvas() {
   const [newHtmlPageName, setNewHtmlPageName] = useState('');
   const [createHtmlError, setCreateHtmlError] = useState('');
   const newHtmlInputRef = useRef<HTMLInputElement>(null);
+  const imageUploadInputRef = useRef<HTMLInputElement>(null);
+  const pendingImageDropPosition = useRef<{ x: number; y: number } | null>(null);
 
   // Delete cascade/reparent dialog
   const [deleteDialogNode, setDeleteDialogNode] = useState<Node | null>(null);
@@ -2081,6 +2086,13 @@ export default function PlaygroundCanvas() {
         y: event.clientY,
       });
 
+      // Image sidebar drop — open file picker
+      if (componentId === IMAGE_DROP_ID) {
+        pendingImageDropPosition.current = position;
+        imageUploadInputRef.current?.click();
+        return;
+      }
+
       const isHtml = componentId.startsWith(HTML_ID_PREFIX);
       const newNode: Node = {
         id: getNodeId(),
@@ -2098,6 +2110,54 @@ export default function PlaygroundCanvas() {
       setNodes((nds) => nds.concat(newNode));
     },
     [screenToFlowPosition, setNodes, getNodeId]
+  );
+
+  // Handle image file selection from the hidden input (triggered by sidebar image drop)
+  const handleImageFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+      const position = pendingImageDropPosition.current || { x: 100, y: 100 };
+      pendingImageDropPosition.current = null;
+
+      Array.from(files).forEach((file, idx) => {
+        if (!file.type.startsWith('image/')) return;
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const base64 = reader.result as string;
+          try {
+            const res = await fetch('/playground/api/images', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ imageBase64: base64, originalName: file.name }),
+            });
+            const data = await res.json();
+            if (data.success) {
+              const newNode: Node = {
+                id: getNodeId(),
+                type: 'image',
+                position: { x: position.x + idx * 320, y: position.y },
+                style: { width: 300, height: 250 },
+                data: {
+                  imagePath: data.path,
+                  imageUrl: data.url,
+                  filename: data.filename,
+                  originalName: file.name,
+                },
+              };
+              setNodes((nds) => nds.concat(newNode));
+            }
+          } catch (err) {
+            console.error('[Playground] Image upload failed:', err);
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+
+      // Reset the input so the same file can be re-selected
+      e.target.value = '';
+    },
+    [setNodes, getNodeId],
   );
 
   const handlePaneClick = useCallback(() => {
@@ -2599,6 +2659,15 @@ export default function PlaygroundCanvas() {
 
   return (
     <TooltipProvider>
+      {/* Hidden file input for sidebar image drops */}
+      <input
+        ref={imageUploadInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={handleImageFileSelect}
+      />
       <div ref={reactFlowWrapper} className="w-full h-full">
         <ReactFlow
           nodes={visibleNodes}

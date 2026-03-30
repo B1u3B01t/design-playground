@@ -9,7 +9,7 @@
  *   depthLabel: Human-readable description of the iteration depth (e.g. "Shell only").
  *   childrenSection: Optional formatted list of child components that should remain stable.
  *   propsInterface: The TypeScript props interface for the component, rendered as text.
- *   cleanComponentName: Component name with spaces removed, used in iteration filenames.
+ *   cleanComponentName: PascalCase component name derived from registry ID, used in iteration filenames (must match default export name).
  *   componentId: Registry ID for the component, used as the parent in the tree manifest.
  *   customInstructionsSection: Optional custom instructions block provided by the user.
  */

@@ -68,6 +68,39 @@ export function useAsyncProps(registryId: string): AsyncPropsState {
 }
 
 // ---------------------------------------------------------------------------
+// useHtmlContent – fetches HTML and injects selection bridge script for srcdoc
+// ---------------------------------------------------------------------------
+
+export function useHtmlContent(htmlUrl: string, isHtml: boolean) {
+  const [htmlContent, setHtmlContent] = useState<string>('');
+
+  useEffect(() => {
+    if (!isHtml || !htmlUrl) {
+      setHtmlContent('');
+      return;
+    }
+    let cancelled = false;
+    fetch(htmlUrl)
+      .then((r) => r.text())
+      .then((html) => {
+        if (cancelled) return;
+        // Dynamically import to keep the bridge module out of the initial bundle
+        // when not needed (non-HTML nodes)
+        import('../lib/iframe-selection-bridge').then(({ injectBridgeScript }) => {
+          if (cancelled) return;
+          setHtmlContent(injectBridgeScript(html));
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setHtmlContent('');
+      });
+    return () => { cancelled = true; };
+  }, [htmlUrl, isHtml]);
+
+  return htmlContent;
+}
+
+// ---------------------------------------------------------------------------
 // useScrollCapture – captures wheel events when the container can scroll
 // ---------------------------------------------------------------------------
 

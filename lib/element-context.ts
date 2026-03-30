@@ -98,6 +98,30 @@ function buildCssSelector(el: HTMLElement): string {
 // Main extraction
 // ---------------------------------------------------------------------------
 
+/**
+ * Creates an ElementContext from data received via postMessage from an
+ * iframe's selection bridge script (no React fibers available).
+ */
+export function createHtmlElementContext(data: {
+  tagName: string;
+  displayName?: string;
+  textContent: string;
+  attributes: Record<string, string>;
+  cssSelector: string;
+  ancestorComponents: string[];
+  htmlSource: string;
+}): ElementContext {
+  return {
+    tagName: data.tagName,
+    displayName: data.displayName || data.tagName,
+    textContent: data.textContent,
+    attributes: data.attributes,
+    cssSelector: data.cssSelector,
+    ancestorComponents: data.ancestorComponents,
+    htmlSource: data.htmlSource,
+  };
+}
+
 export function extractElementContext(el: HTMLElement): ElementContext {
   const tagName = el.tagName.toLowerCase();
   const displayName = getReactComponentName(el) || tagName;

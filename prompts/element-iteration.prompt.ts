@@ -9,7 +9,7 @@
  *   depthLabel: Human-readable description of the iteration depth.
  *   childrenSection: Optional formatted list of child components that should remain stable.
  *   propsInterface: The TypeScript props interface for the component.
- *   cleanComponentName: Component name with spaces removed, used in iteration filenames.
+ *   cleanComponentName: PascalCase component name derived from registry ID, used in iteration filenames (must match default export name).
  *   componentId: Registry ID for the component, used as the parent in tree.json.
  *   customInstructionsSection: Optional custom instructions from the user.
  *   elementSelectionsSection: Formatted block describing the targeted DOM elements.
@@ -74,7 +74,7 @@ QUALITY CHECKLIST (apply to EACH iteration)
 - [ ] Only the targeted elements have been modified
 - [ ] All imports resolve correctly with no TypeScript errors
 - [ ] Metadata comment included with correct @iteration/@parent
-- [ ] File named correctly: {{cleanComponentName}}.iteration-{N}.tsx
+- [ ] File named correctly: {{cleanComponentName}}.iteration-{N}.tsx (filename prefix matches the default export function name)
 - [ ] {{stylingQualityItem}}
 - [ ] Registered in iterations/index.ts with a ".tsx" key
 - [ ] Entry added/updated in iterations/tree.json with correct parent
@@ -168,7 +168,7 @@ QUALITY CHECKLIST (apply to EACH iteration)
 - [ ] Only the targeted elements have been modified
 - [ ] All imports resolve correctly with no TypeScript errors
 - [ ] Metadata comment included with correct @iteration/@parent/@sourceIteration
-- [ ] File named correctly: {{cleanComponentName}}.iteration-{N}.tsx
+- [ ] File named correctly: {{cleanComponentName}}.iteration-{N}.tsx (filename prefix matches the default export function name)
 - [ ] {{stylingQualityItem}}
 - [ ] Registered in iterations/index.ts with a ".tsx" key
 - [ ] Entry added/updated in iterations/tree.json with correct parent

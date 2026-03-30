@@ -6,6 +6,7 @@ import { useReactFlow } from '@xyflow/react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../ui/tooltip';
 import { generateIterationPrompt, generateIterationFromIterationPrompt } from '../../registry';
 import { generateHtmlIterationPrompt, generateHtmlIterationFromIterationPrompt } from '../../lib/html-prompts';
+import { generateJsxIterationPrompt, generateJsxIterationFromIterationPrompt } from '../../lib/jsx-prompts';
 import { captureAndSaveScreenshot, getScreenshotFilename } from '../../lib/captureAndSaveScreenshot';
 import {
   InlineReference,
@@ -63,9 +64,10 @@ export interface IterateDialogProps {
   parentNodeId: string;
   sourceFilename?: string;
   isGlobalGenerating: boolean;
-  renderMode?: 'react' | 'html';
+  renderMode?: 'react' | 'html' | 'jsx';
   htmlFolder?: string;
   htmlIterationFolder?: string;
+  jsxFile?: string;
 }
 
 export default function IterateDialog({
@@ -77,8 +79,10 @@ export default function IterateDialog({
   renderMode,
   htmlFolder,
   htmlIterationFolder,
+  jsxFile,
 }: IterateDialogProps) {
   const isHtmlMode = renderMode === 'html';
+  const isJsxMode = renderMode === 'jsx';
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [iterationCount, setIterationCount] = useState(4);
@@ -216,7 +220,16 @@ export default function IterateDialog({
     const fetchMaxIteration = async () => {
       setIsFetchingMax(true);
       try {
-        if (isHtmlMode && htmlFolder) {
+        if (isJsxMode && jsxFile) {
+          // JSX mode: fetch from oncanvas-components API
+          const response = await fetch('/playground/api/oncanvas-components');
+          if (!response.ok) { setStartNumber(1); return; }
+          const { components } = (await response.json()) as { components: { filename: string; iterations: { iterationNumber: number }[] }[] };
+          const baseName = jsxFile.replace(/\.iteration-\d+\.tsx$/, '.tsx');
+          const comp = components.find((c: { filename: string }) => c.filename === baseName);
+          const maxNumber = comp?.iterations.reduce((max: number, i: { iterationNumber: number }) => Math.max(max, i.iterationNumber), 0) ?? 0;
+          setStartNumber(maxNumber + 1);
+        } else if (isHtmlMode && htmlFolder) {
           // HTML mode: fetch from html-pages API
           const response = await fetch('/playground/api/html-pages');
           if (!response.ok) { setStartNumber(1); return; }
@@ -242,10 +255,30 @@ export default function IterateDialog({
       }
     };
     fetchMaxIteration();
-  }, [open, componentName, isHtmlMode, htmlFolder]);
+  }, [open, componentName, isHtmlMode, htmlFolder, isJsxMode, jsxFile]);
 
   const generatedPrompt = useMemo(() => {
     if (startNumber === null) return '';
+    if (isJsxMode && jsxFile) {
+      const baseFile = jsxFile.replace(/\.iteration-\d+\.tsx$/, '.tsx');
+      if (isFromIteration) {
+        return generateJsxIterationFromIterationPrompt(
+          baseFile,
+          jsxFile,
+          iterationCount,
+          startNumber,
+          customInstructionsText,
+          skillPrompt,
+        );
+      }
+      return generateJsxIterationPrompt(
+        baseFile,
+        iterationCount,
+        startNumber,
+        customInstructionsText,
+        skillPrompt,
+      );
+    }
     if (isHtmlMode && htmlFolder) {
       if (isFromIteration && htmlIterationFolder) {
         return generateHtmlIterationFromIterationPrompt(
@@ -296,6 +329,8 @@ export default function IterateDialog({
     isHtmlMode,
     htmlFolder,
     htmlIterationFolder,
+    isJsxMode,
+    jsxFile,
   ]);
 
   const handleCopyPrompt = useCallback(async (prompt: string) => {
@@ -334,7 +369,29 @@ export default function IterateDialog({
 
     // Build a fresh prompt that includes the screenshot path
     let promptWithScreenshot: string;
-    if (isHtmlMode && htmlFolder) {
+    if (isJsxMode && jsxFile) {
+      const baseFile = jsxFile.replace(/\.iteration-\d+\.tsx$/, '.tsx');
+      if (isFromIteration && startNumber !== null) {
+        promptWithScreenshot = generateJsxIterationFromIterationPrompt(
+          baseFile,
+          jsxFile,
+          iterationCount,
+          startNumber,
+          customInstructionsText,
+          skillPrompt,
+          screenshotPath ?? undefined,
+        );
+      } else {
+        promptWithScreenshot = generateJsxIterationPrompt(
+          baseFile,
+          iterationCount,
+          startNumber ?? 1,
+          customInstructionsText,
+          skillPrompt,
+          screenshotPath ?? undefined,
+        );
+      }
+    } else if (isHtmlMode && htmlFolder) {
       if (isFromIteration && htmlIterationFolder && startNumber !== null) {
         promptWithScreenshot = generateHtmlIterationFromIterationPrompt(
           htmlFolder,
@@ -390,7 +447,7 @@ export default function IterateDialog({
           iterationCount,
           model: selectedModel || undefined,
           provider: providerFields.provider as GenerationStartPayload['provider'],
-          ...(isHtmlMode ? { renderMode: 'html' as const, htmlFolder } : {}),
+          ...(isJsxMode ? { renderMode: 'jsx' as const, jsxFile } : isHtmlMode ? { renderMode: 'html' as const, htmlFolder } : {}),
         },
       }),
     );
@@ -407,7 +464,7 @@ export default function IterateDialog({
           iterationCount,
           model: selectedModel || undefined,
           ...providerFields,
-          ...(isHtmlMode ? { htmlFolder } : {}),
+          ...(isJsxMode ? { jsxFile } : isHtmlMode ? { htmlFolder } : {}),
         }),
       });
 
@@ -601,7 +658,7 @@ export default function IterateDialog({
             cols: grid.cols,
             model: model || undefined,
             sourceFilename: sourceFilename || undefined,
-            ...(isHtmlMode ? { renderMode: 'html' as const, htmlFolder } : {}),
+            ...(isJsxMode ? { renderMode: 'jsx' as const, jsxFile } : isHtmlMode ? { renderMode: 'html' as const, htmlFolder } : {}),
           },
         }),
       );

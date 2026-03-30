@@ -17,6 +17,7 @@ previews/
 # Discovery manifest — AI-generated per-project, not tracked
 discovery.json
 data/*.mockData.ts
+canvas-components/*
 
 # ============================================================================
 # FRAMEWORK FILES (tracked in git)

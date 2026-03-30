@@ -26,6 +26,19 @@ export function editPrompt(opts: EditPromptOptions): string {
     'Do NOT create new files. Modify the existing file in-place.',
   );
 
+  // JSX canvas-components must stay fully self-contained
+  if (opts.filePath.includes('canvas-components/')) {
+    sections.push(
+      `## Self-Contained Component Rules\n` +
+      `This file is a canvas-component that renders inside the playground. It MUST remain fully self-contained:\n` +
+      `- The ONLY allowed import is 'react' (e.g. import React, { useState } from 'react')\n` +
+      `- Do NOT add imports for any UI library: no shadcn/ui, no @radix-ui, no lucide-react, no @/components, no next/image, no next/link, no framer-motion, no other packages\n` +
+      `- Use ONLY inline styles or style objects — no Tailwind classes, no external CSS imports, no CSS modules\n` +
+      `- All icons, images, and assets must be inline SVG or CSS-based\n` +
+      `- Keep 'use client' directive and default export`,
+    );
+  }
+
   if (opts.skillPrompt) {
     sections.push('## Guidelines\n' + opts.skillPrompt);
   }

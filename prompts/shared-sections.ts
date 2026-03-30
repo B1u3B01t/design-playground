@@ -32,7 +32,7 @@ export function getQualityChecklist(mode: StylingMode = 'tailwind'): string {
 - [ ] Props interface unchanged from original
 - [ ] All imports resolve correctly with no TypeScript errors
 - [ ] Metadata comment included with correct @iteration/@parent (and @sourceIteration when applicable)
-- [ ] File named correctly: ComponentName.iteration-{n}.tsx
+- [ ] File named correctly: PascalCaseComponentName.iteration-{n}.tsx (must match the default export function name)
 - [ ] ${getStylingQualityItem(mode)}
 - [ ] Registered in iterations/index.ts with a ".tsx" key
 - [ ] Entry added/updated in iterations/tree.json with correct parent
@@ -104,10 +104,11 @@ Read this image to understand the current appearance before generating variation
 export function formatReferenceNodesSection(
   nodes?: {
     componentName: string;
-    type: 'component' | 'iteration';
+    type: 'component' | 'iteration' | 'image';
     sourceFilename?: string;
     sourcePath?: string;
     screenshotPath?: string;
+    imagePath?: string;
   }[],
 ): string {
   if (!nodes || nodes.length === 0) return '';
@@ -116,21 +117,26 @@ export function formatReferenceNodesSection(
     'REFERENCE COMPONENTS',
     '════════════════════',
     '',
-    'The following components are selected on the canvas as design references.',
+    'The following components/images are selected on the canvas as design references.',
     'Use their visual style, structure, and patterns as context.',
     '',
   ];
 
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i];
-    const typeLabel = node.type === 'iteration' ? 'iteration' : 'component';
-    const path = node.sourcePath || (node.sourceFilename
-      ? `src/app/playground/iterations/${node.sourceFilename}`
-      : undefined);
+    const typeLabel = node.type === 'image' ? 'image reference' : node.type === 'iteration' ? 'iteration' : 'component';
+    const path = node.type === 'image'
+      ? node.imagePath
+      : (node.sourcePath || (node.sourceFilename
+        ? `src/app/playground/iterations/${node.sourceFilename}`
+        : undefined));
 
     lines.push(`${i + 1}. ${node.componentName} (${typeLabel})${path ? ` — ${path}` : ''}`);
 
-    if (node.screenshotPath) {
+    if (node.type === 'image' && node.imagePath) {
+      lines.push(`   Image: ${node.imagePath}`);
+      lines.push(`   Read this image to understand the visual design to match.`);
+    } else if (node.screenshotPath) {
       lines.push(`   Screenshot: ${node.screenshotPath}`);
     }
 

@@ -18,11 +18,12 @@ export interface CursorChatTargetNode {
   nodeId: string;
   componentId: string;
   componentName: string;
-  type: 'component' | 'iteration';
+  type: 'component' | 'iteration' | 'image';
   sourceFilename?: string;
-  renderMode?: 'react' | 'html';
+  renderMode?: 'react' | 'html' | 'jsx';
   htmlPageSlug?: string;
   htmlIterationFolder?: string;
+  jsxFile?: string;
 }
 
 export interface CursorChatState {
@@ -188,32 +189,42 @@ export function useCursorChat(models: ModelOption[]) {
         flowPos.y <= nodeY + nodeH
       ) {
         if (node.type === 'component') {
+          const isJsx = node.data.renderMode === 'jsx';
           const isHtml = node.data.renderMode === 'html';
           return {
             nodeId: node.id,
             componentId: (node.data.componentId as string) || '',
-            componentName: isHtml
+            componentName: isJsx
+              ? (node.data.jsxFile as string)?.replace('.tsx', '') || (node.data.componentId as string) || ''
+              : isHtml
               ? (node.data.htmlFolder as string) || (node.data.componentId as string) || ''
               : flatRegistry[(node.data.componentId as string)]?.label || (node.data.componentId as string) || '',
             type: 'component',
-            renderMode: isHtml ? 'html' : 'react',
+            renderMode: isJsx ? 'jsx' : isHtml ? 'html' : 'react',
             htmlPageSlug: isHtml ? (node.data.htmlFolder as string) : undefined,
+            jsxFile: isJsx ? (node.data.jsxFile as string) : undefined,
           };
         } else {
+          const isJsx = node.data.renderMode === 'jsx';
           const isHtml = node.data.renderMode === 'html';
           return {
             nodeId: node.id,
-            componentId: isHtml
+            componentId: isJsx
+              ? `jsx:${node.data.componentName as string}`
+              : isHtml
               ? `html:${node.data.htmlFolder as string}`
               : (node.data.componentName as string)?.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '') || '',
-            componentName: isHtml
+            componentName: isJsx
+              ? (node.data.componentName as string) || ''
+              : isHtml
               ? (node.data.htmlFolder as string) || ''
               : (node.data.componentName as string) || '',
             type: 'iteration',
             sourceFilename: (node.data.filename as string) || undefined,
-            renderMode: isHtml ? 'html' : 'react',
+            renderMode: isJsx ? 'jsx' : isHtml ? 'html' : 'react',
             htmlPageSlug: isHtml ? (node.data.htmlFolder as string) : undefined,
             htmlIterationFolder: isHtml ? (node.data.htmlIterationFolder as string) : undefined,
+            jsxFile: isJsx ? (node.data.jsxFile as string) : undefined,
           };
         }
       }

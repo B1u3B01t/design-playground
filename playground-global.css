@@ -373,6 +373,12 @@
   color: rgb(185, 183, 181); /* stone-400 */
 }
 
+/* Prevent iframes from capturing mouse events during node drag */
+.react-flow__node.dragging iframe,
+.react-flow__node.dragging [data-screenshot-target] iframe {
+  pointer-events: none !important;
+}
+
 /* Element selection mode — override all cursors when Alt is held */
 .element-select-mode,
 .element-select-mode *,

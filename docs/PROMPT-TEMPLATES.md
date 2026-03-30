@@ -107,7 +107,7 @@ Keep all logic, props interface, and public API intact.
 | `{{iterationCount}}` | Number of iterations to generate | `3` |
 | `{{depthLabel}}` | Iteration depth label | `Shell only` |
 | `{{propsInterface}}` | TypeScript props definition | `interface PricingCardProps { ... }` |
-| `{{cleanComponentName}}` | Component name without spaces | `PricingCard` |
+| `{{cleanComponentName}}` | PascalCase name from registry ID (must match default export) | `PricingCard` |
 | `{{componentId}}` | Registry ID | `pricing-card` |
 | `{{customInstructionsSection}}` | User-provided instructions | Formatted block or empty |
 | `{{skillSection}}` | Skill context from SKILL.md | Formatted block or empty |

@@ -10,11 +10,13 @@ export interface SelectedNodeContext {
   nodeId: string;
   componentId: string;
   componentName: string;
-  type: 'component' | 'iteration';
+  type: 'component' | 'iteration' | 'image';
   sourceFilename?: string;
   renderMode?: 'react' | 'html';
   htmlPageSlug?: string;
   htmlIterationFolder?: string;
+  imagePath?: string;
+  imageUrl?: string;
 }
 
 export interface UseNodeSelectionReturn {
@@ -35,7 +37,7 @@ export function useNodeSelection(): UseNodeSelectionReturn {
       const mapped: SelectedNodeContext[] = [];
 
       for (const node of nodes) {
-        if (node.type !== 'component' && node.type !== 'iteration') continue;
+        if (node.type !== 'component' && node.type !== 'iteration' && node.type !== 'image') continue;
 
         const data = node.data as Record<string, unknown>;
 
@@ -46,6 +48,15 @@ export function useNodeSelection(): UseNodeSelectionReturn {
             componentId: compId,
             componentName: flatRegistry[compId]?.label || compId,
             type: 'component',
+          });
+        } else if (node.type === 'image') {
+          mapped.push({
+            nodeId: node.id,
+            componentId: '',
+            componentName: (data.originalName as string) || 'Image',
+            type: 'image',
+            imagePath: (data.imagePath as string) || undefined,
+            imageUrl: (data.imageUrl as string) || undefined,
           });
         } else {
           mapped.push({

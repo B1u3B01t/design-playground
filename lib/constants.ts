@@ -442,6 +442,9 @@ export const EDIT_COMPLETE_EVENT = 'playground:edit-complete';
 /** MIME-like key used for drag-and-drop data transfer of playground components */
 export const DND_DATA_KEY = 'application/x-playground-component';
 
+/** Special DnD ID used when dragging an image placeholder from the sidebar */
+export const IMAGE_DROP_ID = '__image_upload__';
+
 // ---------------------------------------------------------------------------
 // Drag-to-Iterate Constants
 // ---------------------------------------------------------------------------

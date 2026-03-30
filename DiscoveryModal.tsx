@@ -42,6 +42,7 @@ interface DiscoveryModalProps {
   onOpenChange: (open: boolean) => void;
   addingIds: Set<string>;
   onAdd: (entry: DiscoveryEntry) => void;
+  onAddAll: (entries: DiscoveryEntry[]) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +163,7 @@ export default function DiscoveryModal({
   onOpenChange,
   addingIds,
   onAdd,
+  onAddAll,
 }: DiscoveryModalProps) {
   const [entries, setEntries] = useState<DiscoveryEntry[]>([]);
   const [search, setSearch] = useState('');
@@ -300,6 +302,9 @@ export default function DiscoveryModal({
   // Filtered lists for display based on search
   const filteredPages = filtered.filter((e) => e.type === 'page');
   const filteredComponents = filtered.filter((e) => e.type === 'component');
+  const addableEntries = topLevelEntries.filter(
+    (e) => e.status === 'discovered' && !addingIds.has(e.id),
+  );
   const isEmpty = entries.length === 0 && !isLoading && !isScanning;
 
   return (
@@ -439,10 +444,19 @@ export default function DiscoveryModal({
 
         {/* Footer */}
         {!isEmpty && !isLoading && !isScanning && !isRefreshing && (
-          <div className="px-6 py-3 border-t border-stone-100 bg-stone-50/50">
-            <p className="text-[11px] text-stone-400 text-center select-none">
+          <div className="px-6 py-3 border-t border-stone-100 bg-stone-50/50 flex items-center justify-between">
+            <p className="text-[11px] text-stone-400 select-none">
               Click Add to analyze and prepare a component for the playground
             </p>
+            {addableEntries.length > 0 && (
+              <button
+                onClick={() => onAddAll(addableEntries)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium text-white bg-stone-800 hover:bg-stone-700 transition-all shrink-0 ml-3"
+              >
+                <Plus className="w-3 h-3" />
+                Add All ({addableEntries.length})
+              </button>
+            )}
           </div>
         )}
       </DialogContent>

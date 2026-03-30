@@ -258,10 +258,12 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
     const { text, skillPrompts, skillIds } = extractPayload();
     if (!text && skillPrompts.length === 0) return;
 
-    // If no target node but exactly one selected node, promote it to target.
+    // If no target node but exactly one selected non-image node, promote it to target.
+    // Image nodes are always references (not targets to iterate on).
     // With 2+ selected nodes and no click target → freeform with all as references.
+    const canPromote = selectedNodes?.length === 1 && selectedNodes[0].type !== 'image';
     const effectiveTarget = targetNode
-      ?? (selectedNodes?.length === 1 ? selectedNodes[0] : null);
+      ?? (canPromote ? selectedNodes![0] : null);
     const referenceOnly = effectiveTarget && !targetNode
       ? undefined  // single selected node promoted to target, no references left
       : selectedNodes;  // all selected nodes are references (freeform or click-target case)
@@ -283,6 +285,7 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
       renderMode: effectiveTarget?.renderMode,
       htmlPageSlug: effectiveTarget?.htmlPageSlug,
       htmlIterationFolder: effectiveTarget?.htmlIterationFolder,
+      jsxFile: effectiveTarget?.jsxFile,
       elementSelections: selectedElements && selectedElements.length > 0
         ? selectedElements.map((sel) => ({
             tagName: sel.context.tagName,
@@ -526,12 +529,19 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
               </button>
             )}
 
-            {/* Node reference chips — hidden for single selection */}
-            {selectedNodes && selectedNodes.length > 1 && selectedNodes.map((node) => (
+            {/* Node reference chips — shown for 2+ nodes, or single image-only selection */}
+            {selectedNodes && (selectedNodes.length > 1 || (selectedNodes.length === 1 && selectedNodes[0].type === 'image')) && selectedNodes.map((node) => (
               <div
                 key={node.nodeId}
                 className="flex items-center gap-1 px-1.5 py-px select-none group"
-                style={{
+                style={node.type === 'image' ? {
+                  background: 'rgb(245, 243, 255)',
+                  border: '1px solid rgb(167, 139, 250)',
+                  borderRadius: '12px',
+                  color: 'rgb(109, 40, 217)',
+                  fontSize: '9px',
+                  fontWeight: 500,
+                } : {
                   background: 'rgb(236, 253, 245)',
                   border: '1px solid rgb(110, 231, 183)',
                   borderRadius: '12px',
@@ -540,10 +550,18 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
                   fontWeight: 500,
                 }}
               >
-                <svg width="10" height="10" viewBox="0 0 16 16" fill="none" className="flex-shrink-0">
-                  <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" />
-                  <path d="M5 6h6M5 8h4" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
-                </svg>
+                {node.type === 'image' ? (
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none" className="flex-shrink-0">
+                    <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" />
+                    <circle cx="6" cy="6" r="1.5" stroke="currentColor" strokeWidth="1" />
+                    <path d="M2 11l3-3 2 2 3-3 4 4" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                ) : (
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none" className="flex-shrink-0">
+                    <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" />
+                    <path d="M5 6h6M5 8h4" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+                  </svg>
+                )}
                 <span>{node.componentName}</span>
                 {onRemoveNode && (
                   <button
@@ -556,7 +574,7 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
                 )}
               </div>
             ))}
-            {selectedNodes && selectedNodes.length >= 2 && onClearNodes && (
+            {selectedNodes && (selectedNodes.length >= 2 || (selectedNodes.length === 1 && selectedNodes[0].type === 'image')) && onClearNodes && (
               <button
                 onClick={onClearNodes}
                 className="px-1.5 py-px text-[9px] text-stone-400 hover:text-stone-600 transition-colors pointer-events-auto select-none"

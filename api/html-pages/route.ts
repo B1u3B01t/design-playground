@@ -85,7 +85,7 @@ function scanHtmlPages(): HtmlPageInfo[] {
 
 export async function PUT(req: Request) {
   try {
-    const body = (await req.json().catch(() => null)) as { name?: string } | null;
+    const body = (await req.json().catch(() => null)) as { name?: string; content?: string } | null;
 
     if (!body?.name) {
       return NextResponse.json(
@@ -161,7 +161,8 @@ export async function PUT(req: Request) {
 </body>
 </html>`;
 
-    fs.writeFileSync(indexPath, template, 'utf-8');
+    const htmlContent = body.content || template;
+    fs.writeFileSync(indexPath, htmlContent, 'utf-8');
 
     return NextResponse.json({
       success: true,
@@ -240,9 +241,9 @@ export async function DELETE(req: Request) {
       iterationFolder?: string;
     } | null;
 
-    if (!body?.pageFolder || !body?.iterationFolder) {
+    if (!body?.pageFolder) {
       return NextResponse.json(
-        { success: false, error: 'Missing pageFolder or iterationFolder' },
+        { success: false, error: 'Missing pageFolder' },
         { status: 400 },
       );
     }
@@ -250,34 +251,51 @@ export async function DELETE(req: Request) {
     const { pageFolder, iterationFolder } = body;
 
     // Validate names to prevent directory traversal
-    if (pageFolder.includes('..') || iterationFolder.includes('..')) {
+    if (pageFolder.includes('..') || (iterationFolder && iterationFolder.includes('..'))) {
       return NextResponse.json(
         { success: false, error: 'Invalid path' },
         { status: 400 },
       );
     }
 
-    const iterDir = path.join(PUBLIC_DIR, pageFolder, iterationFolder);
-    if (fs.existsSync(iterDir)) {
-      fs.rmSync(iterDir, { recursive: true });
-    }
+    if (iterationFolder) {
+      // Delete a single iteration
+      const iterDir = path.join(PUBLIC_DIR, pageFolder, iterationFolder);
+      if (fs.existsSync(iterDir)) {
+        fs.rmSync(iterDir, { recursive: true });
+      }
 
-    // Update tree manifest — remove entry and reparent children
-    const manifest = readTreeManifest();
-    const removedKey = `${pageFolder}/${iterationFolder}`;
-    const removedParent = manifest.entries[removedKey]?.parent;
-    delete manifest.entries[removedKey];
+      // Update tree manifest — remove entry and reparent children
+      const manifest = readTreeManifest();
+      const removedKey = `${pageFolder}/${iterationFolder}`;
+      const removedParent = manifest.entries[removedKey]?.parent;
+      delete manifest.entries[removedKey];
 
-    // Reparent children of the removed iteration
-    if (removedParent) {
-      for (const [key, value] of Object.entries(manifest.entries)) {
-        if (value.parent === removedKey || value.parent === iterationFolder) {
-          manifest.entries[key] = { parent: removedParent };
+      if (removedParent) {
+        for (const [key, value] of Object.entries(manifest.entries)) {
+          if (value.parent === removedKey || value.parent === iterationFolder) {
+            manifest.entries[key] = { parent: removedParent };
+          }
         }
       }
-    }
 
-    writeTreeManifest(manifest);
+      writeTreeManifest(manifest);
+    } else {
+      // Delete the entire page folder and all its iterations
+      const pageDir = path.join(PUBLIC_DIR, pageFolder);
+      if (fs.existsSync(pageDir)) {
+        fs.rmSync(pageDir, { recursive: true });
+      }
+
+      // Clean up all manifest entries for this page
+      const manifest = readTreeManifest();
+      for (const key of Object.keys(manifest.entries)) {
+        if (key === pageFolder || key.startsWith(`${pageFolder}/`)) {
+          delete manifest.entries[key];
+        }
+      }
+      writeTreeManifest(manifest);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

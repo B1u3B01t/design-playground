@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useState, useCallback, useRef, useEffect } from 'react';
+import { memo, useState, useCallback, useRef, useEffect, type ComponentType } from 'react';
 import { useNodeId, useReactFlow, NodeResizeControl } from '@xyflow/react';
 import { ArrowUpRight, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
@@ -9,7 +9,7 @@ import { CancelGenerationButton } from './shared/IterateDialogParts';
 import IterateDialog from './shared/IterateDialog';
 import { SizeButtons } from './shared/SizeButtons';
 
-import { useAsyncProps, useScrollCapture } from '../hooks/useNodeShared';
+import { useAsyncProps, useScrollCapture, useHtmlContent } from '../hooks/useNodeShared';
 import { useTunnelShare } from '../hooks/useTunnelShare';
 import ComponentErrorBoundary from './ComponentErrorBoundary';
 import {
@@ -18,6 +18,7 @@ import {
   GENERATION_COMPLETE_EVENT,
   GENERATION_ERROR_EVENT,
   EDIT_COMPLETE_EVENT,
+  JSX_COMPONENT_ADDED_EVENT,
   SIZE_CONFIG,
   getDisplayDimensions,
   RESIZE_MIN_WIDTH,
@@ -32,10 +33,12 @@ interface ComponentNodeProps {
     size?: ComponentSize;
     /** Whether this node has been freeform-resized */
     customResized?: boolean;
-    /** Render mode: 'react' (default) or 'html' for iframe-based rendering */
-    renderMode?: 'react' | 'html';
+    /** Render mode: 'react' (default), 'html' for iframe-based, or 'jsx' for on-canvas pasted components */
+    renderMode?: 'react' | 'html' | 'jsx';
     /** HTML page folder name (when renderMode is 'html') */
     htmlFolder?: string;
+    /** On-canvas JSX component filename in canvas-components/ (when renderMode is 'jsx') */
+    jsxFile?: string;
   };
   selected?: boolean;
 }
@@ -43,12 +46,46 @@ interface ComponentNodeProps {
 function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   const componentId = data.componentId;
   const isHtml = data.renderMode === 'html';
-  const registryItem = isHtml ? null : resolveRegistryItem(componentId);
+  const isJsx  = data.renderMode === 'jsx';
+  const registryItem = (isHtml || isJsx) ? null : resolveRegistryItem(componentId);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isGlobalGenerating, setIsGlobalGenerating] = useState(false);
   const [iframeKey, setIframeKey] = useState(() => Date.now());
 
-  const { resolvedProps, isLoadingProps, propsError } = useAsyncProps(isHtml ? '' : componentId);
+  // On-canvas JSX component — loaded dynamically, updates when HMR re-evaluates index.ts
+  const [JsxComponent, setJsxComponent] = useState<ComponentType<any> | null>(null);
+  const [jsxError, setJsxError] = useState<string | null>(null);
+  const [jsxLoadAttempt, setJsxLoadAttempt] = useState(0);
+
+  // Re-trigger load when a new JSX component is written to disk
+  useEffect(() => {
+    if (!isJsx) return;
+    const handler = () => setJsxLoadAttempt(n => n + 1);
+    window.addEventListener(JSX_COMPONENT_ADDED_EVENT, handler);
+    return () => window.removeEventListener(JSX_COMPONENT_ADDED_EVENT, handler);
+  }, [isJsx]);
+
+  useEffect(() => {
+    if (!isJsx || !data.jsxFile) return;
+    let cancelled = false;
+
+    import('../canvas-components')
+      .then(mod => {
+        if (cancelled) return;
+        const comp = mod.getOnCanvasComponent(data.jsxFile!);
+        if (comp) {
+          setJsxComponent(() => comp);
+          setJsxError(null);
+        }
+      })
+      .catch(err => {
+        if (!cancelled) setJsxError(String(err));
+      });
+
+    return () => { cancelled = true; };
+  }, [isJsx, data.jsxFile, jsxLoadAttempt]);
+
+  const { resolvedProps, isLoadingProps, propsError } = useAsyncProps((isHtml || isJsx) ? '' : componentId);
   const handleWheel = useScrollCapture(scrollContainerRef);
 
   const nodeId = useNodeId();
@@ -58,7 +95,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   const { share: handleShare, state: shareState } = useTunnelShare(isHtml ? (data.htmlFolder || componentId) : componentId);
 
   // Prefer the persisted size from node data (survives reload), then registry default
-  const [size, setSize] = useState<ComponentSize>(data.size || registryItem?.size || (isHtml ? 'laptop' : 'default'));
+  const [size, setSize] = useState<ComponentSize>(data.size || registryItem?.size || ((isHtml || isJsx) ? 'laptop' : 'default'));
   const [isResizing, setIsResizing] = useState(false);
   const [isCustomResized, setIsCustomResized] = useState(!!data.customResized);
 
@@ -118,7 +155,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
     }));
   };
 
-  if (!isHtml && !registryItem) {
+  if (!isHtml && !isJsx && !registryItem) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4 min-w-[200px]">
         <p className="text-red-600 text-sm">Unknown component: {componentId}</p>
@@ -126,9 +163,13 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
     );
   }
 
-  const Component = registryItem?.Component;
+  const Component = isJsx ? JsxComponent : registryItem?.Component;
   const props = registryItem?.props;
-  const label = isHtml ? (data.htmlFolder || componentId) : (registryItem?.label || componentId);
+  const label = isHtml
+    ? (data.htmlFolder || componentId)
+    : isJsx
+      ? (data.jsxFile?.replace('.tsx', '') || componentId)
+      : (registryItem?.label || componentId);
   const effectiveProps = (resolvedProps ?? props ?? {}) as Record<string, unknown>;
   const config = SIZE_CONFIG[size];
   const isPreset = size !== 'default';
@@ -136,6 +177,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   const isLargeComponent = isPreset || isFillMode;
   const displayDims = getDisplayDimensions(size);
   const htmlSrc = isHtml ? `/${data.htmlFolder}/index.html?t=${iframeKey}` : '';
+  const htmlContent = useHtmlContent(htmlSrc, isHtml);
 
   return (
     <div
@@ -180,7 +222,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
             className="text-[11px] font-medium select-none leading-none"
             style={{
               fontFamily: 'var(--font-geist-mono), monospace',
-              color: isHtml ? '#F97316' : '#0B99FF',
+              color: isHtml ? '#F97316' : isJsx ? '#7C3AED' : '#0B99FF',
             }}
           >
             {label}
@@ -197,8 +239,12 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => {
-                  const url = isHtml ? `/${data.htmlFolder}/index.html` : `/playground/iterations/${componentId}`;
-                  window.open(url, '_blank', 'noopener,noreferrer');
+                  const url = isHtml
+                    ? `/${data.htmlFolder}/index.html`
+                    : isJsx
+                      ? undefined
+                      : `/playground/iterations/${componentId}`;
+                  if (url) window.open(url, '_blank', 'noopener,noreferrer');
                 }}
                 className="p-1 rounded text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
                 aria-label="Open in new tab"
@@ -217,8 +263,9 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
         <div
           data-screenshot-target
           className={`app-theme bg-background overflow-hidden rounded-xl ${isResizing ? '' : 'transition-all'} ${
-            selected ? `ring-2 ${isHtml ? 'ring-orange-400' : 'ring-[#0B99FF]'}` : ''
+            selected ? `ring-2 ${isHtml ? 'ring-orange-400' : isJsx ? 'ring-purple-400' : 'ring-[#0B99FF]'}` : ''
           } ${isFillMode ? 'w-full h-full' : ''}`}
+          style={isJsx ? { contain: 'paint' } : undefined}
         >
           {isHtml ? (
             /* HTML iframe rendering */
@@ -233,7 +280,8 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
             >
               <iframe
                 key={iframeKey}
-                src={htmlSrc}
+                srcDoc={htmlContent || undefined}
+                src={htmlContent ? undefined : htmlSrc}
                 className="w-full h-full border-0"
                 style={isPreset
                   ? { width: config.width, height: config.height, transform: `scale(${config.scale})`, transformOrigin: 'top left' }
@@ -252,7 +300,9 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
               className={`grid place-items-center p-[5%] overflow-auto w-full h-full ${isInteractive ? 'nodrag nowheel nopan' : ''}`}
               onWheel={isInteractive ? handleWheel : undefined}
             >
-              {isLoadingProps && !Object.keys(effectiveProps).length ? (
+              {jsxError ? (
+                <div className="text-xs text-red-500 p-4">{jsxError}</div>
+              ) : isLoadingProps && !Object.keys(effectiveProps).length ? (
                 <div className="text-xs text-gray-500">Loading live data…</div>
               ) : propsError && !Object.keys(effectiveProps).length ? (
                 <div className="text-xs text-red-600">Failed to load data: {propsError}</div>
@@ -260,6 +310,8 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                 <ComponentErrorBoundary componentName={label}>
                   <Component {...effectiveProps} />
                 </ComponentErrorBoundary>
+              ) : isJsx ? (
+                <div className="text-xs text-stone-400">Loading component…</div>
               ) : null}
             </div>
           ) : isPreset ? (
@@ -274,7 +326,9 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                 className="bg-background"
                 style={{ width: config.width, minHeight: config.height, zoom: config.scale }}
               >
-                {isLoadingProps && !Object.keys(effectiveProps).length ? (
+                {jsxError ? (
+                  <div className="p-6 text-xs text-red-500">{jsxError}</div>
+                ) : isLoadingProps && !Object.keys(effectiveProps).length ? (
                   <div className="p-6 text-xs text-gray-500">Loading live data…</div>
                 ) : propsError && !Object.keys(effectiveProps).length ? (
                   <div className="p-6 text-xs text-red-600">Failed to load data: {propsError}</div>
@@ -282,13 +336,17 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                   <ComponentErrorBoundary componentName={label}>
                     <Component {...effectiveProps} />
                   </ComponentErrorBoundary>
+                ) : isJsx ? (
+                  <div className="p-6 text-xs text-stone-400">Loading component…</div>
                 ) : null}
               </div>
             </div>
           ) : (
             /* Auto mode: intrinsic sizing */
             <div className={`grid place-items-center p-4 ${isInteractive ? 'nodrag nowheel nopan' : ''}`}>
-              {isLoadingProps && !Object.keys(effectiveProps).length ? (
+              {jsxError ? (
+                <div className="text-xs text-red-500">{jsxError}</div>
+              ) : isLoadingProps && !Object.keys(effectiveProps).length ? (
                 <div className="text-xs text-gray-500">Loading live data…</div>
               ) : propsError && !Object.keys(effectiveProps).length ? (
                 <div className="text-xs text-red-600">Failed to load data: {propsError}</div>
@@ -296,6 +354,8 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                 <ComponentErrorBoundary componentName={label}>
                   <Component {...effectiveProps} />
                 </ComponentErrorBoundary>
+              ) : isJsx ? (
+                <div className="text-xs text-stone-400">Loading component…</div>
               ) : null}
             </div>
           )}
@@ -313,8 +373,9 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                   componentName={isHtml ? (data.htmlFolder || componentId) : label.replace(/\s*\(.*\)/, '')}
                   parentNodeId={nodeId ?? ''}
                   isGlobalGenerating={isGlobalGenerating}
-                  renderMode={data.renderMode}
+                  renderMode={data.renderMode as 'react' | 'html' | 'jsx' | undefined}
                   htmlFolder={data.htmlFolder}
+                  jsxFile={data.jsxFile}
                 />
 
                 {/* Share public link */}

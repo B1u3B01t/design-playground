@@ -70,6 +70,8 @@ Create files in: `src/app/playground/iterations/`
 
 Naming: `{ComponentName}.iteration-{n}.tsx`
 
+**IMPORTANT**: `{ComponentName}` must be the PascalCase version of the component's **default export function name** (e.g. `ManifestoPage`, `SignupForm`), NOT a shortened label. This ensures the filename can be reliably mapped back to the registry ID via kebab-case conversion (e.g. `ManifestoPage` → `manifesto-page`).
+
 Example:
 ```
 src/app/playground/iterations/

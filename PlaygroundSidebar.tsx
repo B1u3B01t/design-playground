@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, DragEvent } from 'react';
-import { ChevronRight, ChevronDown, ChevronLeft, Plus, Loader2, RefreshCw, Frame, Component, Folder } from 'lucide-react';
+import { ChevronRight, ChevronDown, ChevronLeft, Plus, Loader2, RefreshCw, Frame, Component, Folder, ImageIcon } from 'lucide-react';
 import { registry, RegistryItem, RegistryLeafItem, isGroup, isLeaf } from './registry';
-import { DND_DATA_KEY, HTML_ID_PREFIX } from './lib/constants';
+import { DND_DATA_KEY, HTML_ID_PREFIX, IMAGE_DROP_ID } from './lib/constants';
 import type { HtmlPageInfo } from './lib/constants';
 import type { PendingChild } from './PlaygroundClient';
 
@@ -322,6 +322,22 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
                 <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{page.label}</span>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Image node — drag to upload an image */}
+        {(!search.trim() || 'image'.includes(search.toLowerCase())) && (
+          <div
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData(DND_DATA_KEY, IMAGE_DROP_ID);
+              e.dataTransfer.effectAllowed = 'move';
+            }}
+            className="flex items-center gap-1.5 px-2 py-1.5 text-[13px] text-stone-700 hover:text-stone-900 hover:bg-stone-100 rounded-2xl cursor-grab active:cursor-grabbing transition-colors select-none mb-1"
+            style={{ paddingLeft: '18px' }}
+          >
+            <ImageIcon className="w-3.5 h-3.5 shrink-0 text-violet-500" />
+            <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">Image</span>
           </div>
         )}
 

@@ -30,10 +30,17 @@ export function discoveryAnalyzePrompt({
 
   const pageInstructions = `This is a page component (\`page.tsx\`). Examine its structure carefully:
 
+**CRITICAL — server-only exports break the build:**
+Before importing ANY \`page.tsx\` file, check whether it exports \`metadata\`, \`dynamic\`, \`revalidate\`, \`generateStaticParams\`, \`generateMetadata\`, or other Next.js route-segment config values. These are **server-only exports** and CANNOT be imported into the client component tree (registry.tsx is a client module). Importing such a file will cause a build error like: "You are attempting to export 'metadata' from a component marked with 'use client'".
+
+**If the page has ANY server-only exports OR uses server-only features** (async component, \`cookies()\`, \`headers()\`, database queries, \`getSupabaseClient()\`, \`fetch\` with \`cache\`), you MUST do one of:
+- Find the client-side presentational component it delegates to and register that instead
+- If there is no client component to delegate to (the page renders inline JSX with server data), **skip this component** — update discovery.json to set status to \`"added"\` with a note, but do NOT add it to registry.tsx. Instead, print: "SKIPPED: [component name] — server-only page with no client presentational component."
+
+For pages that CAN be safely imported:
 1. **If the page imports and renders a SINGLE primary UI component** (e.g. \`<InsightsClient />\`), register that imported component directly — use its actual import path.
-2. **If the page renders MULTIPLE components or significant inline JSX**, register the page's default export.
-3. **If the page uses server-only features** (async component, \`cookies()\`, \`headers()\`, database queries, \`fetch\` with \`cache\`), you MUST find the client-side presentational component it delegates to. Never import server-only modules in a registry entry.
-4. **If the page re-exports or wraps a client component with minimal additions**, register the client component directly.`;
+2. **If the page renders MULTIPLE components or significant inline JSX** and has NO server-only exports, register the page's default export.
+3. **If the page re-exports or wraps a client component with minimal additions**, register the client component directly.`;
 
   const componentInstructions = `This is a standalone component. Register it directly using its actual import path.
 

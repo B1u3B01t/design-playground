@@ -21,6 +21,48 @@
     },
     "KeyboardShortcutsModal.iteration-4.tsx": {
       "parent": "keyboard-shortcuts-modal"
+    },
+    "SignupForm.iteration-1.tsx": {
+      "parent": "signup-form"
+    },
+    "SignupForm.iteration-2.tsx": {
+      "parent": "signup-form"
+    },
+    "SignupForm.iteration-3.tsx": {
+      "parent": "signup-form"
+    },
+    "GlossaryPage.iteration-1.tsx": {
+      "parent": "glossary-page"
+    },
+    "GlossaryPage.iteration-2.tsx": {
+      "parent": "glossary-page"
+    },
+    "GlossaryPage.iteration-3.tsx": {
+      "parent": "glossary-page"
+    },
+    "GlossaryPage.iteration-4.tsx": {
+      "parent": "glossary-page"
+    },
+    "GlossaryPage.iteration-5.tsx": {
+      "parent": "glossary-page"
+    },
+    "ManifestoPage.iteration-1.tsx": {
+      "parent": "manifesto-page"
+    },
+    "ManifestoPage.iteration-2.tsx": {
+      "parent": "manifesto-page"
+    },
+    "ManifestoPage.iteration-3.tsx": {
+      "parent": "manifesto-page"
+    },
+    "ManifestoPage.iteration-4.tsx": {
+      "parent": "ManifestoPage.iteration-2.tsx"
+    },
+    "ManifestoPage.iteration-5.tsx": {
+      "parent": "ManifestoPage.iteration-2.tsx"
+    },
+    "ManifestoPage.iteration-6.tsx": {
+      "parent": "ManifestoPage.iteration-2.tsx"
     }
   }
 }

@@ -63,6 +63,8 @@ src/app/playground/iterations/
 {ComponentName}.iteration-{number}.tsx
 ```
 
+**`{ComponentName}` must be the PascalCase default export function name** (e.g. `ManifestoPage`, not `Manifesto`). This ensures the filename prefix can be converted back to the registry ID via kebab-case conversion (`ManifestoPage` → `manifesto-page`).
+
 Examples:
 - `ArticleCard.iteration-1.tsx`
 - `ArticleCard.iteration-2.tsx`

@@ -35,8 +35,9 @@ let isGenerating = false;
 const generationEvents = new EventEmitter();
 let fileWatcher: fs.FSWatcher | null = null;
 let htmlFileWatcher: fs.FSWatcher | null = null;
+let jsxFileWatcher: fs.FSWatcher | null = null;
 
-function startFileWatcher(htmlPageFolder?: string) {
+function startFileWatcher(htmlPageFolder?: string, jsxFile?: string) {
   stopFileWatcher();
   let debounceTimer: NodeJS.Timeout | null = null;
   try {
@@ -76,6 +77,27 @@ function startFileWatcher(htmlPageFolder?: string) {
       // dir might not exist yet
     }
   }
+
+  // Watch canvas-components directory for JSX iteration changes
+  if (jsxFile) {
+    const canvasDir = path.join(process.cwd(), 'src/app/playground/canvas-components');
+    let jsxDebounceTimer: NodeJS.Timeout | null = null;
+    try {
+      jsxFileWatcher = fs.watch(canvasDir, (eventType, filename) => {
+        if (filename && /^frame-\d+\.iteration-\d+\.tsx$/.test(filename)) {
+          if (jsxDebounceTimer) clearTimeout(jsxDebounceTimer);
+          jsxDebounceTimer = setTimeout(() => {
+            generationEvents.emit('iteration-added');
+          }, 500);
+        }
+      });
+      jsxFileWatcher.on('error', () => {
+        // dir might not exist yet — ignore
+      });
+    } catch {
+      // dir might not exist yet
+    }
+  }
 }
 
 function stopFileWatcher() {
@@ -86,6 +108,10 @@ function stopFileWatcher() {
   if (htmlFileWatcher) {
     htmlFileWatcher.close();
     htmlFileWatcher = null;
+  }
+  if (jsxFileWatcher) {
+    jsxFileWatcher.close();
+    jsxFileWatcher = null;
   }
 }
 
@@ -191,6 +217,7 @@ export async function POST(req: Request) {
       maxBudgetUsd?: number;
       maxTurns?: number;
       htmlFolder?: string;
+      jsxFile?: string;
     } | null;
 
     if (!body || !body.prompt || !body.componentId) {
@@ -247,7 +274,7 @@ export async function POST(req: Request) {
         }
 
         // Start watching iterations directory for progressive detection
-        startFileWatcher(body.htmlFolder);
+        startFileWatcher(body.htmlFolder, body.jsxFile);
 
         let stderr = '';
 

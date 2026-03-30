@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useState, useCallback, Suspense, useMemo, useRef, useEffect } from 'react';
+import { memo, useState, useCallback, Suspense, useMemo, useRef, useEffect, type ComponentType } from 'react';
 import { useReactFlow, NodeResizeControl } from '@xyflow/react';
 import { toPng } from 'html-to-image';
 import { Check, CheckCheck, Trash2, Loader2, ArrowUpRight, ChevronRight } from 'lucide-react';
@@ -40,10 +40,12 @@ import {
   type GenerationErrorPayload,
   type AdoptionCompletePayload,
   type AdoptionErrorPayload,
+  JSX_COMPONENT_ADDED_EVENT,
 } from '../lib/constants';
 import { getProviderFields } from '../lib/generation-body';
 import { generateHtmlAdoptPrompt } from '../lib/html-prompts';
-import { useAsyncProps, useScrollCapture } from '../hooks/useNodeShared';
+import { generateJsxAdoptPrompt } from '../lib/jsx-prompts';
+import { useAsyncProps, useScrollCapture, useHtmlContent } from '../hooks/useNodeShared';
 import { useTunnelShare } from '../hooks/useTunnelShare';
 import ComponentErrorBoundary from './ComponentErrorBoundary';
 import IterateDialog from './shared/IterateDialog';
@@ -68,12 +70,14 @@ interface IterationNodeProps {
     adopted?: boolean;
     onDelete?: (filename: string) => void;
     onAdopt?: (filename: string, componentName: string) => void;
-    /** Render mode: 'react' (default) or 'html' for iframe-based rendering */
-    renderMode?: 'react' | 'html';
+    /** Render mode: 'react' (default), 'html' for iframe-based, or 'jsx' for canvas-components */
+    renderMode?: 'react' | 'html' | 'jsx';
     /** HTML page folder name (when renderMode is 'html') */
     htmlFolder?: string;
     /** HTML iteration folder (when renderMode is 'html') */
     htmlIterationFolder?: string;
+    /** JSX filename (when renderMode is 'jsx') */
+    jsxFile?: string;
   };
   selected?: boolean;
 }
@@ -92,13 +96,41 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
 
   const isInteractive = !!selected;
   const isHtml = data.renderMode === 'html';
+  const isJsx = data.renderMode === 'jsx';
 
-  const IterationComponent = useMemo(() => isHtml ? null : getIterationComponent(data.filename), [data.filename, isHtml]);
+  const iterationHtmlUrl = isHtml ? `/${data.htmlFolder}/${data.htmlIterationFolder}/index.html?t=${iframeKey}` : '';
+  const htmlContent = useHtmlContent(iterationHtmlUrl, isHtml);
+
+  const IterationComponent = useMemo(() => (isHtml || isJsx) ? null : getIterationComponent(data.filename), [data.filename, isHtml, isJsx]);
+
+  // On-canvas JSX iteration — loaded dynamically from canvas-components
+  const [JsxComponent, setJsxComponent] = useState<ComponentType<any> | null>(null);
+  const [jsxLoadAttempt, setJsxLoadAttempt] = useState(0);
+
+  useEffect(() => {
+    if (!isJsx) return;
+    const handler = () => setJsxLoadAttempt(n => n + 1);
+    window.addEventListener(JSX_COMPONENT_ADDED_EVENT, handler);
+    return () => window.removeEventListener(JSX_COMPONENT_ADDED_EVENT, handler);
+  }, [isJsx]);
+
+  useEffect(() => {
+    if (!isJsx || !data.jsxFile) return;
+    let cancelled = false;
+    import('../canvas-components')
+      .then(mod => {
+        if (cancelled) return;
+        const comp = mod.getOnCanvasComponent(data.jsxFile!);
+        if (comp) setJsxComponent(() => comp);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isJsx, data.jsxFile, jsxLoadAttempt]);
 
   const registryId = useMemo(
-    () => isHtml ? '' : (data.registryId
+    () => (isHtml || isJsx) ? '' : (data.registryId
       ?? data.componentName.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '')),
-    [data.registryId, data.componentName, isHtml],
+    [data.registryId, data.componentName, isHtml, isJsx],
   );
 
   const iterationSlug = useMemo(() => isHtml
@@ -107,13 +139,13 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
     [data.filename, isHtml, data.htmlFolder, data.htmlIterationFolder]);
   const { share: handleShare, state: shareState } = useTunnelShare(iterationSlug);
 
-  const { resolvedProps, isLoadingProps, propsError } = useAsyncProps(isHtml ? '' : registryId);
-  const registryItem = useMemo(() => isHtml ? null : resolveRegistryItem(registryId), [registryId, isHtml]);
+  const { resolvedProps, isLoadingProps, propsError } = useAsyncProps((isHtml || isJsx) ? '' : registryId);
+  const registryItem = useMemo(() => (isHtml || isJsx) ? null : resolveRegistryItem(registryId), [registryId, isHtml, isJsx]);
   const staticProps = useMemo(() => registryItem?.props || {}, [registryItem]);
   const effectiveProps = (resolvedProps ?? staticProps) as Record<string, unknown>;
   // Independent size — persisted in node data, initially from parent at creation time
   const [size, setSize] = useState<ComponentSize>(
-    () => data.parentSize || resolveRegistryItem(registryId)?.size || 'default',
+    () => data.parentSize || resolveRegistryItem(registryId)?.size || ((isHtml || isJsx) ? 'laptop' : 'default'),
   );
   const [isResizing, setIsResizing] = useState(false);
   const [isCustomResized, setIsCustomResized] = useState(!!data.customResized);
@@ -192,7 +224,13 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
     setIsDeleting(true);
     try {
       let response: Response;
-      if (isHtml) {
+      if (isJsx) {
+        response = await fetch('/playground/api/oncanvas-components', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: data.jsxFile }),
+        });
+      } else if (isHtml) {
         response = await fetch('/playground/api/html-pages', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
@@ -255,13 +293,16 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
 
     // Generate the adopt prompt
     let adoptPrompt: string;
-    if (isHtml && data.htmlFolder && data.htmlIterationFolder) {
+    if (isJsx && data.jsxFile) {
+      const baseFile = data.jsxFile.replace(/\.iteration-\d+\.tsx$/, '.tsx');
+      adoptPrompt = generateJsxAdoptPrompt(baseFile, data.jsxFile);
+    } else if (isHtml && data.htmlFolder && data.htmlIterationFolder) {
       adoptPrompt = generateHtmlAdoptPrompt(data.htmlFolder, data.htmlIterationFolder);
     } else {
       adoptPrompt = generateAdoptPrompt(registryId, data.filename);
     }
 
-    const componentId = isHtml ? `html:${data.htmlFolder}` : registryId;
+    const componentId = isJsx ? `jsx:${data.componentName}` : isHtml ? `html:${data.htmlFolder}` : registryId;
 
     // Dispatch start event (for presence bubbles — editMode prevents skeleton nodes)
     window.dispatchEvent(
@@ -357,12 +398,16 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
     }
   };
 
-  // e.g. "PricingCard" + 3 → "pricing-card #3", or "landing #1" for HTML
+  // e.g. "PricingCard" + 3 → "pricing-card #3", or "landing #1" for HTML, or "frame-5 #1" for JSX
   const iterationLabel = useMemo(() => {
+    if (isJsx) return `${data.jsxFile?.replace(/\.iteration-\d+\.tsx$/, '').replace('.tsx', '') || data.componentName} #${data.iterationNumber}`;
     if (isHtml) return `${data.htmlFolder} #${data.iterationNumber}`;
     const key = data.componentName.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '');
     return `${key} #${data.iterationNumber}`;
-  }, [data.componentName, data.iterationNumber, isHtml, data.htmlFolder]);
+  }, [data.componentName, data.iterationNumber, isHtml, isJsx, data.htmlFolder, data.jsxFile]);
+
+  // Resolved renderable component: JSX (from canvas-components) or React (from iterations registry)
+  const RenderComponent = isJsx ? JsxComponent : IterationComponent;
 
   return (
     <div
@@ -418,7 +463,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
           )}
           <span
             className="text-[11px] font-medium select-none leading-none truncate"
-            style={{ fontFamily: 'var(--font-geist-mono), monospace', color: isHtml ? '#F97316' : '#0B99FF' }}
+            style={{ fontFamily: 'var(--font-geist-mono), monospace', color: isJsx ? '#7C3AED' : isHtml ? '#F97316' : '#0B99FF' }}
           >
             {iterationLabel}
           </span>
@@ -468,8 +513,9 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
           data-screenshot-target
           className={`app-theme bg-background overflow-hidden rounded-xl ${isResizing ? '' : 'transition-all'} ${
             adoptionStatus === 'adopted' ? 'ring-2 ring-green-400'
-              : selected ? `ring-2 ${isHtml ? 'ring-orange-400' : 'ring-[#0B99FF]'}` : ''
+              : selected ? `ring-2 ${isJsx ? 'ring-purple-400' : isHtml ? 'ring-orange-400' : 'ring-[#0B99FF]'}` : ''
           } ${isFillMode ? 'w-full h-full' : ''}`}
+          style={isJsx ? { contain: 'paint' } : undefined}
         >
           {isHtml ? (
             /* HTML iframe rendering */
@@ -484,7 +530,8 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
             >
               <iframe
                 key={iframeKey}
-                src={`/${data.htmlFolder}/${data.htmlIterationFolder}/index.html?t=${iframeKey}`}
+                srcDoc={htmlContent || undefined}
+                src={htmlContent ? undefined : iterationHtmlUrl}
                 className="w-full h-full border-0"
                 style={isPreset
                   ? { width: config.width, height: config.height, transform: `scale(${config.scale})`, transformOrigin: 'top left' }
@@ -502,7 +549,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
               className={`grid place-items-center p-[5%] overflow-auto w-full h-full ${isInteractive ? 'nodrag nowheel nopan' : ''}`}
               onWheel={isInteractive ? handleWheel : undefined}
             >
-              {IterationComponent ? (
+              {RenderComponent ? (
                 <Suspense fallback={<Loader2 className="w-5 h-5 animate-spin text-gray-400" />}>
                   <div className="w-full">
                     {isLoadingProps && !Object.keys(effectiveProps).length ? (
@@ -511,7 +558,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
                       <div className="text-xs text-red-600">Failed to load data: {propsError}</div>
                     ) : (
                       <ComponentErrorBoundary componentName={`${data.componentName} #${data.iterationNumber}`}>
-                        <IterationComponent {...effectiveProps} />
+                        <RenderComponent {...effectiveProps} />
                       </ComponentErrorBoundary>
                     )}
                   </div>
@@ -531,7 +578,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
               style={{ width: displayDims.width, height: displayDims.height }}
               onWheel={isInteractive ? handleWheel : undefined}
             >
-              {IterationComponent ? (
+              {RenderComponent ? (
                 <Suspense
                   fallback={
                     <div className="flex items-center justify-center h-full">
@@ -549,7 +596,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
                       <div className="p-6 text-xs text-red-600">Failed to load data: {propsError}</div>
                     ) : (
                       <ComponentErrorBoundary componentName={`${data.componentName} #${data.iterationNumber}`}>
-                        <IterationComponent {...effectiveProps} />
+                        <RenderComponent {...effectiveProps} />
                       </ComponentErrorBoundary>
                     )}
                   </div>
@@ -566,7 +613,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
           ) : (
             /* Auto mode: intrinsic sizing */
             <div className={`grid place-items-center min-h-[100px] p-4 ${isInteractive ? 'nodrag nowheel nopan' : ''}`}>
-              {IterationComponent ? (
+              {RenderComponent ? (
                 <Suspense fallback={<Loader2 className="w-5 h-5 animate-spin text-gray-400" />}>
                   <div className="w-full">
                     {isLoadingProps && !Object.keys(effectiveProps).length ? (
@@ -575,7 +622,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
                       <div className="text-xs text-red-600">Failed to load data: {propsError}</div>
                     ) : (
                       <ComponentErrorBoundary componentName={`${data.componentName} #${data.iterationNumber}`}>
-                        <IterationComponent {...effectiveProps} />
+                        <RenderComponent {...effectiveProps} />
                       </ComponentErrorBoundary>
                     )}
                   </div>
@@ -597,7 +644,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
               <CancelGenerationButton />
             ) : (
               <IterateDialog
-                componentId={isHtml ? `html:${data.htmlFolder}` : registryId}
+                componentId={isJsx ? `jsx:${data.componentName}` : isHtml ? `html:${data.htmlFolder}` : registryId}
                 componentName={data.componentName}
                 parentNodeId={id}
                 sourceFilename={data.filename}
@@ -605,6 +652,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
                 renderMode={data.renderMode}
                 htmlFolder={data.htmlFolder}
                 htmlIterationFolder={data.htmlIterationFolder}
+                jsxFile={data.jsxFile}
               />
             )}
 
