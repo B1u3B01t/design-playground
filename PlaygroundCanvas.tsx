@@ -86,11 +86,13 @@ import {
   MINIMAP_SKELETON_COLOR,
   MINIMAP_ITERATION_COLOR,
   MINIMAP_COMPONENT_COLOR,
+  MINIMAP_IMAGE_COLOR,
   MINIMAP_MASK_COLOR,
   BACKGROUND_COLOR,
   DND_DATA_KEY,
   HTML_ID_PREFIX,
-  IMAGE_DROP_ID,
+  JSX_ID_PREFIX,
+  JSX_COMPONENT_ADDED_EVENT,
   EDIT_COMPLETE_EVENT,
   CANVAS_MAX_ZOOM,
   CANVAS_MIN_ZOOM,
@@ -98,7 +100,6 @@ import {
   PLAYGROUND_CLEAR_EVENT,
   PAN_TO_POSITION_EVENT,
   FIT_COMPONENT_NODES_EVENT,
-  TREE_COLUMN_WIDTH,
   DRAG_GHOST_GAP,
   DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
   DEFAULT_STYLING_MODE,
@@ -120,6 +121,8 @@ import { useElementSelection } from './hooks/useElementSelection';
 import { useNodeSelection } from './hooks/useNodeSelection';
 import { useDynamicBackground } from './hooks/useDynamicBackground';
 import { toast } from 'sonner';
+import { wrapHtmlFragment } from './lib/html-utils';
+import { looksLikeJsx, wrapJsxComponent } from './lib/jsx-utils';
 
 const nodeTypes = {
   component: ComponentNode,
@@ -288,8 +291,6 @@ export default function PlaygroundCanvas() {
   const [newHtmlPageName, setNewHtmlPageName] = useState('');
   const [createHtmlError, setCreateHtmlError] = useState('');
   const newHtmlInputRef = useRef<HTMLInputElement>(null);
-  const imageUploadInputRef = useRef<HTMLInputElement>(null);
-  const pendingImageDropPosition = useRef<{ x: number; y: number } | null>(null);
 
   // Delete cascade/reparent dialog
   const [deleteDialogNode, setDeleteDialogNode] = useState<Node | null>(null);
@@ -1587,6 +1588,9 @@ export default function PlaygroundCanvas() {
         if (refNodes.length > 0) {
           const refNodesWithScreenshots = await Promise.all(
             refNodes.map(async (node) => {
+              if (node.type === 'image') {
+                return { ...node, screenshotPath: node.imagePath, sourcePath: undefined };
+              }
               const ssFilename = getScreenshotFilename(node.componentName, node.sourceFilename);
               const ssPath = await captureAndSaveScreenshot(node.nodeId, ssFilename);
               let sourcePath: string | undefined;
@@ -1708,6 +1712,14 @@ export default function PlaygroundCanvas() {
         // Capture screenshots for each reference node
         const refNodesWithScreenshots = await Promise.all(
           refNodes.map(async (node) => {
+            // Image nodes already have the image — no need to capture a screenshot
+            if (node.type === 'image') {
+              return {
+                ...node,
+                screenshotPath: node.imagePath,
+                sourcePath: undefined,
+              };
+            }
             const screenshotFilename = getScreenshotFilename(
               node.componentName,
               node.sourceFilename,
@@ -2078,6 +2090,51 @@ export default function PlaygroundCanvas() {
     (event: DragEvent<HTMLDivElement>) => {
       event.preventDefault();
 
+      // Check for image file drops
+      const files = event.dataTransfer.files;
+      if (files.length > 0) {
+        const imageFiles = Array.from(files).filter((f) => f.type.startsWith('image/'));
+        if (imageFiles.length > 0) {
+          const position = screenToFlowPosition({
+            x: event.clientX,
+            y: event.clientY,
+          });
+          imageFiles.forEach((file, idx) => {
+            const reader = new FileReader();
+            reader.onload = async () => {
+              const base64 = reader.result as string;
+              try {
+                const res = await fetch('/playground/api/images', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ imageBase64: base64, originalName: file.name }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                  const newNode: Node = {
+                    id: getNodeId(),
+                    type: 'image',
+                    position: { x: position.x + idx * 320, y: position.y },
+                    style: { width: 300, height: 250 },
+                    data: {
+                      imagePath: data.path,
+                      imageUrl: data.url,
+                      filename: data.filename,
+                      originalName: file.name,
+                    },
+                  };
+                  setNodes((nds) => nds.concat(newNode));
+                }
+              } catch (err) {
+                console.error('[Playground] Image upload failed:', err);
+              }
+            };
+            reader.readAsDataURL(file);
+          });
+          return;
+        }
+      }
+
       const componentId = event.dataTransfer.getData(DND_DATA_KEY);
       if (!componentId) return;
 
@@ -2085,13 +2142,6 @@ export default function PlaygroundCanvas() {
         x: event.clientX,
         y: event.clientY,
       });
-
-      // Image sidebar drop — open file picker
-      if (componentId === IMAGE_DROP_ID) {
-        pendingImageDropPosition.current = position;
-        imageUploadInputRef.current?.click();
-        return;
-      }
 
       const isHtml = componentId.startsWith(HTML_ID_PREFIX);
       const newNode: Node = {
@@ -2112,54 +2162,6 @@ export default function PlaygroundCanvas() {
     [screenToFlowPosition, setNodes, getNodeId]
   );
 
-  // Handle image file selection from the hidden input (triggered by sidebar image drop)
-  const handleImageFileSelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = e.target.files;
-      if (!files || files.length === 0) return;
-      const position = pendingImageDropPosition.current || { x: 100, y: 100 };
-      pendingImageDropPosition.current = null;
-
-      Array.from(files).forEach((file, idx) => {
-        if (!file.type.startsWith('image/')) return;
-        const reader = new FileReader();
-        reader.onload = async () => {
-          const base64 = reader.result as string;
-          try {
-            const res = await fetch('/playground/api/images', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ imageBase64: base64, originalName: file.name }),
-            });
-            const data = await res.json();
-            if (data.success) {
-              const newNode: Node = {
-                id: getNodeId(),
-                type: 'image',
-                position: { x: position.x + idx * 320, y: position.y },
-                style: { width: 300, height: 250 },
-                data: {
-                  imagePath: data.path,
-                  imageUrl: data.url,
-                  filename: data.filename,
-                  originalName: file.name,
-                },
-              };
-              setNodes((nds) => nds.concat(newNode));
-            }
-          } catch (err) {
-            console.error('[Playground] Image upload failed:', err);
-          }
-        };
-        reader.readAsDataURL(file);
-      });
-
-      // Reset the input so the same file can be re-selected
-      e.target.value = '';
-    },
-    [setNodes, getNodeId],
-  );
-
   const handlePaneClick = useCallback(() => {
     setContextMenu(null);
   }, []);
@@ -2177,6 +2179,237 @@ export default function PlaygroundCanvas() {
     window.addEventListener('click', close);
     return () => window.removeEventListener('click', close);
   }, [contextMenu]);
+
+  // Paste images or HTML from clipboard onto the canvas
+  useEffect(() => {
+    const wrapper = reactFlowWrapper.current;
+    if (!wrapper) return;
+
+    const handlePaste = async (e: ClipboardEvent) => {
+      // Don't intercept pastes into text inputs
+      const active = document.activeElement;
+      if (
+        active &&
+        (active.tagName === 'INPUT' ||
+          active.tagName === 'TEXTAREA' ||
+          (active as HTMLElement).isContentEditable)
+      ) {
+        return;
+      }
+
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      // --- Image paste (takes priority) ---
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+          const file = items[i].getAsFile();
+          if (!file) continue;
+          e.preventDefault();
+          const reader = new FileReader();
+          reader.onload = async () => {
+            const base64 = reader.result as string;
+            try {
+              const res = await fetch('/playground/api/images', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  imageBase64: base64,
+                  originalName: file.name || `pasted-image.${file.type.split('/')[1] || 'png'}`,
+                }),
+              });
+              const data = await res.json();
+              if (data.success) {
+                const wrapperBounds = wrapper.getBoundingClientRect();
+                const position = screenToFlowPosition({
+                  x: wrapperBounds.left + wrapperBounds.width / 2,
+                  y: wrapperBounds.top + wrapperBounds.height / 2,
+                });
+                const newNode: Node = {
+                  id: getNodeId(),
+                  type: 'image',
+                  position,
+                  style: { width: 300, height: 250 },
+                  data: {
+                    imagePath: data.path,
+                    imageUrl: data.url,
+                    filename: data.filename,
+                    originalName: file.name || 'Pasted Image',
+                  },
+                };
+                setNodes((nds) => nds.concat(newNode));
+              }
+            } catch (err) {
+              console.error('[Playground] Image paste upload failed:', err);
+            }
+          };
+          reader.readAsDataURL(file);
+          return;
+        }
+      }
+
+      // --- JSX paste (checked before HTML since JSX also contains HTML tags) ---
+      const rawPlain = (e.clipboardData?.getData('text/plain') || '').trim();
+      if (rawPlain && looksLikeJsx(rawPlain)) {
+        e.preventDefault();
+        try {
+          // Determine next frame number by scanning existing JSX components and HTML pages
+          let frameNumber = 1;
+          const [jsxRes, htmlRes] = await Promise.all([
+            fetch('/playground/api/oncanvas-components').catch(() => null),
+            fetch('/playground/api/html-pages').catch(() => null),
+          ]);
+          if (jsxRes?.ok) {
+            const { components } = await jsxRes.json() as { components: { filename: string }[] };
+            for (const comp of components) {
+              const match = comp.filename.match(/^frame-(\d+)\.tsx$/);
+              if (match) frameNumber = Math.max(frameNumber, parseInt(match[1], 10) + 1);
+            }
+          }
+          if (htmlRes?.ok) {
+            const { pages } = await htmlRes.json() as { pages: { folder: string }[] };
+            for (const page of pages) {
+              const match = page.folder.match(/^frame-(\d+)$/);
+              if (match) frameNumber = Math.max(frameNumber, parseInt(match[1], 10) + 1);
+            }
+          }
+
+          const frameName = `frame-${frameNumber}`;
+          const componentName = `Frame${frameNumber}`;
+          const filename = `${frameName}.tsx`;
+          const wrappedJsx = wrapJsxComponent(rawPlain, componentName);
+
+          const res = await fetch('/playground/api/oncanvas-components', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename, content: wrappedJsx }),
+          });
+          const data = await res.json();
+
+          if (!res.ok) {
+            console.error('[Playground] JSX paste failed:', data.error);
+            toast.error(data.error || 'Failed to create frame from pasted JSX');
+            return;
+          }
+
+          const wrapperBounds = wrapper.getBoundingClientRect();
+          const position = screenToFlowPosition({
+            x: wrapperBounds.left + wrapperBounds.width / 2,
+            y: wrapperBounds.top + wrapperBounds.height / 2,
+          });
+
+          const newNode: Node = {
+            id: getNodeId(),
+            type: 'component',
+            position,
+            data: {
+              componentId: `${JSX_ID_PREFIX}${frameName}`,
+              renderMode: 'jsx' as const,
+              jsxFile: filename,
+            },
+          };
+          setNodes((nds) => nds.concat(newNode));
+
+          // Delay event dispatch to give the bundler (HMR) time to recompile
+          // the updated barrel index after the new file is written to disk.
+          // Retry a few times in case the first attempt is too early.
+          const dispatchWithRetry = (attempts: number, delay: number) => {
+            setTimeout(() => {
+              window.dispatchEvent(new Event(JSX_COMPONENT_ADDED_EVENT));
+              if (attempts > 1) {
+                dispatchWithRetry(attempts - 1, delay * 2);
+              }
+            }, delay);
+          };
+          dispatchWithRetry(3, 500);
+        } catch (err) {
+          console.error('[Playground] JSX paste failed:', err);
+          toast.error('Failed to create frame from pasted JSX');
+        }
+        return;
+      }
+
+      // --- HTML paste ---
+      const rawHtml = (e.clipboardData?.getData('text/html') || '').trim();
+      const looksLikeHtmlContent = (s: string) => /<[a-z][\s\S]*>/i.test(s);
+
+      let pastedHtml: string | null = null;
+      if (rawHtml && looksLikeHtmlContent(rawHtml)) {
+        pastedHtml = rawHtml;
+      } else if (rawPlain && looksLikeHtmlContent(rawPlain)) {
+        pastedHtml = rawPlain;
+      }
+      if (!pastedHtml) return;
+
+      e.preventDefault();
+
+      try {
+        // Determine next frame number by scanning existing HTML pages and JSX components
+        let frameNumber = 1;
+        const [htmlRes2, jsxRes2] = await Promise.all([
+          fetch('/playground/api/html-pages').catch(() => null),
+          fetch('/playground/api/oncanvas-components').catch(() => null),
+        ]);
+        if (htmlRes2?.ok) {
+          const { pages } = await htmlRes2.json() as { pages: { folder: string }[] };
+          for (const page of pages) {
+            const match = page.folder.match(/^frame-(\d+)$/);
+            if (match) frameNumber = Math.max(frameNumber, parseInt(match[1], 10) + 1);
+          }
+        }
+        if (jsxRes2?.ok) {
+          const { components } = await jsxRes2.json() as { components: { filename: string }[] };
+          for (const comp of components) {
+            const match = comp.filename.match(/^frame-(\d+)\.tsx$/);
+            if (match) frameNumber = Math.max(frameNumber, parseInt(match[1], 10) + 1);
+          }
+        }
+
+        const frameName = `frame-${frameNumber}`;
+        const wrappedHtml = wrapHtmlFragment(pastedHtml);
+
+        const res = await fetch('/playground/api/html-pages', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: frameName, content: wrappedHtml }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          console.error('[Playground] HTML paste failed:', data.error);
+          toast.error(data.error || 'Failed to create frame from pasted HTML');
+          return;
+        }
+
+        const wrapperBounds = wrapper.getBoundingClientRect();
+        const position = screenToFlowPosition({
+          x: wrapperBounds.left + wrapperBounds.width / 2,
+          y: wrapperBounds.top + wrapperBounds.height / 2,
+        });
+
+        const pageId = data.page.id as string;
+        const folder = data.page.folder as string;
+
+        const newNode: Node = {
+          id: getNodeId(),
+          type: 'component',
+          position,
+          data: {
+            componentId: pageId,
+            renderMode: 'html' as const,
+            htmlFolder: folder,
+          },
+        };
+        setNodes((nds) => nds.concat(newNode));
+      } catch (err) {
+        console.error('[Playground] HTML paste failed:', err);
+        toast.error('Failed to create frame from pasted HTML');
+      }
+    };
+
+    wrapper.addEventListener('paste', handlePaste);
+    return () => wrapper.removeEventListener('paste', handlePaste);
+  }, [screenToFlowPosition, getNodeId, setNodes]);
 
   // Create HTML page from context menu
   const handleCreateHtmlPage = useCallback(async () => {
@@ -2254,7 +2487,17 @@ export default function PlaygroundCanvas() {
   // Handle node deletion - check for children first
   const onNodesDelete = useCallback(async (deletedNodes: Node[]) => {
     for (const node of deletedNodes) {
-      if (node.type === 'iteration' && node.data.filename) {
+      if (node.type === 'image' && node.data.filename) {
+        try {
+          await fetch('/playground/api/images', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: node.data.filename }),
+          });
+        } catch (error) {
+          console.error('Error deleting image file:', error);
+        }
+      } else if (node.type === 'iteration' && node.data.filename) {
         // Check if this node has children
         const childEdges = edges.filter(e => e.source === node.id);
         if (childEdges.length > 0) {
@@ -2378,7 +2621,6 @@ export default function PlaygroundCanvas() {
     const START_Y = ARRANGE_START_Y;
     const VERTICAL_GAP = ARRANGE_VERTICAL_GAP;
     const GROUP_GAP = ARRANGE_GROUP_GAP;
-    const COL_WIDTH = TREE_COLUMN_WIDTH;
 
     // Helper to get node dimensions
     const getNodeSize = (node: Node): { width: number; height: number } => {
@@ -2415,81 +2657,90 @@ export default function PlaygroundCanvas() {
     const nodeMap = new Map<string, Node>();
     nodes.forEach(n => nodeMap.set(n.id, n));
 
-    // Compute subtree height recursively (only counting visible nodes)
-    const subtreeHeightCache = new Map<string, number>();
-    const computeSubtreeHeight = (nodeId: string): number => {
-      if (subtreeHeightCache.has(nodeId)) return subtreeHeightCache.get(nodeId)!;
-      
+    // Compute total vertical height of a node + its descendants stacked vertically
+    const verticalSubtreeHeightCache = new Map<string, number>();
+    const computeVerticalSubtreeHeight = (nodeId: string): number => {
+      if (verticalSubtreeHeightCache.has(nodeId)) return verticalSubtreeHeightCache.get(nodeId)!;
+
       const node = nodeMap.get(nodeId);
-      if (!node) { subtreeHeightCache.set(nodeId, 0); return 0; }
-      
+      if (!node) { verticalSubtreeHeightCache.set(nodeId, 0); return 0; }
+
       const nodeHeight = getNodeSize(node).height;
       const children = (childrenMap.get(nodeId) || []).filter(id => !hiddenNodeIds.has(id));
-      
+
       if (children.length === 0) {
-        subtreeHeightCache.set(nodeId, nodeHeight);
+        verticalSubtreeHeightCache.set(nodeId, nodeHeight);
         return nodeHeight;
       }
-      
-      // Sum of children subtree heights + gaps
-      let totalChildrenHeight = 0;
+
+      let childrenHeight = 0;
       children.forEach((childId, idx) => {
-        totalChildrenHeight += computeSubtreeHeight(childId);
-        if (idx < children.length - 1) totalChildrenHeight += VERTICAL_GAP;
+        childrenHeight += computeVerticalSubtreeHeight(childId);
+        if (idx < children.length - 1) childrenHeight += VERTICAL_GAP;
       });
-      
-      const height = Math.max(nodeHeight, totalChildrenHeight);
-      subtreeHeightCache.set(nodeId, height);
+
+      const height = nodeHeight + VERTICAL_GAP + childrenHeight;
+      verticalSubtreeHeightCache.set(nodeId, height);
       return height;
     };
 
     // Position map
     const positionMap = new Map<string, { x: number; y: number }>();
 
-    // Recursively position a subtree starting from nodeId at depth and yStart
-    const positionSubtree = (nodeId: string, depth: number, yStart: number) => {
+    // Recursively position a node and its descendants vertically (children stacked below)
+    const positionVerticalSubtree = (nodeId: string, x: number, yStart: number) => {
       const node = nodeMap.get(nodeId);
       if (!node) return;
-      
+
+      positionMap.set(nodeId, { x, y: yStart });
+
       const nodeHeight = getNodeSize(node).height;
-      const subtreeH = computeSubtreeHeight(nodeId);
-      const x = START_X + depth * COL_WIDTH;
-      
       const children = (childrenMap.get(nodeId) || []).filter(id => !hiddenNodeIds.has(id));
-      
-      if (children.length === 0) {
-        // Leaf: center within its allocation
-        positionMap.set(nodeId, { x, y: yStart + (subtreeH - nodeHeight) / 2 });
-        return;
-      }
-      
-      // Position children first so we know their span
-      let childY = yStart;
-      children.forEach((childId, idx) => {
-        const childSubtreeH = computeSubtreeHeight(childId);
-        positionSubtree(childId, depth + 1, childY);
-        childY += childSubtreeH;
-        if (idx < children.length - 1) childY += VERTICAL_GAP;
+
+      let childY = yStart + nodeHeight + VERTICAL_GAP;
+      children.forEach(childId => {
+        positionVerticalSubtree(childId, x, childY);
+        childY += computeVerticalSubtreeHeight(childId) + VERTICAL_GAP;
       });
-      
-      // Total children span (for centering parent)
-      let totalChildrenHeight = 0;
-      children.forEach((childId, idx) => {
-        totalChildrenHeight += computeSubtreeHeight(childId);
-        if (idx < children.length - 1) totalChildrenHeight += VERTICAL_GAP;
-      });
-      
-      // Center parent vertically relative to children span
-      const parentY = yStart + (totalChildrenHeight - nodeHeight) / 2;
-      positionMap.set(nodeId, { x, y: parentY });
     };
 
-    // Process each component tree
+    // Process each component: components stacked vertically, iterations spread horizontally
+    const H_GAP = ARRANGE_HORIZONTAL_GAP;
     let currentGroupY = START_Y;
     componentNodes.forEach(componentNode => {
-      const subtreeH = computeSubtreeHeight(componentNode.id);
-      positionSubtree(componentNode.id, 0, currentGroupY);
-      currentGroupY += subtreeH + GROUP_GAP;
+      const compSize = getNodeSize(componentNode);
+
+      // Place component node
+      positionMap.set(componentNode.id, { x: START_X, y: currentGroupY });
+
+      const iterations = (childrenMap.get(componentNode.id) || []).filter(id => !hiddenNodeIds.has(id));
+
+      let iterX = START_X + compSize.width + H_GAP;
+      let rowHeight = compSize.height;
+
+      iterations.forEach(iterId => {
+        const iterNode = nodeMap.get(iterId);
+        if (!iterNode) return;
+        const iterSize = getNodeSize(iterNode);
+
+        // Place iteration at same Y as component, spread horizontally
+        positionMap.set(iterId, { x: iterX, y: currentGroupY });
+
+        // Place sub-children of this iteration vertically below it
+        const subChildren = (childrenMap.get(iterId) || []).filter(id => !hiddenNodeIds.has(id));
+        let subY = currentGroupY + iterSize.height + VERTICAL_GAP;
+        subChildren.forEach(subChildId => {
+          positionVerticalSubtree(subChildId, iterX, subY);
+          subY += computeVerticalSubtreeHeight(subChildId) + VERTICAL_GAP;
+        });
+
+        // Row height = max of component height vs each iteration's full vertical subtree
+        rowHeight = Math.max(rowHeight, computeVerticalSubtreeHeight(iterId));
+
+        iterX += iterSize.width + H_GAP;
+      });
+
+      currentGroupY += rowHeight + GROUP_GAP;
     });
 
     // Position orphan nodes (not reachable from any component)
@@ -2499,7 +2750,7 @@ export default function PlaygroundCanvas() {
       let orphanY = currentGroupY;
       orphans.forEach(node => {
         const size = getNodeSize(node);
-        positionMap.set(node.id, { x: START_X + COL_WIDTH, y: orphanY });
+        positionMap.set(node.id, { x: START_X, y: orphanY });
         orphanY += size.height + VERTICAL_GAP;
       });
     }
@@ -2659,15 +2910,6 @@ export default function PlaygroundCanvas() {
 
   return (
     <TooltipProvider>
-      {/* Hidden file input for sidebar image drops */}
-      <input
-        ref={imageUploadInputRef}
-        type="file"
-        accept="image/*"
-        multiple
-        className="hidden"
-        onChange={handleImageFileSelect}
-      />
       <div ref={reactFlowWrapper} className="w-full h-full">
         <ReactFlow
           nodes={visibleNodes}
@@ -2707,6 +2949,7 @@ export default function PlaygroundCanvas() {
               if (node.type === 'skeleton') return MINIMAP_SKELETON_COLOR;
               if (node.type === 'iteration') return MINIMAP_ITERATION_COLOR;
               if (node.type === 'drag-ghost') return '#0B99FF';
+              if (node.type === 'image') return MINIMAP_IMAGE_COLOR;
               return MINIMAP_COMPONENT_COLOR;
             }}
             maskColor={MINIMAP_MASK_COLOR}

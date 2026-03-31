@@ -540,7 +540,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
                 sandbox="allow-scripts allow-same-origin"
                 title={`${data.htmlFolder} #${data.iterationNumber}`}
               />
-              {!isInteractive && <div className="absolute inset-0" />}
+              {!isInteractive && <div className="absolute inset-0" data-iframe-overlay />}
             </div>
           ) : isFillMode ? (
             /* Freeform / active resize: fill the node with centered content */

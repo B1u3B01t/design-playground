@@ -10,6 +10,7 @@ import DiscoveryModal, { type DiscoveryEntry } from './DiscoveryModal';
 import { getProviderFields } from './lib/generation-body';
 import { matchesAction } from './lib/keybindings';
 import { ADD_ALL_QUEUE_STORAGE_KEY } from './lib/constants';
+import { preloadAllComponents } from './registry';
 
 export interface PendingChild {
   id: string;
@@ -30,6 +31,19 @@ export default function PlaygroundClient() {
   useEffect(() => {
     return () => {
       if (scanPollRef.current) clearTimeout(scanPollRef.current);
+    };
+  }, []);
+
+  // Preload all dynamic components to prevent HMR cascades on first drop
+  useEffect(() => {
+    const schedule = typeof requestIdleCallback === 'function'
+      ? requestIdleCallback
+      : (cb: () => void) => setTimeout(cb, 100);
+    const id = schedule(() => preloadAllComponents());
+    return () => {
+      if (typeof cancelIdleCallback === 'function' && typeof id === 'number') {
+        cancelIdleCallback(id);
+      }
     };
   }, []);
 

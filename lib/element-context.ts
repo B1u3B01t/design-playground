@@ -20,6 +20,8 @@ export interface SelectedElement {
   context: ElementContext;
   nodeId: string;
   componentName: string;
+  /** For elements selected inside iframes — the rect in iframe-internal coordinates */
+  iframeRect?: { top: number; left: number; width: number; height: number };
 }
 
 // ---------------------------------------------------------------------------

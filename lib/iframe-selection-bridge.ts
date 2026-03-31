@@ -24,7 +24,6 @@ export function getSelectionBridgeScript(): string {
   return `<script data-bridge="element-select">
 (function() {
   var active = false;
-  var overlay = null;
   var lastTarget = null;
 
   // ── Helpers ──
@@ -77,33 +76,10 @@ export function getSelectionBridgeScript(): string {
     };
   }
 
-  // ── Overlay highlight ──
-
-  function ensureOverlay() {
-    if (overlay) return overlay;
-    overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483647;border:2px solid #0B99FF;background:rgba(11,153,255,0.08);transition:all 0.1s ease;display:none;';
-    document.body.appendChild(overlay);
-    return overlay;
-  }
-
-  function showOverlay(rect) {
-    var o = ensureOverlay();
-    o.style.top = rect.top + 'px';
-    o.style.left = rect.left + 'px';
-    o.style.width = rect.width + 'px';
-    o.style.height = rect.height + 'px';
-    o.style.display = 'block';
-  }
-
-  function hideOverlay() {
-    if (overlay) overlay.style.display = 'none';
-  }
-
   // ── Event handlers ──
 
   function isBridge(el) {
-    return el === overlay || (el.tagName === 'SCRIPT' && el.dataset.bridge);
+    return el.tagName === 'SCRIPT' && el.dataset && el.dataset.bridge;
   }
 
   function onMouseMove(e) {
@@ -112,7 +88,6 @@ export function getSelectionBridgeScript(): string {
     if (!el || el === document.body || el === document.documentElement || isBridge(el)) {
       if (lastTarget) {
         lastTarget = null;
-        hideOverlay();
         window.parent.postMessage({ type: 'element-select:hover-clear' }, '*');
       }
       return;
@@ -120,7 +95,6 @@ export function getSelectionBridgeScript(): string {
     if (el === lastTarget) return;
     lastTarget = el;
     var ctx = extractContext(el);
-    showOverlay(ctx.rect);
     window.parent.postMessage({ type: 'element-select:hover', data: ctx }, '*');
   }
 
@@ -145,8 +119,27 @@ export function getSelectionBridgeScript(): string {
     } else if (e.data.type === 'element-select:exit') {
       active = false;
       lastTarget = null;
-      hideOverlay();
       document.body.style.cursor = '';
+    } else if (e.data.type === 'element-select:hover-at') {
+      // Parent proxied a mousemove through the overlay
+      var el = document.elementFromPoint(e.data.x, e.data.y);
+      if (!el || el === document.body || el === document.documentElement || isBridge(el)) {
+        if (lastTarget) {
+          lastTarget = null;
+          window.parent.postMessage({ type: 'element-select:hover-clear' }, '*');
+        }
+        return;
+      }
+      if (el === lastTarget) return;
+      lastTarget = el;
+      var ctx = extractContext(el);
+      window.parent.postMessage({ type: 'element-select:hover', data: ctx }, '*');
+    } else if (e.data.type === 'element-select:click-at') {
+      // Parent proxied a click through the overlay
+      var el2 = document.elementFromPoint(e.data.x, e.data.y);
+      if (!el2 || el2 === document.body || el2 === document.documentElement || isBridge(el2)) return;
+      var ctx2 = extractContext(el2);
+      window.parent.postMessage({ type: 'element-select:click', data: ctx2 }, '*');
     }
   });
 

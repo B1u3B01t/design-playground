@@ -90,6 +90,9 @@ export const PRESENCE_BUBBLES_STORAGE_KEY = 'playground-presence-bubbles';
 /** Key for persisting generation info across page reloads */
 export const GENERATION_INFO_STORAGE_KEY = 'playground-generation-info';
 
+/** Key for persisting the add-all queue in sessionStorage */
+export const ADD_ALL_QUEUE_STORAGE_KEY = 'playground-add-all-queue';
+
 // ---------------------------------------------------------------------------
 // Timing Constants
 // ---------------------------------------------------------------------------
@@ -343,6 +346,9 @@ export const MINIMAP_ITERATION_COLOR = '#6b7280';
 /** MiniMap node color for component nodes */
 export const MINIMAP_COMPONENT_COLOR = '#3b82f6';
 
+/** MiniMap node color for image nodes */
+export const MINIMAP_IMAGE_COLOR = '#a78bfa';
+
 /** MiniMap mask color */
 export const MINIMAP_MASK_COLOR = 'rgba(0, 0, 0, 0.08)';
 
@@ -429,6 +435,52 @@ export interface HtmlIterationFile {
 }
 
 // ---------------------------------------------------------------------------
+// JSX On-Canvas Components
+// ---------------------------------------------------------------------------
+
+/** Prefix for on-canvas JSX component IDs in drag-and-drop and canvas state */
+export const JSX_ID_PREFIX = 'jsx:';
+
+/** Fired when a new JSX component file is added to the canvas */
+export const JSX_COMPONENT_ADDED_EVENT = 'playground:jsx-component-added';
+
+/** Regex to match on-canvas JSX base component filenames (e.g. frame-1.tsx, but not iterations) */
+export const CANVAS_COMPONENT_FILENAME_PATTERN = /^frame-\d+\.tsx$/;
+
+/** Regex to match on-canvas JSX iteration filenames (e.g. frame-1.iteration-2.tsx) */
+export const CANVAS_ITERATION_FILENAME_PATTERN = /^(.+)\.iteration-(\d+)\.tsx$/;
+
+/** Regex to parse on-canvas JSX iteration filenames into [name, number] */
+export const CANVAS_ITERATION_PARSE_PATTERN = /^(.+)\.iteration-(\d+)\.tsx$/;
+
+/** Info about an on-canvas JSX component */
+export interface JsxComponentInfo {
+  id: string;             // "jsx:frame-1"
+  label: string;          // "frame-1"
+  filename: string;       // "frame-1.tsx"
+  iterations: JsxIterationInfo[];
+}
+
+/** Info about a JSX iteration file */
+export interface JsxIterationInfo {
+  id: string;
+  label: string;
+  filename: string;
+  baseFilename: string;
+  iterationNumber: number;
+}
+
+// ---------------------------------------------------------------------------
+// Canvas Events
+// ---------------------------------------------------------------------------
+
+/** Fired to focus/pan to a specific node on the canvas */
+export const FOCUS_NODE_EVENT = 'playground:focus-node';
+
+/** Fired to delete a frame and its canvas nodes */
+export const DELETE_FRAME_EVENT = 'playground:delete-frame';
+
+// ---------------------------------------------------------------------------
 // Edit Mode Constants
 // ---------------------------------------------------------------------------
 
@@ -442,8 +494,6 @@ export const EDIT_COMPLETE_EVENT = 'playground:edit-complete';
 /** MIME-like key used for drag-and-drop data transfer of playground components */
 export const DND_DATA_KEY = 'application/x-playground-component';
 
-/** Special DnD ID used when dragging an image placeholder from the sidebar */
-export const IMAGE_DROP_ID = '__image_upload__';
 
 // ---------------------------------------------------------------------------
 // Drag-to-Iterate Constants
@@ -510,7 +560,7 @@ export interface CursorChatSubmitPayload {
   targetNodeId: string | null;
   targetComponentId: string | null;
   targetComponentName: string | null;
-  targetType: 'component' | 'iteration' | null;
+  targetType: 'component' | 'iteration' | 'image' | null;
   sourceFilename?: string;
   iterationCount?: number;
   canvasPosition: { x: number; y: number };
@@ -528,9 +578,11 @@ export interface CursorChatSubmitPayload {
     nodeId: string;
     componentId: string;
     componentName: string;
-    type: 'component' | 'iteration';
+    type: 'component' | 'iteration' | 'image';
     sourceFilename?: string;
     screenshotPath?: string;
+    imagePath?: string;
+    imageUrl?: string;
   }[];
   /** When true, edit the target file in-place instead of creating iterations */
   editMode?: boolean;

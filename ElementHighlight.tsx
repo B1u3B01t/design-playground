@@ -19,7 +19,19 @@ function useRefreshedRects(elements: SelectedElement[], deps: number) {
   useEffect(() => {
     const map = new Map<HTMLElement, DOMRect>();
     for (const sel of elements) {
-      if (document.contains(sel.element)) {
+      if (!document.contains(sel.element)) continue;
+      if (sel.iframeRect && sel.element.tagName === 'IFRAME') {
+        // Recompute page rect from stored iframe-relative rect, accounting for CSS scale
+        const iframe = sel.element as HTMLIFrameElement;
+        const bounds = iframe.getBoundingClientRect();
+        const scale = iframe.offsetWidth > 0 ? bounds.width / iframe.offsetWidth : 1;
+        map.set(sel.element, new DOMRect(
+          bounds.left + sel.iframeRect.left * scale,
+          bounds.top + sel.iframeRect.top * scale,
+          sel.iframeRect.width * scale,
+          sel.iframeRect.height * scale,
+        ));
+      } else {
         map.set(sel.element, sel.element.getBoundingClientRect());
       }
     }

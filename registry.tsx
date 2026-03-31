@@ -741,6 +741,21 @@ export function flattenRegistry(
 
 export const flatRegistry = flattenRegistry(registry);
 
+/**
+ * Preload all dynamic components in the registry.
+ * Calling .preload() on a next/dynamic component triggers chunk compilation
+ * without rendering, preventing HMR cascades when components are first dropped
+ * onto the canvas in dev mode.
+ */
+export function preloadAllComponents(): void {
+  for (const item of Object.values(flatRegistry)) {
+    const Component = item.Component as ComponentType<Record<string, unknown>> & { preload?: () => void };
+    if (typeof Component?.preload === 'function') {
+      Component.preload();
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Registry resolution
 // ---------------------------------------------------------------------------

@@ -72,17 +72,20 @@ function resolveNodeFromIframe(
   };
 }
 
-/** Convert iframe-relative rect to page-absolute DOMRect */
+/** Convert iframe-relative rect to page-absolute DOMRect, accounting for CSS transform scale */
 function iframeRectToPage(
   iframeRect: { top: number; left: number; width: number; height: number },
   iframe: HTMLIFrameElement,
 ): DOMRect {
   const iframeBounds = iframe.getBoundingClientRect();
+  // The iframe may have CSS transform: scale() applied — detect by comparing
+  // visual size (getBoundingClientRect) to layout size (offsetWidth)
+  const scale = iframe.offsetWidth > 0 ? iframeBounds.width / iframe.offsetWidth : 1;
   return new DOMRect(
-    iframeBounds.left + iframeRect.left,
-    iframeBounds.top + iframeRect.top,
-    iframeRect.width,
-    iframeRect.height,
+    iframeBounds.left + iframeRect.left * scale,
+    iframeBounds.top + iframeRect.top * scale,
+    iframeRect.width * scale,
+    iframeRect.height * scale,
   );
 }
 
@@ -202,8 +205,25 @@ export function useElementSelection(): UseElementSelectionReturn {
         return;
       }
 
-      // If hovering an iframe, the bridge script handles hover detection
+      // If hovering an iframe directly (node is selected, overlay removed), bridge handles it
       if (el.tagName === 'IFRAME') return;
+
+      // If hovering the iframe overlay (node NOT selected), proxy coordinates to iframe bridge
+      if (el.hasAttribute('data-iframe-overlay')) {
+        const iframe = el.parentElement?.querySelector('iframe') as HTMLIFrameElement | null;
+        if (iframe) {
+          const bounds = iframe.getBoundingClientRect();
+          const scale = iframe.offsetWidth > 0 ? bounds.width / iframe.offsetWidth : 1;
+          try {
+            iframe.contentWindow?.postMessage({
+              type: 'element-select:hover-at',
+              x: (e.clientX - bounds.left) / scale,
+              y: (e.clientY - bounds.top) / scale,
+            }, '*');
+          } catch { /* cross-origin */ }
+        }
+        return;
+      }
 
       setHoveredElement(el);
       setHoveredRect(el.getBoundingClientRect());
@@ -256,8 +276,31 @@ export function useElementSelection(): UseElementSelectionReturn {
       // Must be inside a ReactFlow node
       if (!target.closest('.react-flow__node')) return;
 
-      // If clicking on an iframe, the bridge script handles selection
-      if (target.tagName === 'IFRAME') return;
+      // If clicking on an iframe directly (node selected, overlay gone), bridge handles it
+      if (target.tagName === 'IFRAME') {
+        e.stopPropagation();
+        e.preventDefault();
+        return;
+      }
+
+      // If clicking on the iframe overlay (node NOT selected), proxy click to iframe bridge
+      if (target.hasAttribute('data-iframe-overlay')) {
+        e.stopPropagation();
+        e.preventDefault();
+        const iframe = target.parentElement?.querySelector('iframe') as HTMLIFrameElement | null;
+        if (iframe) {
+          const bounds = iframe.getBoundingClientRect();
+          const scale = iframe.offsetWidth > 0 ? bounds.width / iframe.offsetWidth : 1;
+          try {
+            iframe.contentWindow?.postMessage({
+              type: 'element-select:click-at',
+              x: (e.clientX - bounds.left) / scale,
+              y: (e.clientY - bounds.top) / scale,
+            }, '*');
+          } catch { /* cross-origin */ }
+        }
+        return;
+      }
 
       // Block event from reaching ReactFlow
       e.stopPropagation();
@@ -338,6 +381,7 @@ export function useElementSelection(): UseElementSelectionReturn {
           context,
           nodeId: nodeInfo.nodeId,
           componentName: nodeInfo.componentName,
+          iframeRect: msg.data.rect,
         };
 
         setSelectedElements((prev) => {

@@ -133,7 +133,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   const handleResizeEnd = useCallback(() => {
     setIsResizing(false);
     setIsCustomResized(true);
-    if (nodeId) updateNodeData(nodeId, { customResized: true });
+    if (nodeId) updateNodeData(nodeId, { customResized: true, size: 'default' });
   }, [nodeId, updateNodeData]);
 
   const handleSizeChange = (newSize: ComponentSize) => {
@@ -291,7 +291,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                 title={data.htmlFolder}
               />
               {/* Pointer overlay prevents iframe from capturing clicks when not selected */}
-              {!isInteractive && <div className="absolute inset-0" />}
+              {!isInteractive && <div className="absolute inset-0" data-iframe-overlay />}
             </div>
           ) : isFillMode ? (
             /* Freeform / active resize: fill the node with centered content */

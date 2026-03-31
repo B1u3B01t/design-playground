@@ -387,3 +387,8 @@
   cursor: crosshair !important;
 }
 
+/* Allow mouse events through the iframe overlay during element selection */
+.element-select-mode [data-iframe-overlay] {
+  pointer-events: none !important;
+}
+

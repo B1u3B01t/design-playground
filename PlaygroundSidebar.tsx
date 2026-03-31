@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback, DragEvent } from 'react';
-import { ChevronRight, ChevronDown, ChevronLeft, Plus, Loader2, RefreshCw, Frame, Component, Folder, ImageIcon } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback, useRef, DragEvent, MouseEvent } from 'react';
+import { createPortal } from 'react-dom';
+import { ChevronRight, ChevronDown, ChevronLeft, Plus, Loader2, RefreshCw, Frame, FileCode, Component, Folder, Trash2 } from 'lucide-react';
 import { registry, RegistryItem, RegistryLeafItem, isGroup, isLeaf } from './registry';
-import { DND_DATA_KEY, HTML_ID_PREFIX, IMAGE_DROP_ID } from './lib/constants';
-import type { HtmlPageInfo } from './lib/constants';
+import { DND_DATA_KEY, HTML_ID_PREFIX, FOCUS_NODE_EVENT, JSX_ID_PREFIX, DELETE_FRAME_EVENT } from './lib/constants';
+import type { HtmlPageInfo, JsxComponentInfo } from './lib/constants';
 import type { PendingChild } from './PlaygroundClient';
 
 // ---------------------------------------------------------------------------
@@ -53,11 +54,16 @@ interface TreeNodeProps {
   pendingChildren: Map<string, PendingChild[]>;
 }
 
+function focusNodeOnCanvas(componentId: string) {
+  window.dispatchEvent(new CustomEvent(FOCUS_NODE_EVENT, { detail: { componentId } }));
+}
+
 function TreeNode({ item, depth = 0, childrenMap, pendingChildren }: TreeNodeProps) {
   const [expanded, setExpanded] = useState(true);
 
   const handleDragStart = (e: DragEvent<HTMLDivElement>, componentId: string) => {
     e.dataTransfer.setData(DND_DATA_KEY, componentId);
+    e.dataTransfer.setData('text/plain', '');
     e.dataTransfer.effectAllowed = 'move';
   };
 
@@ -106,6 +112,7 @@ function TreeNode({ item, depth = 0, childrenMap, pendingChildren }: TreeNodePro
             <div
               draggable
               onDragStart={(e) => handleDragStart(e, item.id)}
+              onDoubleClick={() => focusNodeOnCanvas(item.id)}
               className="flex items-center gap-1.5 flex-1 min-w-0 cursor-grab active:cursor-grabbing"
             >
               <Component className="w-3.5 h-3.5 shrink-0" />
@@ -151,6 +158,7 @@ function TreeNode({ item, depth = 0, childrenMap, pendingChildren }: TreeNodePro
       <div
         draggable
         onDragStart={(e) => handleDragStart(e, item.id)}
+        onDoubleClick={() => focusNodeOnCanvas(item.id)}
         className="flex items-center gap-1.5 px-2 py-1.5 text-[13px] text-stone-700 hover:text-stone-900 hover:bg-stone-100 rounded-2xl cursor-grab active:cursor-grabbing transition-colors group select-none"
         style={{ paddingLeft: `${depth * 10 + 8}px` }}
       >
@@ -186,20 +194,28 @@ interface PlaygroundSidebarProps {
 export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pendingChildren }: PlaygroundSidebarProps) {
   const [search, setSearch] = useState('');
   const [htmlPages, setHtmlPages] = useState<HtmlPageInfo[]>([]);
+  const [jsxComponents, setJsxComponents] = useState<JsxComponentInfo[]>([]);
   const [htmlExpanded, setHtmlExpanded] = useState(true);
   const [isRefreshingHtml, setIsRefreshingHtml] = useState(false);
 
   const childrenMap = useMemo(() => buildChildrenMap(registry), []);
   const strippedRegistry = useMemo(() => stripChildLeaves(registry), []);
 
-  // Fetch HTML pages on mount
+  // Fetch HTML pages and JSX components on mount
   const fetchHtmlPages = useCallback(async () => {
     try {
       setIsRefreshingHtml(true);
-      const response = await fetch('/playground/api/html-pages');
-      if (response.ok) {
-        const data = await response.json();
+      const [htmlRes, jsxRes] = await Promise.all([
+        fetch('/playground/api/html-pages'),
+        fetch('/playground/api/oncanvas-components'),
+      ]);
+      if (htmlRes.ok) {
+        const data = await htmlRes.json();
         setHtmlPages(data.pages || []);
+      }
+      if (jsxRes.ok) {
+        const data = await jsxRes.json();
+        setJsxComponents(data.components || []);
       }
     } catch { /* ignore */ }
     finally { setIsRefreshingHtml(false); }
@@ -207,8 +223,58 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
 
   useEffect(() => { fetchHtmlPages(); }, [fetchHtmlPages]);
 
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; frame: { id: string; label: string; frameType: 'html' | 'jsx' } } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+
+  const handleFrameContextMenu = useCallback((e: MouseEvent, frame: { id: string; label: string; frameType: 'html' | 'jsx' }) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, frame });
+  }, []);
+
+  const handleDeleteFrame = useCallback(async () => {
+    if (!contextMenu) return;
+    const { frame } = contextMenu;
+    setContextMenu(null);
+
+    try {
+      if (frame.frameType === 'html') {
+        const folder = frame.id.replace(HTML_ID_PREFIX, '');
+        await fetch('/playground/api/html-pages', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pageFolder: folder }),
+        });
+      } else {
+        const filename = frame.id.replace(JSX_ID_PREFIX, '') + '.tsx';
+        await fetch('/playground/api/oncanvas-components', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename }),
+        });
+      }
+      // Tell the canvas to remove nodes for this frame
+      window.dispatchEvent(new CustomEvent(DELETE_FRAME_EVENT, { detail: { componentId: frame.id } }));
+      fetchHtmlPages();
+    } catch { /* ignore */ }
+  }, [contextMenu, fetchHtmlPages]);
+
+  // Close context menu on outside click or escape
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleClick = () => setContextMenu(null);
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setContextMenu(null); };
+    window.addEventListener('click', handleClick);
+    window.addEventListener('keydown', handleKey);
+    return () => {
+      window.removeEventListener('click', handleClick);
+      window.removeEventListener('keydown', handleKey);
+    };
+  }, [contextMenu]);
+
   const handleDragStartHtml = (e: DragEvent<HTMLDivElement>, pageId: string) => {
     e.dataTransfer.setData(DND_DATA_KEY, pageId);
+    e.dataTransfer.setData('text/plain', '');
     e.dataTransfer.effectAllowed = 'move';
   };
 
@@ -238,10 +304,22 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
 
   const filteredRegistry = filterItems(strippedRegistry, search);
 
-  // Filter HTML pages by search
-  const filteredHtmlPages = search.trim()
-    ? htmlPages.filter(p => p.label.toLowerCase().includes(search.toLowerCase()))
-    : htmlPages;
+  // Merge HTML pages and JSX components into one sorted frames list
+  const allFrames = [
+    ...htmlPages.map(p => ({ id: p.id, label: p.label, frameType: 'html' as const })),
+    ...jsxComponents.map(c => ({ id: c.id, label: c.label, frameType: 'jsx' as const })),
+  ].sort((a, b) => {
+    const na = parseInt(a.label.match(/(\d+)/)?.[1] ?? '0', 10);
+    const nb = parseInt(b.label.match(/(\d+)/)?.[1] ?? '0', 10);
+    return na - nb;
+  });
+
+  const filteredFrames = search.trim()
+    ? allFrames.filter(f => f.label.toLowerCase().includes(search.toLowerCase()))
+    : allFrames;
+
+  // Keep backward compat for the empty-state check
+  const filteredHtmlPages = filteredFrames;
 
   return (
     <aside className="w-[208px] h-full bg-white rounded-2xl border border-border flex flex-col overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
@@ -286,8 +364,8 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
 
       {/* Scrollable area for both HTML pages and component tree */}
       <div className="flex-1 overflow-y-auto px-1.5 min-h-0 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-stone-300 [&::-webkit-scrollbar-thumb]:rounded">
-        {/* HTML Pages section */}
-        {filteredHtmlPages.length > 0 && (
+        {/* Frames section — HTML pages and on-canvas JSX components */}
+        {filteredFrames.length > 0 && (
           <div className="mb-1">
             <div className="flex items-center justify-between">
               <button
@@ -305,39 +383,29 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
                 onClick={fetchHtmlPages}
                 disabled={isRefreshingHtml}
                 className="p-1 rounded text-stone-400 hover:text-stone-600 transition-colors"
-                aria-label="Refresh HTML pages"
+                aria-label="Refresh frames"
               >
                 <RefreshCw className={`w-3 h-3 ${isRefreshingHtml ? 'animate-spin' : ''}`} />
               </button>
             </div>
-            {htmlExpanded && filteredHtmlPages.map(page => (
+            {htmlExpanded && filteredFrames.map(frame => (
               <div
-                key={page.id}
+                key={frame.id}
                 draggable
-                onDragStart={(e) => handleDragStartHtml(e, page.id)}
+                onDragStart={(e) => handleDragStartHtml(e, frame.id)}
+                onDoubleClick={() => focusNodeOnCanvas(frame.id)}
+                onContextMenu={(e) => handleFrameContextMenu(e, frame)}
                 className="flex items-center gap-1.5 px-2 py-1.5 text-[13px] text-stone-700 hover:text-stone-900 hover:bg-stone-100 rounded-sm cursor-grab active:cursor-grabbing transition-colors group select-none"
                 style={{ paddingLeft: '18px' }}
               >
-                <Frame className="w-3.5 h-3.5 shrink-0" />
-                <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{page.label}</span>
+                {frame.frameType === 'jsx' ? (
+                  <FileCode className="w-3.5 h-3.5 shrink-0 text-purple-500" />
+                ) : (
+                  <Frame className="w-3.5 h-3.5 shrink-0" />
+                )}
+                <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{frame.label}</span>
               </div>
             ))}
-          </div>
-        )}
-
-        {/* Image node — drag to upload an image */}
-        {(!search.trim() || 'image'.includes(search.toLowerCase())) && (
-          <div
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData(DND_DATA_KEY, IMAGE_DROP_ID);
-              e.dataTransfer.effectAllowed = 'move';
-            }}
-            className="flex items-center gap-1.5 px-2 py-1.5 text-[13px] text-stone-700 hover:text-stone-900 hover:bg-stone-100 rounded-2xl cursor-grab active:cursor-grabbing transition-colors select-none mb-1"
-            style={{ paddingLeft: '18px' }}
-          >
-            <ImageIcon className="w-3.5 h-3.5 shrink-0 text-violet-500" />
-            <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">Image</span>
           </div>
         )}
 
@@ -357,6 +425,24 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
           Drag drop any component
         </p>
       </div>
+
+      {/* Context menu — portaled to body to avoid clipping by aside overflow */}
+      {contextMenu && createPortal(
+        <div
+          ref={contextMenuRef}
+          className="fixed z-50 min-w-[140px] bg-white border border-stone-200 rounded-2xl shadow-lg py-1 animate-in fade-in zoom-in-95 duration-100"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          <button
+            onClick={handleDeleteFrame}
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-red-600 hover:bg-red-50 transition-colors text-left rounded-2xl"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Delete {contextMenu.frame.label}
+          </button>
+        </div>,
+        document.body,
+      )}
     </aside>
   );
 }
