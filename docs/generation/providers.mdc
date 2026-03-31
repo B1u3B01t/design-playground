@@ -1,0 +1,62 @@
+---
+globs: ["src/app/playground/lib/providers/**"]
+description: "Provider system: Cursor CLI and Claude Code CLI integration, ProviderConfig, spawn-agent, model listing"
+---
+
+# AI Providers
+
+The playground spawns external AI agents via CLI tools. The provider abstraction is in `src/app/playground/lib/providers/`.
+
+## Provider Types
+
+| ID | CLI | Description |
+|----|-----|-------------|
+| `cursor` | `cursor agent` | Default. Uses Cursor's built-in AI agent. |
+| `claude-code` | `claude` | Anthropic's Claude Code CLI. Supports effort/budget/turns config. |
+
+## Files
+
+| File | Purpose |
+|------|---------|
+| `types.ts` | `ProviderId`, `ProviderConfig`, `AgentSpawnOptions` interfaces |
+| `cursor.ts` | Cursor CLI provider — `buildAgentArgs()`, `buildModelListArgs()`, `parseModelOutput()` |
+| `claude-code.ts` | Claude Code provider — same interface, plus `ClaudeCodeOptions` (effort, budget, turns) |
+| `registry.ts` | `getProvider()`, `getAllProviders()`, default provider lookup |
+| `spawn-agent.ts` | Process spawning — child process with stdin piping, SIGTERM cancellation |
+| `index.ts` | Barrel exports |
+
+## ProviderConfig Interface
+
+```ts
+interface ProviderConfig {
+  id: ProviderId;
+  buildAgentArgs(options: AgentSpawnOptions): string[];
+  buildModelListArgs(): string[];
+  parseModelOutput(stdout: string): ModelInfo[];
+}
+```
+
+## AgentSpawnOptions
+
+```ts
+interface AgentSpawnOptions {
+  model?: string;
+  effort?: string;        // claude-code only
+  maxBudgetUsd?: number;  // claude-code only
+  maxTurns?: number;      // claude-code only
+}
+```
+
+## How Generation Works
+
+1. User clicks "Run with Cursor/Claude" in the Iterate dialog
+2. `POST /playground/api/generate` is called with the prompt and provider config
+3. `spawn-agent.ts` spawns the CLI process, pipes the prompt via stdin
+4. HTTP request stays open until agent completes
+5. Agent writes iteration files to disk
+6. File watcher detects `tree.json` changes → SSE event → canvas updates
+
+## Related Docs
+
+- API route that uses providers: @generation/api-routes.mdc
+- Prompts piped to agents: @generation/prompts.mdc

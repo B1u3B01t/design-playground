@@ -1,0 +1,54 @@
+---
+description: "Generating iterations from an existing iteration: @sourceIteration metadata, numbering, tree.json parent format"
+---
+
+# Iterating from an Existing Iteration
+
+When a user clicks Iterate on an **IterationNode** (not a ComponentNode), you generate variations based on that iteration — not the original component.
+
+## Key Differences from Standard Iteration
+
+1. **Read the base iteration file** as your starting point, NOT the original component
+2. **`@sourceIteration` is required** in the metadata comment
+3. **tree.json parent** is the iteration filename, not the registry ID
+4. **Numbering** continues from the highest existing iteration number for that component
+
+## Metadata
+
+```tsx
+/**
+ * @iteration 4
+ * @parent PricingCard
+ * @sourceIteration PricingCard.iteration-1.tsx
+ * @description Dark theme variant based on iteration 1's horizontal layout
+ */
+```
+
+`@sourceIteration` must include the full filename with `.tsx`.
+
+## tree.json Entry
+
+```json
+{
+  "PricingCard.iteration-4.tsx": {
+    "parent": "PricingCard.iteration-1.tsx"
+  }
+}
+```
+
+The parent is the **iteration filename** (not the registry ID `"pricing-card"`).
+
+## Workflow
+
+1. Read the base iteration file (e.g. `PricingCard.iteration-1.tsx`)
+2. Generate variations that diverge from that iteration's design
+3. Number from the next available number (check existing iterations)
+4. Include `@sourceIteration` in metadata
+5. Set tree.json parent to the base iteration filename
+6. Register in `index.ts` as normal
+
+## Related Docs
+
+- Core iteration rules: @iterations/guide.mdc
+- index.ts and tree.json format: @iterations/index-and-tree.mdc
+- Prompt template for this flow: @generation/prompts.mdc

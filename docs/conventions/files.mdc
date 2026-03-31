@@ -1,0 +1,82 @@
+---
+globs: ["src/app/playground/previews/**", "src/app/playground/data/**"]
+description: "File naming conventions, preview file rules, mock data patterns, import paths, export requirements"
+---
+
+# File Conventions
+
+## Preview Files
+
+**Location**: `src/app/playground/previews/{Name}.preview.tsx`
+
+Preview files are playground-specific wrappers that accept **explicit props** instead of reading from stores/context.
+
+```tsx
+// ❌ Production component — store dependency breaks in playground
+export function Banner() {
+  const { isPro } = useUserStore();  // No store in playground!
+}
+
+// ✅ Preview component — explicit props, no store dependency
+export default function BannerPreview({ isPro }: { isPro: boolean }) { }
+```
+
+> Preview files belong in `/playground/previews/`, **NOT** in `/src/components/`.
+
+## Mock Data Files
+
+**Location**: `src/app/playground/data/{ComponentName}.mockData.ts`
+
+Export props the component needs for a realistic preview.
+
+## Iteration Files
+
+**Location**: `src/app/playground/iterations/{PascalCaseName}.iteration-{n}.tsx`
+
+See @iterations/guide.mdc for full rules.
+
+### Child Iteration Naming
+
+```
+iterations/
+├── ArticleCard.iteration-1.tsx
+├── ArticleCard.iteration-1.InsightBadge.tsx  # Child of iteration 1
+```
+
+## Export Requirements
+
+1. **Default export required** — iterations and previews must be default exports
+2. **Same function name** — use the original component name
+3. **Same props type** — accept identical props
+
+```tsx
+// ✅ Correct
+export default function ArticleCard({ post, category }: Props) { }
+
+// ❌ Named export
+export function ArticleCard({ post, category }: Props) { }
+
+// ❌ Different name
+export default function ArticleCardVariant({ post, category }: Props) { }
+```
+
+## Import Paths
+
+| Context | Pattern |
+|---------|---------|
+| Between iteration files | Relative: `./ParentComponent.iteration-1.ChildComponent` |
+| From main codebase | Alias: `@/components/ArticleCard` |
+| From playground lib | Relative: `../lib/utils` |
+
+## Gitignore
+
+Iteration files are temporary — never commit them:
+```
+src/app/playground/iterations/*
+!src/app/playground/iterations/.gitkeep
+```
+
+## Related Docs
+
+- Registry configuration: @registry.mdc
+- Iteration rules: @iterations/guide.mdc

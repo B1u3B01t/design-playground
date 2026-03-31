@@ -1,0 +1,44 @@
+---
+globs: ["src/app/playground/api/**"]
+description: "Playground API routes: generate, discover, iterations, models, screenshot, images, skills, tunnel"
+---
+
+# Playground API Routes
+
+All routes are in `src/app/playground/api/`.
+
+## Route Reference
+
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/playground/api/generate` | POST | Start iteration generation — spawns agent, waits for completion |
+| `/playground/api/generate` | DELETE | Cancel running generation (SIGTERM to agent process) |
+| `/playground/api/generate?action=events` | GET | SSE stream for iteration detection events |
+| `/playground/api/generate?action=status` | GET | Check if generation is in progress |
+| `/playground/api/generate?action=download-chat` | GET | Download agent chat log |
+| `/playground/api/discover` | GET | Check discovery status |
+| `/playground/api/discover` | POST | Trigger component discovery scan |
+| `/playground/api/discover/analyze` | POST | Analyze individual component |
+| `/playground/api/iterations` | GET | List all generated iteration files on disk |
+| `/playground/api/models` | GET | List available AI models per provider (cached 5min) |
+| `/playground/api/screenshot` | POST | Capture component preview image |
+| `/playground/api/images` | GET/POST/DELETE | List, upload, or delete images in `public/.playground/images/` |
+| `/playground/api/html-pages` | POST | HTML page iteration support |
+| `/playground/api/oncanvas-components` | POST | Canvas-only component generation |
+| `/playground/api/skills` | GET | List available skills |
+| `/playground/api/tunnel` | POST | Create SSH tunnel for sharing |
+| `/playground/api/tunnel/beacon` | GET | Tunnel health check |
+
+## Generation Lifecycle
+
+1. **Lock**: Only one generation at a time (enforced by lockfile)
+2. **Spawn**: Agent process started via provider CLI
+3. **Wait**: HTTP POST stays open until agent exits
+4. **Detect**: File watcher monitors `iterations/` for `tree.json` changes
+5. **SSE**: New iterations emit events via the `?action=events` endpoint
+6. **Recovery**: Lockfile enables process recovery after HMR restarts
+
+## Related Docs
+
+- Provider system: @generation/providers.mdc
+- Discovery details: @generation/discovery.mdc

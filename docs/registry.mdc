@@ -1,0 +1,62 @@
+---
+globs: ["src/app/playground/registry.tsx"]
+description: "Component registry: how components are registered, lazy-loaded, and configured with mock data, sizes, and props"
+---
+
+# Component Registry
+
+**File**: `src/app/playground/registry.tsx`
+
+The registry maps component IDs to lazy-loaded React components with their mock data and display configuration.
+
+## Entry Format
+
+```tsx
+{
+  id: 'pricing-card',           // kebab-case, must match PascalCase export via conversion
+  Component: lazy(() => import('./examples/PricingCard')),
+  props: { /* mock data */ },
+  size: 'laptop',               // optional: 'default' | 'laptop' | 'tablet' | 'mobile'
+}
+```
+
+## ID Convention
+
+Registry ID is **kebab-case** and must map to the component's **PascalCase** default export:
+- `pricing-card` ↔ `PricingCard`
+- `manifesto-page` ↔ `ManifestoPage`
+- `bites-client` ↔ `BitesClient`
+
+This mapping is used to link iteration files back to their parent component.
+
+## Size Options
+
+| Size | Viewport | Scale | Use For |
+|------|----------|-------|---------|
+| `default` | Auto | 100% | Small components (cards, buttons) |
+| `laptop` | 1024×640 | 60% | Full page layouts |
+| `tablet` | 768×1024 | 50% | Tablet-optimized views |
+| `mobile` | 375×812 | 70% | Mobile screens |
+
+Iterations inherit `size` from their parent component automatically.
+
+## Props: Prefer Real Data
+
+```tsx
+// ✅ PREFERRED — triggers real API fetch
+props: { items: [], filters: realFilters, platforms: ['All', 'Web', 'Mobile'], limit: 9 }
+
+// ❌ AVOID — static, doesn't reflect real content
+props: { items: sampleItems, filters: {} }
+```
+
+Use mock data only when: API doesn't exist yet, requires auth playground can't provide, or component is purely presentational.
+
+## Mock Data Location
+
+`src/app/playground/data/{ComponentName}.mockData.ts`
+
+## Related Docs
+
+- Adding a new component end-to-end: @adding-components.mdc
+- File naming conventions: @conventions/files.mdc

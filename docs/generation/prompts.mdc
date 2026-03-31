@@ -1,0 +1,62 @@
+---
+globs: ["src/app/playground/prompts/**"]
+description: "Prompt templates: iteration, iteration-from-iteration, element-iteration, adopt, discovery, HTML variants, template variables"
+---
+
+# Prompt Templates
+
+All prompts are in `src/app/playground/prompts/`.
+
+## Prompt Files
+
+| File | When Used |
+|------|-----------|
+| `iteration.prompt.ts` | Standard iteration from original component |
+| `iteration-from-iteration.prompt.ts` | Iteration based on an existing iteration |
+| `element-iteration.prompt.ts` | Surgical edits on Alt+clicked DOM elements |
+| `jsx-iteration.prompt.ts` | JSX component iteration variant |
+| `jsx-iteration-from-iteration.prompt.ts` | JSX iteration-from-iteration variant |
+| `html-iteration.prompt.ts` | HTML page iteration |
+| `html-iteration-from-iteration.prompt.ts` | HTML iteration-from-iteration |
+| `adopt.prompt.ts` | Adopt iteration → replace original component's UI |
+| `discovery.prompt.ts` | Component discovery scan |
+| `discovery-analyze.prompt.ts` | Analyze individual discovered component |
+| `freeform-reference.prompt.ts` | Freeform chat-based generation |
+| `edit.prompt.ts` | Generic edit prompt |
+| `shared-sections.ts` | Reusable prompt sections (critical requirements, creative freedom, quality checklist) |
+| `utility.ts` | Prompt building helper functions |
+
+## Key Template Variables
+
+| Variable | Example |
+|----------|---------|
+| `{{componentName}}` | `Pricing Card` |
+| `{{sourcePath}}` | `src/app/playground/examples/PricingCard.tsx` |
+| `{{iterationCount}}` | `3` |
+| `{{depthLabel}}` | `Shell only` |
+| `{{propsInterface}}` | TypeScript props definition |
+| `{{cleanComponentName}}` | `PricingCard` (PascalCase, used in filenames) |
+| `{{componentId}}` | `pricing-card` (registry ID) |
+| `{{customInstructionsSection}}` | User-provided instructions or empty |
+| `{{skillSection}}` | Content from SKILL.md or empty |
+| `{{iterationSourcePath}}` | Path to base iteration file |
+| `{{startNumber}}` / `{{endNumber}}` | Iteration number range |
+| `{{treeParent}}` | Parent in tree.json |
+| `{{elementSelectionsSection}}` | Targeted element details |
+
+## Prompt Structure
+
+All iteration prompts follow this pattern:
+1. **Header** — Component name, source path, iteration count, depth
+2. **Props interface** — DO NOT MODIFY reminder
+3. **Instructions** — Read guide, read source, generate N variations
+4. **Custom instructions** — User-provided (optional)
+5. **Skill section** — From SKILL.md (optional)
+6. **Critical requirements** — From `shared-sections.ts`
+7. **Quality checklist** — From `shared-sections.ts`
+
+## Related Docs
+
+- What prompts instruct agents to do: @iterations/guide.mdc
+- How prompts are delivered to agents: @generation/providers.mdc
+- Skills injected into prompts: @ui/skills.mdc

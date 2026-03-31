@@ -1,0 +1,31 @@
+---
+globs: ["src/app/playground/ui/**"]
+description: "Playground-local shadcn/ui components: dialog, button, accordion, tooltip, sonner, alert-dialog, kbd, inline-reference"
+---
+
+# Playground UI Components
+
+Local shadcn/ui components in `src/app/playground/ui/`. These are **separate** from `src/components/ui/` — they're playground-specific.
+
+## Components
+
+| File | Based On | Purpose |
+|------|----------|---------|
+| `button.tsx` | shadcn Button | Playground button variants |
+| `dialog.tsx` | shadcn/radix Dialog | Modal dialogs (iterate, settings) |
+| `alert-dialog.tsx` | shadcn/radix AlertDialog | Confirmation dialogs (delete, adopt) |
+| `accordion.tsx` | shadcn Accordion | Collapsible sections |
+| `tooltip.tsx` | shadcn/radix Tooltip | Hover tooltips |
+| `sonner.tsx` | sonner | Toast notifications |
+| `kbd.tsx` | Custom | Keyboard key display (`⌘`, `Shift`, etc.) |
+| `inline-reference.tsx` | Custom | Inline code/file reference display |
+
+## Patterns
+
+- All follow **shadcn/ui code structure** (forwardRef, Radix primitives, cn() for class merging)
+- Styling follows the design system — see @ui/design-system.mdc
+- When adding new UI, check if `shadcn/ui` has it first: `npx shadcn@latest add <component>`
+
+## Related Docs
+
+- Design system rules: @ui/design-system.mdc

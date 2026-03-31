@@ -1,0 +1,30 @@
+---
+alwaysApply: true
+---
+
+# Playground Documentation Index
+
+When working in `src/app/playground/`, use these docs for guidance. Rules auto-load when you open matching files — otherwise, follow the routing below.
+
+## Quick Routing
+
+- **Adding a component?** → @adding-components.mdc
+- **Generating iterations?** → @iterations/guide.mdc
+- **Iterating from an iteration?** → @iterations/chaining.mdc
+- **Editing iterations/index.ts or tree.json?** → @iterations/index-and-tree.mdc
+- **Working on canvas nodes?** → @canvas/nodes.mdc
+- **Changing prompts?** → @generation/prompts.mdc
+- **Working with providers?** → @generation/providers.mdc
+- **Modifying API routes?** → @generation/api-routes.mdc
+- **Discovery system?** → @generation/discovery.mdc
+- **Design/styling?** → @ui/design-system.mdc
+- **File naming or conventions?** → @conventions/files.mdc
+- **Need the full picture?** → @architecture.mdc
+
+## Key Conventions
+
+- Use **zustand** for state management
+- Use **shadcn/ui** components; match their code structure for custom ones
+- Keep **SEO** in mind when making pages
+- Never run `db:push` or `drizzle-kit push`
+- Never commit iteration files (`iterations/*.tsx`)

@@ -1,0 +1,125 @@
+---
+description: "Design system: Matisse/brutalist aesthetic — colors, typography, borders, shadows, components, do's and don'ts"
+---
+
+# Design System
+
+Bold, playful, Matisse-inspired brutalist aesthetic. **Creative confidence** — organized enough to work, chaotic enough to inspire.
+
+## Color Palette
+
+### Core
+
+| Token | Hex | Role |
+|-------|-----|------|
+| `--cream-white` | `#F5F2ED` | Primary background — canvas, body, open areas |
+| `--bg-periwinkle` | `#B8C8DC` | Surface/card — cards, panels, inputs |
+| `--ink` | `#1a1a1a` | Text & borders — primary text, icons, strong UI |
+
+### Accents
+
+| Token | Hex | Role |
+|-------|-----|------|
+| `--cobalt-blue` | `#2B4FD6` | Primary action — CTAs, buttons, links, focus |
+| `--forest-green` | `#1B6B4D` | Success/growth |
+| `--coral-red` | `#E94E3D` | Energy/warning — destructive, alerts |
+| `--sunny-yellow` | `#F7C948` | Highlight/attention — badges, callouts |
+| `--deep-purple` | `#5B4BB5` | Premium/creative — pro features |
+| `--blush-pink` | `#F5C4C0` | Soft accent — onboarding, gentle highlights |
+
+### Rules
+
+- **60-30-10**: 60% neutrals, 30% supporting, 10% accent pop
+- Max **2-3 accent colors** per view, one dominant
+- Semantic consistency: blue=action, green=success, red=danger, yellow=highlight, purple=premium
+
+## Typography
+
+| Font | Use | Rules |
+|------|-----|-------|
+| **Anton** | Headlines, hero, section titles, buttons, nav | Always **UPPERCASE**. Line height 0.85-0.95. |
+| **Space Mono** | Body, labels, captions, data, code, UI | **Bold (700)** for UI at small sizes. Line height 1.5-1.6. |
+| **Caveat** | Annotations, handwritten notes, playful callouts | **1-3 words max**. Use sparingly. |
+
+```
+Display:  clamp(4rem, 12vw, 11rem)
+H1:       clamp(3rem, 8vw, 6rem)
+H2:       clamp(2rem, 5vw, 3rem)
+H3:       clamp(1.5rem, 3vw, 2rem)
+Body:     1rem - 1.1rem
+Small:    0.85rem - 0.9rem
+```
+
+## Borders & Shadows
+
+**Border**: `2.5px solid var(--ink)` — thick, intentional, never hairline.
+
+**Shadows**: Offset only, never blur.
+
+```css
+/* Hover */
+transform: translate(-4px, -4px);
+box-shadow: 4px 4px 0 var(--ink);
+
+/* Active/pressed */
+transform: translate(0, 0);
+box-shadow: none;
+```
+
+Shadow colors: `--ink` (default), `--cobalt-blue` (interactive), `--sunny-yellow` (highlighted), `--coral-red` (destructive).
+
+## Component Patterns
+
+**Primary Button**: `background: --cobalt-blue`, `color: --cream-white`, `border: 2.5px solid --ink`, `font: Anton uppercase`, hover: translate + yellow shadow
+
+**Card**: `background: --bg-periwinkle`, `border: 2.5px solid --ink`, hover: translate + ink shadow
+
+**Badge**: `border: 2.5px solid --ink`, `font: Space Mono 700 uppercase 0.9rem`
+
+**Input**: `background: --bg-periwinkle`, `border: 2.5px solid --ink`, focus: translate + blue shadow
+
+## Motion
+
+- **150-200ms** for most transitions
+- Hover lift: `translate(-4px, -4px)` + shadow
+- Press: `translate(0, 0) scale(0.98)`
+- Respect `prefers-reduced-motion`
+
+## Accessibility
+
+**Safe pairings**: `--ink` on cream/periwinkle/yellow/pink. `--cream-white` on blue/green/red/purple/ink.
+
+**Avoid**: Light text on `--sunny-yellow`. `--blush-pink` as text on any background.
+
+All text must meet **WCAG AA** (4.5:1 body, 3:1 large text).
+
+## Do / Don't
+
+**Do**: Thick borders (signature). One dominant accent per section. Asymmetry. Generous whitespace. Hard-edged offset shadows. Anton always uppercase. Caveat for short annotations. Headlines BIG.
+
+**Don't**: Thin/hairline borders. Blur shadows. Gradients. Grayscale. Anton in lowercase. Caveat longer than 3-4 words. Generic system fonts. Animations without purpose.
+
+## CSS Variables Quick Reference
+
+```css
+:root {
+  --cream-white: #F5F2ED;
+  --bg-periwinkle: #B8C8DC;
+  --ink: #1a1a1a;
+  --cobalt-blue: #2B4FD6;
+  --forest-green: #1B6B4D;
+  --coral-red: #E94E3D;
+  --sunny-yellow: #F7C948;
+  --deep-purple: #5B4BB5;
+  --blush-pink: #F5C4C0;
+  --font-display: 'Anton', 'Impact', sans-serif;
+  --font-mono: 'Space Mono', 'Courier New', monospace;
+  --font-script: 'Caveat', cursive;
+  --border-width: 2.5px;
+}
+```
+
+## Related Docs
+
+- Skills that reference this system: @ui/skills.mdc
+- Playground UI components: @ui/components.mdc

@@ -18,7 +18,7 @@ and the design references provided below.
 
 INSTRUCTIONS
 
-1. Read the generation guide: src/app/playground/docs/ITERATION-GUIDE.md
+1. Read the generation guide: src/app/playground/docs/iterations/guide.mdc
 2. Read the source code of each reference component listed above
 3. Examine the screenshots provided to understand their current visual appearance
 4. Choose an appropriate PascalCase name for the new component based on:

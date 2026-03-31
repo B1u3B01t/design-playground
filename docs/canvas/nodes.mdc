@@ -1,0 +1,42 @@
+---
+globs: ["src/app/playground/nodes/**"]
+description: "React Flow canvas nodes: ComponentNode, IterationNode, SkeletonNode, ImageNode, DragGhostNode — structure, props, event handling"
+---
+
+# Canvas Nodes
+
+All nodes are React Flow node components in `src/app/playground/nodes/`.
+
+## Node Types
+
+| File | Type | Purpose |
+|------|------|---------|
+| `ComponentNode.tsx` (18KB) | Original component | Renders a registry component on canvas. Contains the Iterate dialog, cancel generation button, element selection trigger. |
+| `IterationNode.tsx` (35KB) | Generated variation | Renders an iteration. Supports adopt, delete, element selection, iterate-from-iteration. |
+| `SkeletonIterationNode.tsx` | Loading placeholder | Shown during generation while waiting for iteration files. |
+| `ImageNode.tsx` | Image preview | Standalone image nodes on the canvas. |
+| `DragGhostNode.tsx` | Drag preview | Ghost element shown while dragging from sidebar. |
+| `ComponentErrorBoundary.tsx` | Error fallback | Wraps nodes to catch render errors gracefully. |
+
+## Shared Utilities (`nodes/shared/`)
+
+| File | Purpose |
+|------|---------|
+| `IterateDialog.tsx` | Modal for configuring iteration (count, depth, custom prompt, skill) |
+| `IterateDialogParts.tsx` | UI subcomponents for the dialog |
+| `SizeButtons.tsx` | Viewport size preset buttons (mobile/tablet/laptop/default) |
+| `DragSelectionOverlay.tsx` | Multi-select box drawing overlay |
+
+## Key Patterns
+
+- All nodes use React Flow's `NodeProps` type
+- Nodes integrate with hooks from `hooks/` — see @canvas/hooks.mdc
+- Edges connect original components to their iterations (parent → child)
+- ComponentNode handles the full iteration trigger flow: dialog → skeleton spawn → generation → completion
+- IterationNode handles adopt (replace original UI), delete, and chained iteration
+
+## Related Docs
+
+- Hooks used in nodes: @canvas/hooks.mdc
+- Overall architecture: @architecture.mdc
+- Iteration rules: @iterations/guide.mdc

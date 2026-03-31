@@ -1,0 +1,53 @@
+---
+globs: ["src/app/playground/skills/**"]
+description: "AI creative direction skills: design-variations, frontend-design, stick-to-design-system, no-bound-explore"
+---
+
+# Skills
+
+Skills are creative direction presets injected into iteration prompts. Each skill has a `SKILL.md` file that gets included as `{{skillSection}}` in the prompt.
+
+## Location
+
+```
+src/app/playground/skills/
+├── design-variations/SKILL.md
+├── frontend-design/SKILL.md
+├── stick-to-design-system/SKILL.md
+├── no-bound-explore/SKILL.md
+└── index.ts                        # Skill registry
+```
+
+## Available Skills
+
+| Skill | Purpose |
+|-------|---------|
+| **design-variations** | Generate divergent visual alternatives — explore the design space broadly |
+| **frontend-design** | General frontend design guidance for full-page generation |
+| **stick-to-design-system** | Constrain iterations to the project's design system (see @ui/design-system.mdc) |
+| **no-bound-explore** | Unconstrained exploration — ignore conventions, go wild |
+
+## How Skills Work
+
+1. User selects a skill in the Iterate dialog
+2. The skill's `SKILL.md` content is read
+3. It's injected into the prompt as `{{skillSection}}`
+4. The AI agent uses it as creative direction alongside the iteration rules
+
+## SKILL.md Format
+
+Each `SKILL.md` contains:
+- Frontmatter with `name` and `description`
+- Detailed creative direction for the AI agent
+
+## Adding a New Skill
+
+1. Create `skills/{skill-name}/SKILL.md`
+2. Add frontmatter (`name`, `description`)
+3. Write creative direction
+4. Register in `skills/index.ts`
+
+## Related Docs
+
+- How skills are injected: @generation/prompts.mdc
+- Design system referenced by stick-to-design-system: @ui/design-system.mdc

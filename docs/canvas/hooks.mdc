@@ -1,0 +1,24 @@
+---
+globs: ["src/app/playground/hooks/**"]
+description: "Playground hooks: useCursorChat, useDragToIterate, useElementSelection, useNodeSelection, and more"
+---
+
+# Playground Hooks
+
+All hooks are in `src/app/playground/hooks/`.
+
+## Hook Reference
+
+| Hook | Purpose | Used By |
+|------|---------|---------|
+| `useCursorChat.ts` | Manages Cursor chat panel state — peek/placed mode, target nodes, model selection, RAF-based cursor tracking | `CursorChat.tsx`, `PlaygroundCanvas.tsx` |
+| `useDragToIterate.ts` | Drag-to-iterate interaction — dragging one node onto another triggers iteration | `PlaygroundCanvas.tsx` |
+| `useDynamicBackground.ts` | Dynamic canvas background effects | `PlaygroundCanvas.tsx` |
+| `useElementSelection.ts` | Alt+click DOM element selection inside component iframes for targeted iteration | `ComponentNode.tsx`, `IterationNode.tsx` |
+| `useNodeSelection.ts` | React Flow node selection state management | `PlaygroundCanvas.tsx` |
+| `useNodeShared.ts` | Shared state and logic across node types (used by both ComponentNode and IterationNode) | `nodes/*.tsx` |
+| `useTunnelShare.ts` | SSH tunnel sharing state for generating share links | `PlaygroundHeader.tsx` |
+
+## Related Docs
+
+- Canvas nodes that consume these hooks: @canvas/nodes.mdc

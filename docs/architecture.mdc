@@ -1,0 +1,63 @@
+---
+description: "High-level playground architecture: system map, data flow, folder structure, how subsystems connect"
+---
+
+# Playground Architecture
+
+## What It Does
+
+The Design Playground is an AI-powered visual component iteration tool. Users discover components, drag them onto an infinite canvas, generate AI-powered layout/style variations, compare side-by-side, and copy code back.
+
+## System Flow
+
+```
+Sidebar (components)  →  Canvas (React Flow)  →  Iterate Dialog
+                                                       ↓
+                                              Provider (Cursor/Claude CLI)
+                                                       ↓
+                                              API (/generate) spawns agent
+                                                       ↓
+                                              Agent writes iteration .tsx files
+                                                       ↓
+                                              File watcher detects tree.json change
+                                                       ↓
+                                              SSE event → IterationNode renders on canvas
+```
+
+## Folder Map
+
+| Folder | Purpose |
+|--------|---------|
+| `PlaygroundClient.tsx` | Main orchestrator — discovery, HMR recovery |
+| `PlaygroundCanvas.tsx` | React Flow canvas with nodes/edges |
+| `PlaygroundSidebar.tsx` | Component browser & drag source |
+| `PlaygroundHeader.tsx` | Top toolbar, model settings |
+| `registry.tsx` | Component registry (all draggable components) — see @registry.mdc |
+| `nodes/` | Canvas node components — see @canvas/nodes.mdc |
+| `hooks/` | React hooks — see @canvas/hooks.mdc |
+| `iterations/` | Generated iteration files — see @iterations/guide.mdc |
+| `prompts/` | AI prompt templates — see @generation/prompts.mdc |
+| `lib/providers/` | AI provider integrations — see @generation/providers.mdc |
+| `lib/constants.ts` | Event names, layout defaults, feature flags (25KB) |
+| `api/` | Backend route handlers — see @generation/api-routes.mdc |
+| `skills/` | AI creative direction — see @ui/skills.mdc |
+| `data/` | Mock data files for components |
+| `previews/` | Playground-specific component wrappers |
+| `ui/` | Local shadcn/ui components — see @ui/components.mdc |
+| `docs/` | This documentation |
+
+## Key Entities
+
+- **Registry Items**: Components registered in `registry.tsx` with ID, lazy import, mock props, optional size
+- **Canvas Nodes**: ComponentNode (original), IterationNode (variation), SkeletonNode (loading), ImageNode
+- **Iterations**: AI-generated `.tsx` variation files in `iterations/`, tracked in `tree.json`
+- **Providers**: Cursor CLI or Claude Code CLI — abstractions for spawning AI agents
+
+## State
+
+- **Canvas**: localStorage (persisted across sessions)
+- **Model Settings**: zustand + localStorage (`model-settings-store.ts`)
+- **Discovery**: disk (`discovery.json`)
+- **Iterations**: disk (`.tsx` files + `tree.json` + `index.ts`)
+
+See @conventions/state.mdc for details.

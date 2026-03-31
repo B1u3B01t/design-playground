@@ -41,7 +41,7 @@ Props interface (DO NOT MODIFY):
 
 INSTRUCTIONS
 
-1. Read the generation guide: src/app/playground/docs/ITERATION-GUIDE.md
+1. Read the generation guide: src/app/playground/docs/iterations/guide.mdc
 2. Read the source component at the path above
 3. **Copy the component file verbatim** into each iteration file
 4. **Only modify the targeted elements** described above — everything else must remain pixel-identical
@@ -133,7 +133,7 @@ Props interface (DO NOT MODIFY):
 
 INSTRUCTIONS
 
-1. Read the generation guide: src/app/playground/docs/ITERATION-GUIDE.md
+1. Read the generation guide: src/app/playground/docs/iterations/guide.mdc
 2. Read the BASE ITERATION at: {{iterationSourcePath}}
 3. Also read the ORIGINAL component for context: {{sourcePath}}
 4. **Copy the base iteration file verbatim** into each new iteration file

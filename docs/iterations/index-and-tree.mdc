@@ -1,0 +1,74 @@
+---
+globs: ["src/app/playground/iterations/index.ts", "src/app/playground/iterations/tree.json"]
+description: "Format and rules for iterations/index.ts (component map) and iterations/tree.json (parent-child tree)"
+---
+
+# iterations/index.ts and tree.json
+
+## index.ts — Iteration Component Map
+
+Iterations must be registered here with **static imports** to render on the canvas.
+
+```ts
+import { ComponentType } from 'react';
+
+// Import WITHOUT .tsx extension
+import PricingCardIteration1 from './PricingCard.iteration-1';
+import PricingCardIteration2 from './PricingCard.iteration-2';
+
+// Map keys MUST include .tsx extension
+export const iterationComponents: Record<string, ComponentType<any>> = {
+  'PricingCard.iteration-1.tsx': PricingCardIteration1 as ComponentType<any>,
+  'PricingCard.iteration-2.tsx': PricingCardIteration2 as ComponentType<any>,
+};
+
+export function getIterationComponent(filename: string): ComponentType<any> | undefined {
+  return iterationComponents[filename];
+}
+```
+
+### Critical: Map Keys MUST Include `.tsx`
+
+The API returns filenames WITH `.tsx`. Missing it causes iterations to render as empty containers.
+
+```ts
+// ✅ CORRECT
+'BitesClient.iteration-1.tsx': BitesClientIteration1,
+
+// ❌ WRONG — empty container on canvas!
+'BitesClient.iteration-1': BitesClientIteration1,
+```
+
+### Why Static Imports?
+
+Dynamic imports with template literals (`import(\`./\${filename}\`)`) don't work in Next.js. Static imports in the index pre-register all iterations at build time.
+
+## tree.json — Parent-Child Relationships
+
+Tracks which component or iteration each iteration was derived from.
+
+```json
+{
+  "version": 1,
+  "entries": {
+    "PricingCard.iteration-1.tsx": { "parent": "pricing-card" },
+    "PricingCard.iteration-2.tsx": { "parent": "pricing-card" },
+    "PricingCard.iteration-3.tsx": { "parent": "PricingCard.iteration-1.tsx" }
+  }
+}
+```
+
+### Parent Values
+
+- **Registry ID** (e.g. `"pricing-card"`) — when derived from the original component
+- **Iteration filename** (e.g. `"PricingCard.iteration-1.tsx"`) — when derived from another iteration
+
+### Rules
+
+- If the file doesn't exist, create it with `{ "version": 1, "entries": {} }`
+- Always **merge** new entries — never overwrite existing ones
+- Update **immediately** after creating each iteration (not all at once)
+
+## Related Docs
+
+- Core iteration rules: @iterations/guide.mdc

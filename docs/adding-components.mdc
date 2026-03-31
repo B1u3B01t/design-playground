@@ -1,0 +1,67 @@
+---
+description: "Step-by-step guide for adding a new component to the playground: preview file, mock data, registry entry, and verification"
+---
+
+# Adding a Component to the Playground
+
+## Step 1: Create Preview File (if needed)
+
+If the component uses hooks like `useUserStore()` or `useAuth()`, create a preview wrapper with explicit props:
+
+```
+src/app/playground/previews/{Name}.preview.tsx
+```
+
+```tsx
+"use client";
+// Accept explicit props instead of reading from stores
+export default function BannerPreview({ isPro }: { isPro: boolean }) {
+  // ... render with explicit props, no store dependency
+}
+```
+
+Skip this step if the component already accepts all data via props.
+
+## Step 2: Create Mock Data
+
+```
+src/app/playground/data/{Name}.mockData.ts
+```
+
+Export the props that the component needs to render a realistic preview.
+
+## Step 3: Add Registry Entry
+
+In `src/app/playground/registry.tsx`, add a new entry:
+
+```tsx
+{
+  id: 'my-component',  // kebab-case, maps to PascalCase export
+  Component: lazy(() => import('./previews/MyComponent.preview')),
+  props: { /* from mock data */ },
+  size: 'laptop',      // optional, for page-level components
+}
+```
+
+See @registry.mdc for ID conventions, size options, and props guidelines.
+
+## Step 4: Verify
+
+1. Start the dev server
+2. Open `/playground`
+3. Find the component in the sidebar
+4. Drag it onto the canvas — confirm it renders correctly
+5. Click Iterate — confirm generation works
+
+## Common Pitfalls
+
+- Forgetting `"use client"` on the preview file
+- Wrong import path in the registry lazy import
+- Store/context dependency leaking into the preview (causes runtime error on canvas)
+- Missing mock data fields causing empty renders
+
+## Related Docs
+
+- Registry format: @registry.mdc
+- File conventions: @conventions/files.mdc
+- Design system: @ui/design-system.mdc

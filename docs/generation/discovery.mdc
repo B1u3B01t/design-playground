@@ -1,0 +1,58 @@
+---
+globs: ["src/app/playground/api/discover/**", "src/app/playground/discovery.json"]
+description: "Component discovery system: AI agent scans project for React components, writes discovery.json"
+---
+
+# Discovery System
+
+The discovery system uses an AI agent to scan the project for React components that can be added to the playground.
+
+## Flow
+
+```
+DiscoveryModal.tsx
+    ↓
+POST /playground/api/discover
+    ↓
+Agent spawned with discovery.prompt.ts
+    ↓
+Agent scans src/ for React components
+    ↓
+Writes discovery.json with component metadata
+    ↓
+GET /playground/api/discover → returns discovery.json
+    ↓
+POST /playground/api/discover/analyze → analyzes individual components
+    ↓
+Component added to registry → appears in sidebar
+```
+
+## discovery.json
+
+Location: `src/app/playground/discovery.json`
+
+Contains scanned component metadata: status, registry IDs, source paths, props, routes.
+
+## API Routes
+
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/playground/api/discover` | GET | Check discovery status (`not_scanned` / `scanning` / `complete`) |
+| `/playground/api/discover` | POST | Trigger component discovery scan |
+| `/playground/api/discover/analyze` | POST | Analyze an individual component (props, types, file paths) |
+
+## Prompts
+
+- `discovery.prompt.ts` — Instructs the agent on how to scan for components
+- `discovery-analyze.prompt.ts` — Instructs the agent on how to analyze a specific component
+
+## Notes
+
+- Discovery results are cached on disk (survives page reload)
+- Already-adopted entries are preserved during re-scans
+- The scan uses a lockfile to prevent concurrent scans
+
+## Related Docs
+
+- All API routes: @generation/api-routes.mdc
+- Prompt details: @generation/prompts.mdc

@@ -40,7 +40,7 @@ Props interface (DO NOT MODIFY):
 
 INSTRUCTIONS
 
-1. Read the generation guide: src/app/playground/docs/ITERATION-GUIDE.md
+1. Read the generation guide: src/app/playground/docs/iterations/guide.mdc
 2. Read the BASE ITERATION at: {{iterationSourcePath}}
 3. Also read the ORIGINAL component for context: {{sourcePath}}
 4. Generate {{iterationCount}} new variations based on the base iteration

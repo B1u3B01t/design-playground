@@ -1,0 +1,108 @@
+---
+globs: ["src/app/playground/iterations/**"]
+description: "How to generate component iterations: rules, file structure, naming, registration, quality checklist"
+---
+
+# Iteration Generation Guide
+
+This guide is for AI agents generating component iterations.
+
+## Core Rules
+
+### 1. Props Interface — NEVER Change
+
+The iteration must be a drop-in replacement. Same props, same types.
+
+```tsx
+// ✅ Same props as original
+export default function ArticleCard({ post, category, variant, className, onClick }: Props)
+
+// ❌ Changed props — BREAKS the system
+export default function ArticleCard({ post, category, layout, theme }: Props)
+```
+
+### 2. Iteration Depth
+
+| Depth | What Changes |
+|-------|-------------|
+| **Shell only** | Only the container component. Child imports/usage unchanged. |
+| **1 level deep** | Container + direct children. Child props stay stable. |
+| **All levels** | Full recursive iteration. |
+
+### 3. File Naming
+
+```
+src/app/playground/iterations/{PascalCaseName}.iteration-{n}.tsx
+```
+
+`{PascalCaseName}` must match the **default export function name** (e.g. `ManifestoPage`, not `Manifesto`). This enables kebab-case conversion back to the registry ID.
+
+### 4. File Structure
+
+```tsx
+"use client";
+
+// Keep same imports as original
+import Image from "next/image";
+import { cn } from "../lib/utils";
+
+/**
+ * @iteration 1
+ * @parent ArticleCard
+ * @description Horizontal card layout with image on left
+ */
+
+// Same type imports
+import type { InsightPost } from "@/components/ArticleCard";
+
+// Default export, SAME props interface
+export default function ArticleCard({ post, category, variant = "expanded", className, onClick }: {
+  post: InsightPost;
+  // ... same as original
+}) {
+  // Your variation
+}
+```
+
+### 5. Sequential Processing
+
+Process iterations **one at a time**. For each:
+1. Save the `.tsx` file
+2. Register in `iterations/index.ts` (see @iterations/index-and-tree.mdc)
+3. Update `iterations/tree.json` (see @iterations/index-and-tree.mdc)
+4. Then proceed to the next
+
+This gives the user immediate visual feedback as each iteration appears on the canvas.
+
+### 6. Tailwind
+
+Stick to existing Tailwind utilities and patterns. Don't introduce custom utilities or CSS-in-JS beyond what the source already uses. You may change colors, typography, spacing — just stay within the existing config.
+
+## Layout Variation Ideas
+
+| Change | Examples |
+|--------|----------|
+| Direction | Row ↔ Column, LTR ↔ RTL |
+| Grid | 1-col → 2-col, card grid → list |
+| Ordering | Image first → text first |
+| Grouping | Flat → nested sections |
+| Responsive | Stack on mobile, side-by-side on desktop |
+
+## Quality Checklist
+
+- [ ] Props interface unchanged
+- [ ] All imports resolve
+- [ ] Metadata comment included
+- [ ] File named correctly (`{PascalCase}.iteration-{n}.tsx`)
+- [ ] Default export with same function name
+- [ ] No TypeScript errors
+- [ ] Registered in `iterations/index.ts` (keys include `.tsx`)
+- [ ] `tree.json` updated with correct parent
+- [ ] Each iteration is meaningfully distinct
+
+## Related Docs
+
+- index.ts and tree.json format: @iterations/index-and-tree.mdc
+- Iterating from an existing iteration: @iterations/chaining.mdc
+- Prompt templates: @generation/prompts.mdc
+- File conventions: @conventions/files.mdc

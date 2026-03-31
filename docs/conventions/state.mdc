@@ -1,0 +1,41 @@
+---
+description: "Playground state management: localStorage, browser storage, disk persistence, constants"
+---
+
+# State Management
+
+## Storage Layers
+
+| What | Where | Persists Across |
+|------|-------|----------------|
+| Canvas state (nodes, edges, viewport) | `localStorage` | Sessions |
+| Model settings (provider, selected models) | zustand + `localStorage` (`model-settings-store.ts`) | Sessions |
+| Keyboard bindings | `localStorage` (`keybinding-store.ts`) | Sessions |
+| Add-all queue | `sessionStorage` | HMR only |
+| Discovery data | Disk (`discovery.json`) | Server restarts |
+| Iteration files | Disk (`iterations/*.tsx`) | Server restarts |
+| Iteration tree | Disk (`iterations/tree.json`) | Server restarts |
+| Generation lock | Disk (lockfile) | HMR recovery |
+| Chat logs | Disk (`.cursor-temp/chat-*.txt`) | Ephemeral |
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `lib/model-settings-store.ts` | Zustand store for provider/model preferences |
+| `lib/keybinding-store.ts` | Keyboard shortcut bindings |
+| `lib/keybindings.ts` | Keybinding definitions |
+| `lib/constants.ts` (25KB) | Event names (`GENERATION_START_EVENT`, etc.), localStorage keys, timing constants (`POLL_INTERVAL: 10s`, `POLL_DURATION: 120s`), canvas zoom/layout limits, node dimension defaults |
+
+## Custom Events
+
+Key events dispatched via `window.dispatchEvent()`:
+- `GENERATION_START_EVENT` — generation triggered
+- `GENERATION_COMPLETE_EVENT` — agent finished successfully
+- `GENERATION_ERROR_EVENT` — agent failed or cancelled
+- `ADOPTION_COMPLETE_EVENT` — iteration adopted into original component
+
+## Related Docs
+
+- Hooks that manage state: @canvas/hooks.mdc
+- Architecture overview: @architecture.mdc

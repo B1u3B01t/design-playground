@@ -34,7 +34,7 @@ Props interface (DO NOT MODIFY):
 
 INSTRUCTIONS
 
-1. Read the generation guide: src/app/playground/docs/ITERATION-GUIDE.md
+1. Read the generation guide: src/app/playground/docs/iterations/guide.mdc
 2. Read the source component at the path above
 3. Understand its structure, props interface, and current design
 4. Generate {{iterationCount}} **compatible** variations numbered {{iterationNumbersList}} (you may change both layout and visual design)
