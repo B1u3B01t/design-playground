@@ -349,6 +349,9 @@ export const MINIMAP_COMPONENT_COLOR = '#3b82f6';
 /** MiniMap node color for image nodes */
 export const MINIMAP_IMAGE_COLOR = '#a78bfa';
 
+/** MiniMap node color for text nodes */
+export const MINIMAP_TEXT_COLOR = '#f472b6';
+
 /** MiniMap mask color */
 export const MINIMAP_MASK_COLOR = 'rgba(0, 0, 0, 0.08)';
 
@@ -560,7 +563,7 @@ export interface CursorChatSubmitPayload {
   targetNodeId: string | null;
   targetComponentId: string | null;
   targetComponentName: string | null;
-  targetType: 'component' | 'iteration' | 'image' | null;
+  targetType: 'component' | 'iteration' | 'image' | 'text' | null;
   sourceFilename?: string;
   iterationCount?: number;
   canvasPosition: { x: number; y: number };
@@ -578,11 +581,12 @@ export interface CursorChatSubmitPayload {
     nodeId: string;
     componentId: string;
     componentName: string;
-    type: 'component' | 'iteration' | 'image';
+    type: 'component' | 'iteration' | 'image' | 'text';
     sourceFilename?: string;
     screenshotPath?: string;
     imagePath?: string;
     imageUrl?: string;
+    textContent?: string;
   }[];
   /** When true, edit the target file in-place instead of creating iterations */
   editMode?: boolean;

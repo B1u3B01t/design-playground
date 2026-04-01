@@ -25,7 +25,8 @@ export type PlaygroundAction =
   | 'iterate.copy-prompt'
   | 'iterate.run'
   | 'element-select.hold'
-  | 'sidebar.toggle';
+  | 'sidebar.toggle'
+  | 'canvas.add-text';
 
 export interface KeybindingDefinition {
   action: PlaygroundAction;
@@ -88,6 +89,13 @@ export const DEFAULT_KEYBINDINGS: KeybindingDefinition[] = [
     description: 'Show or hide the sidebar panel',
     category: 'Sidebar',
     defaultCombo: { key: 's', meta: true, shift: true },
+  },
+  {
+    action: 'canvas.add-text',
+    label: 'Add Text Note',
+    description: 'Place a new text note on the canvas',
+    category: 'Canvas',
+    defaultCombo: { key: 't' },
   },
 ];
 

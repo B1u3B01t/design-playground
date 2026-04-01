@@ -10,7 +10,7 @@ export interface SelectedNodeContext {
   nodeId: string;
   componentId: string;
   componentName: string;
-  type: 'component' | 'iteration' | 'image';
+  type: 'component' | 'iteration' | 'image' | 'text';
   sourceFilename?: string;
   renderMode?: 'react' | 'html';
   htmlPageSlug?: string;
@@ -37,7 +37,7 @@ export function useNodeSelection(): UseNodeSelectionReturn {
       const mapped: SelectedNodeContext[] = [];
 
       for (const node of nodes) {
-        if (node.type !== 'component' && node.type !== 'iteration' && node.type !== 'image') continue;
+        if (node.type !== 'component' && node.type !== 'iteration' && node.type !== 'image' && node.type !== 'text') continue;
 
         const data = node.data as Record<string, unknown>;
 
@@ -57,6 +57,13 @@ export function useNodeSelection(): UseNodeSelectionReturn {
             type: 'image',
             imagePath: (data.imagePath as string) || undefined,
             imageUrl: (data.imageUrl as string) || undefined,
+          });
+        } else if (node.type === 'text') {
+          mapped.push({
+            nodeId: node.id,
+            componentId: '',
+            componentName: 'Text Note',
+            type: 'text',
           });
         } else {
           mapped.push({

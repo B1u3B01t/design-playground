@@ -104,11 +104,12 @@ Read this image to understand the current appearance before generating variation
 export function formatReferenceNodesSection(
   nodes?: {
     componentName: string;
-    type: 'component' | 'iteration' | 'image';
+    type: 'component' | 'iteration' | 'image' | 'text';
     sourceFilename?: string;
     sourcePath?: string;
     screenshotPath?: string;
     imagePath?: string;
+    textContent?: string;
   }[],
 ): string {
   if (!nodes || nodes.length === 0) return '';
@@ -124,8 +125,8 @@ export function formatReferenceNodesSection(
 
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i];
-    const typeLabel = node.type === 'image' ? 'image reference' : node.type === 'iteration' ? 'iteration' : 'component';
-    const path = node.type === 'image'
+    const typeLabel = node.type === 'text' ? 'text note' : node.type === 'image' ? 'image reference' : node.type === 'iteration' ? 'iteration' : 'component';
+    const path = node.type === 'text' ? undefined : node.type === 'image'
       ? node.imagePath
       : (node.sourcePath || (node.sourceFilename
         ? `src/app/playground/iterations/${node.sourceFilename}`
@@ -133,7 +134,10 @@ export function formatReferenceNodesSection(
 
     lines.push(`${i + 1}. ${node.componentName} (${typeLabel})${path ? ` — ${path}` : ''}`);
 
-    if (node.type === 'image' && node.imagePath) {
+    if (node.type === 'text' && node.textContent) {
+      lines.push(`   Text note content: "${node.textContent}"`);
+      lines.push(`   Use this text as design context or instructions.`);
+    } else if (node.type === 'image' && node.imagePath) {
       lines.push(`   Image: ${node.imagePath}`);
       lines.push(`   Read this image to understand the visual design to match.`);
     } else if (node.screenshotPath) {

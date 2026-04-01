@@ -17,20 +17,50 @@ import { getProvider } from '../../lib/providers/registry';
 // Re-export ModelOption for consumers
 export type { ModelOption } from '../../lib/constants';
 
-// Load last selected model from localStorage
+// Build a provider-scoped localStorage key for the selected model
+function selectedModelKey(): string {
+  const { activeProvider } = useModelSettingsStore.getState();
+  return `${SELECTED_MODEL_STORAGE_KEY}-${activeProvider}`;
+}
+
+// Load last selected model from localStorage (scoped to the active provider)
 export function loadSelectedModel(): string {
   if (typeof window === 'undefined') return '';
   try {
-    return localStorage.getItem(SELECTED_MODEL_STORAGE_KEY) || '';
+    const { activeProvider } = useModelSettingsStore.getState();
+    const providerKey = `${SELECTED_MODEL_STORAGE_KEY}-${activeProvider}`;
+
+    // Try provider-scoped key first, fall back to legacy unscoped key
+    let model = localStorage.getItem(providerKey) || '';
+    if (!model) {
+      model = localStorage.getItem(SELECTED_MODEL_STORAGE_KEY) || '';
+    }
+
+    // Validate the model belongs to the active provider's enabled models
+    if (model) {
+      const config = getProvider(activeProvider);
+      const ps = useModelSettingsStore.getState().providerState[activeProvider];
+      const enabledModels = ps?.enabledModels?.length
+        ? ps.enabledModels
+        : config.defaultEnabledModels;
+      if (!enabledModels.includes(model)) {
+        // Model doesn't belong to this provider — return first enabled model
+        return enabledModels[0] || '';
+      }
+    }
+
+    return model;
   } catch {
     return '';
   }
 }
 
-// Save selected model to localStorage
+// Save selected model to localStorage (scoped to the active provider)
 export function saveSelectedModel(model: string) {
   if (typeof window === 'undefined') return;
   try {
+    localStorage.setItem(selectedModelKey(), model);
+    // Also write to legacy key for backward compat
     localStorage.setItem(SELECTED_MODEL_STORAGE_KEY, model);
   } catch (e) {
     console.error('[Models] Error saving selected model:', e);

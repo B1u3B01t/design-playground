@@ -35,6 +35,8 @@ import IterationNode from './nodes/IterationNode';
 import SkeletonIterationNode from './nodes/SkeletonIterationNode';
 import DragGhostNode from './nodes/DragGhostNode';
 import ImageNode from './nodes/ImageNode';
+import TextNode from './nodes/TextNode';
+import { matchesAction } from './lib/keybindings';
 import {
   generateIterationPrompt,
   generateIterationFromIterationPrompt,
@@ -87,6 +89,7 @@ import {
   MINIMAP_ITERATION_COLOR,
   MINIMAP_COMPONENT_COLOR,
   MINIMAP_IMAGE_COLOR,
+  MINIMAP_TEXT_COLOR,
   MINIMAP_MASK_COLOR,
   BACKGROUND_COLOR,
   DND_DATA_KEY,
@@ -130,6 +133,7 @@ const nodeTypes = {
   skeleton: SkeletonIterationNode,
   'drag-ghost': DragGhostNode,
   image: ImageNode,
+  text: TextNode,
 };
 
 const DEFAULT_SKILL_IDS = ['design-variations', 'frontend-design'] as const;
@@ -1588,6 +1592,10 @@ export default function PlaygroundCanvas() {
         if (refNodes.length > 0) {
           const refNodesWithScreenshots = await Promise.all(
             refNodes.map(async (node) => {
+              if (node.type === 'text') {
+                const textNode = nodesRef.current.find((n) => n.id === node.nodeId);
+                return { ...node, textContent: (textNode?.data as Record<string, unknown>)?.text as string || '', screenshotPath: undefined, sourcePath: undefined };
+              }
               if (node.type === 'image') {
                 return { ...node, screenshotPath: node.imagePath, sourcePath: undefined };
               }
@@ -1712,6 +1720,16 @@ export default function PlaygroundCanvas() {
         // Capture screenshots for each reference node
         const refNodesWithScreenshots = await Promise.all(
           refNodes.map(async (node) => {
+            // Text nodes pass their content directly — no screenshot needed
+            if (node.type === 'text') {
+              const textNode = nodesRef.current.find((n) => n.id === node.nodeId);
+              return {
+                ...node,
+                textContent: (textNode?.data as Record<string, unknown>)?.text as string || '',
+                screenshotPath: undefined,
+                sourcePath: undefined,
+              };
+            }
             // Image nodes already have the image — no need to capture a screenshot
             if (node.type === 'image') {
               return {
@@ -2179,6 +2197,38 @@ export default function PlaygroundCanvas() {
     window.addEventListener('click', close);
     return () => window.removeEventListener('click', close);
   }, [contextMenu]);
+
+  // "T" shortcut — add text node at viewport center
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!matchesAction(e, 'canvas.add-text')) return;
+      const active = document.activeElement;
+      if (active) {
+        const tag = active.tagName.toLowerCase();
+        if (tag === 'input' || tag === 'textarea') return;
+        if ((active as HTMLElement).isContentEditable) return;
+        if (active.closest('[role="dialog"]') || active.closest('[data-radix-popper-content-wrapper]')) return;
+      }
+      e.preventDefault();
+      const wrapper = reactFlowWrapper.current;
+      if (!wrapper) return;
+      const rect = wrapper.getBoundingClientRect();
+      const position = screenToFlowPosition({
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      });
+      const newNode = {
+        id: getNodeId(),
+        type: 'text' as const,
+        position,
+        style: { width: 250, height: 150 },
+        data: { text: '' },
+      };
+      setNodes((nds) => nds.concat(newNode));
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [screenToFlowPosition, setNodes, getNodeId]);
 
   // Paste images or HTML from clipboard onto the canvas
   useEffect(() => {
@@ -2950,6 +3000,7 @@ export default function PlaygroundCanvas() {
               if (node.type === 'iteration') return MINIMAP_ITERATION_COLOR;
               if (node.type === 'drag-ghost') return '#0B99FF';
               if (node.type === 'image') return MINIMAP_IMAGE_COLOR;
+              if (node.type === 'text') return MINIMAP_TEXT_COLOR;
               return MINIMAP_COMPONENT_COLOR;
             }}
             maskColor={MINIMAP_MASK_COLOR}
