@@ -2151,6 +2151,81 @@ export default function PlaygroundCanvas() {
           });
           return;
         }
+
+        // Check for HTML file drops
+        const htmlFiles = Array.from(files).filter((f) =>
+          /\.(html?|htm)$/i.test(f.name)
+        );
+        if (htmlFiles.length > 0) {
+          const position = screenToFlowPosition({
+            x: event.clientX,
+            y: event.clientY,
+          });
+
+          (async () => {
+            // Determine next frame number
+            let frameNumber = 1;
+            const [htmlRes, jsxRes] = await Promise.all([
+              fetch('/playground/api/html-pages').catch(() => null),
+              fetch('/playground/api/oncanvas-components').catch(() => null),
+            ]);
+            if (htmlRes?.ok) {
+              const { pages } = await htmlRes.json() as { pages: { folder: string }[] };
+              for (const page of pages) {
+                const match = page.folder.match(/^frame-(\d+)$/);
+                if (match) frameNumber = Math.max(frameNumber, parseInt(match[1], 10) + 1);
+              }
+            }
+            if (jsxRes?.ok) {
+              const { components } = await jsxRes.json() as { components: { filename: string }[] };
+              for (const comp of components) {
+                const match = comp.filename.match(/^frame-(\d+)\.tsx$/);
+                if (match) frameNumber = Math.max(frameNumber, parseInt(match[1], 10) + 1);
+              }
+            }
+
+            for (let idx = 0; idx < htmlFiles.length; idx++) {
+              const file = htmlFiles[idx];
+              try {
+                const text = await file.text();
+                const wrappedHtml = wrapHtmlFragment(text);
+                const frameName = `frame-${frameNumber + idx}`;
+
+                const res = await fetch('/playground/api/html-pages', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ name: frameName, content: wrappedHtml }),
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                  console.error('[Playground] HTML file drop failed:', data.error);
+                  toast.error(data.error || 'Failed to create frame from dropped HTML');
+                  continue;
+                }
+
+                const pageId = data.page.id as string;
+                const folder = data.page.folder as string;
+
+                const newNode: Node = {
+                  id: getNodeId(),
+                  type: 'component',
+                  position: { x: position.x + idx * 320, y: position.y },
+                  data: {
+                    componentId: pageId,
+                    renderMode: 'html' as const,
+                    htmlFolder: folder,
+                  },
+                };
+                setNodes((nds) => nds.concat(newNode));
+              } catch (err) {
+                console.error('[Playground] HTML file drop failed:', err);
+                toast.error('Failed to create frame from dropped HTML');
+              }
+            }
+          })();
+          return;
+        }
       }
 
       const componentId = event.dataTransfer.getData(DND_DATA_KEY);
