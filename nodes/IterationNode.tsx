@@ -117,7 +117,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
   useEffect(() => {
     if (!isJsx || !data.jsxFile) return;
     let cancelled = false;
-    import('../canvas-components')
+    import('@/app/playground/canvas-components')
       .then(mod => {
         if (cancelled) return;
         const comp = mod.getOnCanvasComponent(data.jsxFile!);
