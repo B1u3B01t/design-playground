@@ -3,7 +3,13 @@ import { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import fs from 'fs';
 import path from 'path';
-import { TEMP_DIR_RELATIVE, GENERATION_LOCKFILE_FILENAME } from '../../lib/constants';
+import {
+  TEMP_DIR_RELATIVE,
+  GENERATION_LOCKFILE_FILENAME,
+  HTML_TREE_DIR,
+  HTML_TREE_FILENAME,
+  CANVAS_ITERATION_FILENAME_PATTERN,
+} from '../../lib/constants';
 import type { ProviderId } from '../../lib/providers';
 import { spawnAgent, getProviderNotFoundMessage, getProviderDisplayName } from '../../lib/providers';
 
@@ -35,6 +41,7 @@ let isGenerating = false;
 const generationEvents = new EventEmitter();
 let fileWatcher: fs.FSWatcher | null = null;
 let htmlFileWatcher: fs.FSWatcher | null = null;
+let htmlTreeWatcher: fs.FSWatcher | null = null;
 let jsxFileWatcher: fs.FSWatcher | null = null;
 
 function startFileWatcher(htmlPageFolder?: string, jsxFile?: string) {
@@ -62,19 +69,42 @@ function startFileWatcher(htmlPageFolder?: string, jsxFile?: string) {
     const htmlDir = path.join(process.cwd(), 'public', htmlPageFolder);
     let htmlDebounceTimer: NodeJS.Timeout | null = null;
     try {
-      htmlFileWatcher = fs.watch(htmlDir, { recursive: true }, (eventType, filename) => {
-        if (filename && filename.includes('iteration-') && filename.endsWith('.html')) {
-          if (htmlDebounceTimer) clearTimeout(htmlDebounceTimer);
-          htmlDebounceTimer = setTimeout(() => {
-            generationEvents.emit('iteration-added');
-          }, 500);
-        }
+      htmlFileWatcher = fs.watch(htmlDir, { recursive: true }, (_eventType, filename) => {
+        if (!filename) return;
+        const norm = filename.replace(/\\/g, '/');
+        if (!norm.endsWith('.html')) return;
+        if (!/iteration-\d+/.test(norm)) return;
+        if (htmlDebounceTimer) clearTimeout(htmlDebounceTimer);
+        htmlDebounceTimer = setTimeout(() => {
+          generationEvents.emit('iteration-added');
+        }, 500);
       });
       htmlFileWatcher.on('error', () => {
         // dir might not exist yet — ignore
       });
     } catch {
       // dir might not exist yet
+    }
+
+    // HTML iterations also update public/.playground/html-tree.json — watch so SSE
+    // fires when the manifest changes (OS-specific fs.watch filename quirks).
+    const treeDir = path.join(process.cwd(), 'public', HTML_TREE_DIR);
+    let treeDebounceTimer: NodeJS.Timeout | null = null;
+    try {
+      htmlTreeWatcher = fs.watch(treeDir, (_eventType, filename) => {
+        if (!filename) return;
+        const base = path.basename(filename.replace(/\\/g, '/'));
+        if (base !== HTML_TREE_FILENAME) return;
+        if (treeDebounceTimer) clearTimeout(treeDebounceTimer);
+        treeDebounceTimer = setTimeout(() => {
+          generationEvents.emit('iteration-added');
+        }, 500);
+      });
+      htmlTreeWatcher.on('error', () => {
+        // .playground dir might not exist yet
+      });
+    } catch {
+      // tree dir might not exist yet
     }
   }
 
@@ -83,8 +113,8 @@ function startFileWatcher(htmlPageFolder?: string, jsxFile?: string) {
     const canvasDir = path.join(process.cwd(), 'src/app/playground/canvas-components');
     let jsxDebounceTimer: NodeJS.Timeout | null = null;
     try {
-      jsxFileWatcher = fs.watch(canvasDir, (eventType, filename) => {
-        if (filename && /^frame-\d+\.iteration-\d+\.tsx$/.test(filename)) {
+      jsxFileWatcher = fs.watch(canvasDir, (_eventType, filename) => {
+        if (filename && CANVAS_ITERATION_FILENAME_PATTERN.test(filename)) {
           if (jsxDebounceTimer) clearTimeout(jsxDebounceTimer);
           jsxDebounceTimer = setTimeout(() => {
             generationEvents.emit('iteration-added');
@@ -109,6 +139,10 @@ function stopFileWatcher() {
     htmlFileWatcher.close();
     htmlFileWatcher = null;
   }
+  if (htmlTreeWatcher) {
+    htmlTreeWatcher.close();
+    htmlTreeWatcher = null;
+  }
   if (jsxFileWatcher) {
     jsxFileWatcher.close();
     jsxFileWatcher = null;
@@ -130,6 +164,12 @@ interface LockfileData {
   pid: number;
   componentId: string;
   startTime: number;
+}
+
+interface LockfileStatus {
+  lockfilePresent: boolean;
+  lockPid: number | null;
+  lockPidAlive: boolean;
 }
 
 function writeLockfile(pid: number, componentId: string) {
@@ -177,6 +217,79 @@ function cleanupOrphanedProcess() {
 
 // Run cleanup on module load (handles HMR restarts)
 cleanupOrphanedProcess();
+
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getLockfileStatus(): LockfileStatus {
+  if (!fs.existsSync(LOCKFILE_PATH)) {
+    return {
+      lockfilePresent: false,
+      lockPid: null,
+      lockPidAlive: false,
+    };
+  }
+
+  try {
+    const raw = fs.readFileSync(LOCKFILE_PATH, 'utf-8');
+    const parsed = JSON.parse(raw) as Partial<LockfileData>;
+    const pid = typeof parsed.pid === 'number' && Number.isFinite(parsed.pid) ? parsed.pid : null;
+    const alive = pid !== null ? isPidAlive(pid) : false;
+    return {
+      lockfilePresent: true,
+      lockPid: pid,
+      lockPidAlive: alive,
+    };
+  } catch {
+    return {
+      lockfilePresent: true,
+      lockPid: null,
+      lockPidAlive: false,
+    };
+  }
+}
+
+/**
+ * Single source of truth for "is a generation running?" on this Node process.
+ * Note: in serverless or multi-worker setups, in-memory state and even the
+ * lockfile may not be visible across instances — use shared storage if you deploy that way.
+ */
+function getGenerationStatus() {
+  const lock = getLockfileStatus();
+  const hasProcess = currentProcess !== null;
+  const generationActive = isGenerating || hasProcess || (lock.lockfilePresent && lock.lockPidAlive);
+
+  // Stale lockfile cleanup: if no in-memory generation state and lock PID is dead,
+  // remove the lockfile so status stays truthful after HMR and crashes.
+  if (!generationActive && lock.lockfilePresent) {
+    removeLockfile();
+    return {
+      success: true,
+      isGenerating,
+      hasProcess,
+      lockfilePresent: false,
+      lockPid: lock.lockPid,
+      lockPidAlive: false,
+      generationActive: false,
+    };
+  }
+
+  return {
+    success: true,
+    isGenerating,
+    hasProcess,
+    lockfilePresent: lock.lockfilePresent,
+    lockPid: lock.lockPid,
+    lockPidAlive: lock.lockPidAlive,
+    generationActive,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Log stream helpers
@@ -449,8 +562,10 @@ export async function GET(req: Request) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       start(controller) {
-        // If no generation is active, send done immediately and close.
-        if (!isGenerating) {
+        // If no generation is active (including lockfile/PID recovery signal),
+        // send done immediately and close.
+        const status = getGenerationStatus();
+        if (!status.generationActive) {
           controller.enqueue(encoder.encode('data: {"type":"done"}\n\n'));
           controller.close();
           return;
@@ -490,11 +605,7 @@ export async function GET(req: Request) {
   }
 
   if (action === 'status') {
-    return NextResponse.json({
-      success: true,
-      isGenerating,
-      hasProcess: currentProcess !== null,
-    });
+    return NextResponse.json(getGenerationStatus());
   }
 
   return NextResponse.json(

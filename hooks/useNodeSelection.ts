@@ -12,9 +12,10 @@ export interface SelectedNodeContext {
   componentName: string;
   type: 'component' | 'iteration' | 'image' | 'text';
   sourceFilename?: string;
-  renderMode?: 'react' | 'html';
+  renderMode?: 'react' | 'html' | 'jsx';
   htmlPageSlug?: string;
   htmlIterationFolder?: string;
+  jsxFile?: string;
   imagePath?: string;
   imageUrl?: string;
 }
@@ -43,11 +44,20 @@ export function useNodeSelection(): UseNodeSelectionReturn {
 
         if (node.type === 'component') {
           const compId = (data.componentId as string) || '';
+          const isJsx = data.renderMode === 'jsx';
+          const isHtml = data.renderMode === 'html';
           mapped.push({
             nodeId: node.id,
             componentId: compId,
-            componentName: flatRegistry[compId]?.label || compId,
+            componentName: isJsx
+              ? ((data.jsxFile as string)?.replace('.tsx', '') || compId)
+              : isHtml
+                ? ((data.htmlFolder as string) || compId)
+                : flatRegistry[compId]?.label || compId,
             type: 'component',
+            renderMode: isJsx ? 'jsx' : isHtml ? 'html' : 'react',
+            htmlPageSlug: isHtml ? (data.htmlFolder as string) : undefined,
+            jsxFile: isJsx ? (data.jsxFile as string) : undefined,
           });
         } else if (node.type === 'image') {
           mapped.push({
@@ -66,16 +76,25 @@ export function useNodeSelection(): UseNodeSelectionReturn {
             type: 'text',
           });
         } else {
+          const isJsx = data.renderMode === 'jsx';
+          const isHtml = data.renderMode === 'html';
           mapped.push({
             nodeId: node.id,
-            componentId:
-              (data.componentName as string)
-                ?.replace(/([A-Z])/g, '-$1')
-                .toLowerCase()
-                .replace(/^-/, '') || '',
+            componentId: isJsx
+              ? `jsx:${data.componentName as string}`
+              : isHtml
+                ? `html:${data.htmlFolder as string}`
+                : (data.componentName as string)
+                    ?.replace(/([A-Z])/g, '-$1')
+                    .toLowerCase()
+                    .replace(/^-/, '') || '',
             componentName: (data.componentName as string) || '',
             type: 'iteration',
             sourceFilename: (data.filename as string) || undefined,
+            renderMode: isJsx ? 'jsx' : isHtml ? 'html' : 'react',
+            htmlPageSlug: isHtml ? (data.htmlFolder as string) : undefined,
+            htmlIterationFolder: isHtml ? (data.htmlIterationFolder as string) : undefined,
+            jsxFile: isJsx ? (data.jsxFile as string) : undefined,
           });
         }
       }

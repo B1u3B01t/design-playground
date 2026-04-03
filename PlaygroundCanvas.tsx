@@ -53,6 +53,7 @@ import {
 import { freeformReferencePrompt } from './prompts/freeform-reference.prompt';
 import { editPrompt } from './prompts/edit.prompt';
 import { generateHtmlIterationPrompt, generateHtmlIterationFromIterationPrompt } from './lib/html-prompts';
+import { generateJsxIterationPrompt, generateJsxIterationFromIterationPrompt } from './lib/jsx-prompts';
 import { captureAndSaveScreenshot, getScreenshotFilename } from './lib/captureAndSaveScreenshot';
 import { loadSelectedModel } from './nodes/shared/IterateDialogParts';
 import {
@@ -116,6 +117,7 @@ import {
   type GenerationQueuedPayload,
   type DragIteratePayload,
   type CursorChatSubmitPayload,
+  type JsxComponentInfo,
 } from './lib/constants';
 import type { PlaygroundSkill } from './skills';
 import CursorChat from './CursorChat';
@@ -253,9 +255,11 @@ interface GenerationInfo {
   /** Parent node cell size so real iteration nodes can match ghost/skeleton sizing */
   gridCellSize?: { width: number; height: number };
   /** Render mode for this generation */
-  renderMode?: 'react' | 'html';
+  renderMode?: 'react' | 'html' | 'jsx';
   /** HTML page folder (when renderMode is 'html') */
   htmlFolder?: string;
+  /** Base or iteration filename in canvas-components/ (when renderMode is 'jsx') */
+  jsxFile?: string;
 }
 
 export default function PlaygroundCanvas() {
@@ -307,6 +311,8 @@ export default function PlaygroundCanvas() {
   const isGeneratingRef = useRef(false);
   const [generationInfo, setGenerationInfo] = useState<GenerationInfo | null>(null);
   const generationInfoRef = useRef<GenerationInfo | null>(null);
+  const generationStartedAtMsRef = useRef(0);
+  const inactiveStatusStreakRef = useRef(0);
   const [lastGenerationDuration, setLastGenerationDuration] = useState<string | null>(null);
   const [elapsedTime, setElapsedTime] = useState<string>('0m:00s');
   
@@ -371,6 +377,8 @@ export default function PlaygroundCanvas() {
     if (!isGenerating) return;
 
     let cancelled = false;
+    const STARTUP_GRACE_MS = 2000;
+    const REQUIRED_INACTIVE_POLLS = 2;
 
     const pollStatus = async () => {
       if (cancelled) return;
@@ -383,11 +391,30 @@ export default function PlaygroundCanvas() {
           success: boolean;
           isGenerating: boolean;
           hasProcess: boolean;
+          lockfilePresent?: boolean;
+          lockPid?: number | null;
+          lockPidAlive?: boolean;
+          generationActive?: boolean;
         };
 
-        // If the backend reports that no generation is running but the UI
-        // still thinks it is, force-complete to clear any lingering skeletons.
-        if (!data.isGenerating && generationInfoRef.current) {
+        const generationActive = data.generationActive ?? data.isGenerating;
+        if (generationActive) {
+          inactiveStatusStreakRef.current = 0;
+        } else if (generationInfoRef.current) {
+          const now = Date.now();
+          const generationStartedAt = generationStartedAtMsRef.current || generationInfoRef.current.startTime;
+          const stillInStartupGrace = now - generationStartedAt < STARTUP_GRACE_MS;
+          if (!stillInStartupGrace) {
+            inactiveStatusStreakRef.current += 1;
+          }
+        }
+
+        // If backend confirms generation is inactive for consecutive polls,
+        // force-complete to clear any lingering skeletons.
+        if (
+          inactiveStatusStreakRef.current >= REQUIRED_INACTIVE_POLLS &&
+          generationInfoRef.current
+        ) {
           const info = generationInfoRef.current;
           window.dispatchEvent(
             new CustomEvent<GenerationCompletePayload>(GENERATION_COMPLETE_EVENT, {
@@ -398,6 +425,7 @@ export default function PlaygroundCanvas() {
               },
             }),
           );
+          inactiveStatusStreakRef.current = 0;
           return;
         }
       } catch {
@@ -673,6 +701,131 @@ export default function PlaygroundCanvas() {
           console.error('Error scanning HTML iterations:', error);
         }
         // For HTML generations, skip the React iteration scan
+        return;
+      }
+
+      // ------------------------------------------------------------------
+      // JSX on-canvas iteration scanning (canvas-components/frame-*.iteration-*.tsx)
+      // ------------------------------------------------------------------
+      if (info?.renderMode === 'jsx' && info.jsxFile) {
+        const baseFilename = info.jsxFile.replace(/\.iteration-\d+\.tsx$/, '.tsx');
+        try {
+          const jsxResponse = await fetch('/playground/api/oncanvas-components');
+          if (jsxResponse.ok) {
+            const { components } = await jsxResponse.json() as { components: JsxComponentInfo[] };
+            const comp = components.find(c => c.filename === baseFilename);
+            if (comp && comp.iterations.length > 0) {
+              const currentNodes = nodesRef.current;
+              const currentKnownIterations = knownIterationsRef.current;
+              const existingJsxKeys = new Set([
+                ...currentKnownIterations,
+                ...currentNodes
+                  .filter(n => n.type === 'iteration' && n.data.renderMode === 'jsx' && n.data.jsxFile)
+                  .map(n => n.data.jsxFile as string),
+              ]);
+
+              const newJsxIterations = comp.iterations.filter(
+                it => !existingJsxKeys.has(it.filename),
+              );
+
+              if (newJsxIterations.length > 0) {
+                const remainingSkeletonIds = info
+                  ? info.skeletonNodeIds.filter(id => currentNodes.some(n => n.id === id))
+                  : [];
+                const skeletonsToRemove: string[] = [];
+                const newNodes: Node[] = [];
+                const newEdges: Edge[] = [];
+                const newKnownFilenames: string[] = [];
+
+                newJsxIterations.sort((a, b) => a.iterationNumber - b.iterationNumber);
+
+                for (const it of newJsxIterations) {
+                  const sourceNodeId = info.parentNodeId
+                    ? (currentNodes.find(n => n.id === info.parentNodeId)?.id || undefined)
+                    : undefined;
+                  const sourceNode = sourceNodeId
+                    ? (currentNodes.find(n => n.id === sourceNodeId) || newNodes.find(n => n.id === sourceNodeId))
+                    : undefined;
+
+                  let position: { x: number; y: number };
+                  if (remainingSkeletonIds.length > 0) {
+                    const skeletonId = remainingSkeletonIds.shift()!;
+                    const skeletonNode = currentNodes.find(n => n.id === skeletonId);
+                    if (skeletonNode) {
+                      position = { ...skeletonNode.position };
+                      skeletonsToRemove.push(skeletonId);
+                    } else if (sourceNode) {
+                      const srcW = sourceNode.measured?.width ?? DEFAULT_ITERATION_NODE_WIDTH;
+                      position = { x: sourceNode.position.x + srcW + ARRANGE_HORIZONTAL_GAP, y: sourceNode.position.y };
+                    } else {
+                      position = { x: 400, y: 200 };
+                    }
+                  } else if (sourceNode) {
+                    const srcW = sourceNode.measured?.width ?? DEFAULT_ITERATION_NODE_WIDTH;
+                    position = { x: sourceNode.position.x + srcW + ARRANGE_HORIZONTAL_GAP, y: sourceNode.position.y };
+                  } else {
+                    position = { x: 400, y: 200 };
+                  }
+
+                  const nodeId = getNodeId();
+                  const parentSize = (sourceNode?.data?.size as string | undefined) as import('./lib/constants').ComponentSize | undefined;
+                  const registryId =
+                    (sourceNode?.data?.componentId as string | undefined) ??
+                    `${JSX_ID_PREFIX}${comp.label}`;
+
+                  newNodes.push({
+                    id: nodeId,
+                    type: 'iteration',
+                    position,
+                    data: {
+                      componentName: comp.label,
+                      iterationNumber: it.iterationNumber,
+                      filename: it.filename,
+                      description: '',
+                      parentNodeId: sourceNodeId || undefined,
+                      parentSize,
+                      registryId,
+                      renderMode: 'jsx',
+                      jsxFile: it.filename,
+                      onDelete: handleIterationDelete,
+                      onAdopt: handleIterationAdopt,
+                    },
+                  });
+
+                  if (sourceNodeId) {
+                    newEdges.push({
+                      id: `edge_${sourceNodeId}_${nodeId}`,
+                      source: sourceNodeId,
+                      target: nodeId,
+                      type: 'smoothstep',
+                      animated: false,
+                      style: ITERATION_EDGE_STYLE,
+                    });
+                  }
+
+                  newKnownFilenames.push(it.filename);
+                }
+
+                if (newNodes.length > 0) {
+                  const skeletonSet = new Set(skeletonsToRemove);
+                  setNodes(nds => [
+                    ...nds.filter(n => !skeletonSet.has(n.id)),
+                    ...newNodes,
+                  ]);
+                  setEdges(eds => [
+                    ...eds.filter(e => !skeletonSet.has(e.target)),
+                    ...newEdges,
+                  ]);
+                  knownIterationsRef.current = [...knownIterationsRef.current, ...newKnownFilenames];
+                  setKnownIterations(prev => [...prev, ...newKnownFilenames]);
+                  if (resetTimeoutOnFind) resetPollTimeout();
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error scanning JSX iterations:', error);
+        }
         return;
       }
 
@@ -1021,13 +1174,35 @@ export default function PlaygroundCanvas() {
     };
 
     const handleGenerationStart = (e: CustomEvent<GenerationStartPayload>) => {
-      const { componentId, componentName, parentNodeId, iterationCount, gridLayout, renderMode: genRenderMode, htmlFolder: genHtmlFolder, editMode: isEditMode } = e.detail;
+      const {
+        componentId,
+        componentName,
+        parentNodeId,
+        iterationCount,
+        gridLayout,
+        renderMode: genRenderMode,
+        htmlFolder: genHtmlFolder,
+        jsxFile: genJsxFile,
+        editMode: isEditMode,
+      } = e.detail;
+      generationStartedAtMsRef.current = Date.now();
+      inactiveStatusStreakRef.current = 0;
 
       // Edit mode: presence bubble is handled via the event, but no skeletons
       if (isEditMode) {
         setIsGenerating(true);
         isGeneratingRef.current = true;
-        generationInfoRef.current = { componentId, componentName, parentNodeId: '', iterationCount: 0, skeletonNodeIds: [], startTime: Date.now(), renderMode: genRenderMode, htmlFolder: genHtmlFolder };
+        generationInfoRef.current = {
+          componentId,
+          componentName,
+          parentNodeId: '',
+          iterationCount: 0,
+          skeletonNodeIds: [],
+          startTime: Date.now(),
+          renderMode: genRenderMode,
+          htmlFolder: genHtmlFolder,
+          jsxFile: genJsxFile,
+        };
         setGenerationInfo(generationInfoRef.current);
         return;
       }
@@ -1062,6 +1237,7 @@ export default function PlaygroundCanvas() {
           skeletonPositions: [{ x: flowPos.x, y: flowPos.y }],
           renderMode: genRenderMode,
           htmlFolder: genHtmlFolder,
+          jsxFile: genJsxFile,
         };
         generationInfoRef.current = newInfo;
         setIsGenerating(true);
@@ -1185,6 +1361,7 @@ export default function PlaygroundCanvas() {
         gridCellSize: gridLayout ? { width: cellW, height: cellH } : undefined,
         renderMode: genRenderMode,
         htmlFolder: genHtmlFolder,
+        jsxFile: genJsxFile,
       };
       generationInfoRef.current = newInfo;
       setIsGenerating(true);
@@ -1225,6 +1402,7 @@ export default function PlaygroundCanvas() {
       // Reset generation state — eagerly sync ref so concurrent callers
       // (e.g. status polling) see the cleared state immediately.
       generationInfoRef.current = null;
+      inactiveStatusStreakRef.current = 0;
       setIsGenerating(false);
       setGenerationInfo(null);
 
@@ -1301,6 +1479,7 @@ export default function PlaygroundCanvas() {
 
       // Reset generation state — eagerly sync ref
       generationInfoRef.current = null;
+      inactiveStatusStreakRef.current = 0;
 
       setIsGenerating(false);
       setGenerationInfo(null);
@@ -1333,8 +1512,10 @@ export default function PlaygroundCanvas() {
         sourceFilename,
         renderMode: dragRenderMode,
         htmlFolder: dragHtmlFolder,
+        jsxFile: dragJsxFile,
       } = e.detail;
       const isDragHtml = dragRenderMode === 'html' && !!dragHtmlFolder;
+      const isDragJsx = dragRenderMode === 'jsx' && !!dragJsxFile;
 
       // Build the prompt
       let prompt: string;
@@ -1350,6 +1531,18 @@ export default function PlaygroundCanvas() {
             const page = pages.find((p: { folder: string }) => p.folder === dragHtmlFolder);
             const maxNumber = page?.iterations.reduce(
               (max: number, i: { number: number }) => Math.max(max, i.number), 0
+            ) ?? 0;
+            startNumber = maxNumber + 1;
+          }
+        } else if (isDragJsx && dragJsxFile) {
+          const baseFilename = dragJsxFile.replace(/\.iteration-\d+\.tsx$/, '.tsx');
+          const response = await fetch('/playground/api/oncanvas-components');
+          if (response.ok) {
+            const { components } = await response.json() as { components: JsxComponentInfo[] };
+            const comp = components.find(c => c.filename === baseFilename);
+            const maxNumber = comp?.iterations.reduce(
+              (max: number, i: { iterationNumber: number }) => Math.max(max, i.iterationNumber),
+              0,
             ) ?? 0;
             startNumber = maxNumber + 1;
           }
@@ -1391,6 +1584,28 @@ export default function PlaygroundCanvas() {
         } else {
           prompt = generateHtmlIterationPrompt(
             dragHtmlFolder,
+            iterationCount,
+            startNumber,
+            DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
+            defaultSkillPrompt || undefined,
+            screenshotPath ?? undefined,
+          );
+        }
+      } else if (isDragJsx && dragJsxFile) {
+        const baseFile = dragJsxFile.replace(/\.iteration-\d+\.tsx$/, '.tsx');
+        if (sourceFilename) {
+          prompt = generateJsxIterationFromIterationPrompt(
+            baseFile,
+            sourceFilename,
+            iterationCount,
+            startNumber,
+            DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
+            defaultSkillPrompt || undefined,
+            screenshotPath ?? undefined,
+          );
+        } else {
+          prompt = generateJsxIterationPrompt(
+            baseFile,
             iterationCount,
             startNumber,
             DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
@@ -1445,7 +1660,9 @@ export default function PlaygroundCanvas() {
               parentNodeId,
               error: isDragHtml
                 ? `HTML page "${dragHtmlFolder}" not found.`
-                : `Component "${componentId}" is not registered. Add it to the registry or re-run discovery before iterating.`,
+                : isDragJsx
+                  ? 'Could not build prompt for this JSX frame (missing jsxFile or canvas-components data).'
+                  : `Component "${componentId}" is not registered. Add it to the registry or re-run discovery before iterating.`,
             },
           }),
         );
@@ -1461,7 +1678,11 @@ export default function PlaygroundCanvas() {
             parentNodeId,
             iterationCount,
             gridLayout: { rows: e.detail.rows, cols: e.detail.cols },
-            ...(isDragHtml ? { renderMode: 'html' as const, htmlFolder: dragHtmlFolder } : {}),
+            ...(isDragHtml
+              ? { renderMode: 'html' as const, htmlFolder: dragHtmlFolder }
+              : isDragJsx && dragJsxFile
+                ? { renderMode: 'jsx' as const, jsxFile: dragJsxFile }
+                : {}),
           },
         }),
       );
@@ -1478,6 +1699,7 @@ export default function PlaygroundCanvas() {
             model: model || undefined,
             ...getProviderFields(),
             ...(isDragHtml ? { htmlFolder: dragHtmlFolder } : {}),
+            ...(isDragJsx && dragJsxFile ? { jsxFile: dragJsxFile } : {}),
           }),
         });
 
@@ -1555,6 +1777,7 @@ export default function PlaygroundCanvas() {
     // ── Edit Mode: modify file in-place, no iterations ──
     if (payload.editMode && payload.targetNodeId) {
       const isHtmlEdit = payload.renderMode === 'html';
+      const isJsxEdit = payload.renderMode === 'jsx' && !!payload.jsxFile;
       const editComponentId = payload.targetComponentId || 'edit-mode';
       const editComponentName = payload.targetComponentName || editComponentId;
       let filePath: string;
@@ -1565,6 +1788,8 @@ export default function PlaygroundCanvas() {
         } else {
           filePath = `public/${payload.htmlPageSlug}/index.html`;
         }
+      } else if (isJsxEdit) {
+        filePath = `src/app/playground/canvas-components/${payload.jsxFile}`;
       } else if (payload.targetType === 'iteration' && payload.sourceFilename) {
         filePath = `src/app/playground/iterations/${payload.sourceFilename}`;
       } else {
@@ -1634,6 +1859,9 @@ export default function PlaygroundCanvas() {
             flowPosition: payload.canvasPosition,
             editMode: true,
             ...(isHtmlEdit ? { renderMode: 'html' as const, htmlFolder: payload.htmlPageSlug } : {}),
+            ...(isJsxEdit && payload.jsxFile
+              ? { renderMode: 'jsx' as const, jsxFile: payload.jsxFile }
+              : {}),
           },
         }),
       );
@@ -1648,6 +1876,7 @@ export default function PlaygroundCanvas() {
             model: payload.model || undefined,
             ...getProviderFields(),
             ...(isHtmlEdit ? { htmlFolder: payload.htmlPageSlug } : {}),
+            ...(isJsxEdit && payload.jsxFile ? { jsxFile: payload.jsxFile } : {}),
           }),
         });
         const data = await response.json().catch(() => ({ success: false }));
@@ -1665,6 +1894,8 @@ export default function PlaygroundCanvas() {
             window.dispatchEvent(new CustomEvent(EDIT_COMPLETE_EVENT, {
               detail: { nodeId: payload.targetNodeId },
             }));
+          } else if (isJsxEdit) {
+            window.dispatchEvent(new Event(JSX_COMPONENT_ADDED_EVENT));
           }
           window.dispatchEvent(
             new CustomEvent<GenerationCompletePayload>(GENERATION_COMPLETE_EVENT, {
@@ -1764,6 +1995,7 @@ export default function PlaygroundCanvas() {
     }
 
     const isHtmlTarget = payload.renderMode === 'html' && !!payload.htmlPageSlug;
+    const isJsxTarget = payload.renderMode === 'jsx' && !!payload.jsxFile;
 
     if (targetNodeId && targetComponentId && targetComponentName && targetType) {
       // --- WITH TARGET NODE ---
@@ -1782,6 +2014,18 @@ export default function PlaygroundCanvas() {
             const page = pages.find((p: { folder: string }) => p.folder === payload.htmlPageSlug);
             const maxNumber = page?.iterations.reduce(
               (max: number, i: { number: number }) => Math.max(max, i.number), 0
+            ) ?? 0;
+            startNumber = maxNumber + 1;
+          }
+        } else if (isJsxTarget && payload.jsxFile) {
+          const baseFilename = payload.jsxFile.replace(/\.iteration-\d+\.tsx$/, '.tsx');
+          const response = await fetch('/playground/api/oncanvas-components');
+          if (response.ok) {
+            const { components } = await response.json() as { components: JsxComponentInfo[] };
+            const comp = components.find(c => c.filename === baseFilename);
+            const maxNumber = comp?.iterations.reduce(
+              (max: number, i: { iterationNumber: number }) => Math.max(max, i.iterationNumber),
+              0,
             ) ?? 0;
             startNumber = maxNumber + 1;
           }
@@ -1822,6 +2066,28 @@ export default function PlaygroundCanvas() {
         } else {
           prompt = generateHtmlIterationPrompt(
             payload.htmlPageSlug,
+            iterationCount,
+            startNumber,
+            customInstructions,
+            combinedSkillPrompt,
+            screenshotPath ?? undefined,
+          );
+        }
+      } else if (isJsxTarget && payload.jsxFile) {
+        const baseFile = payload.jsxFile.replace(/\.iteration-\d+\.tsx$/, '.tsx');
+        if (targetType === 'iteration' && sourceFilename) {
+          prompt = generateJsxIterationFromIterationPrompt(
+            baseFile,
+            sourceFilename,
+            iterationCount,
+            startNumber,
+            customInstructions,
+            combinedSkillPrompt,
+            screenshotPath ?? undefined,
+          );
+        } else {
+          prompt = generateJsxIterationPrompt(
+            baseFile,
             iterationCount,
             startNumber,
             customInstructions,
@@ -1900,6 +2166,9 @@ export default function PlaygroundCanvas() {
             model: payloadModel || undefined,
             flowPosition: payload.canvasPosition,
             ...(isHtmlTarget ? { renderMode: 'html' as const, htmlFolder: payload.htmlPageSlug } : {}),
+            ...(isJsxTarget && payload.jsxFile
+              ? { renderMode: 'jsx' as const, jsxFile: payload.jsxFile }
+              : {}),
           },
         }),
       );
@@ -1916,6 +2185,7 @@ export default function PlaygroundCanvas() {
             model: payloadModel || undefined,
             ...getProviderFields(),
             ...(isHtmlTarget ? { htmlFolder: payload.htmlPageSlug } : {}),
+            ...(isJsxTarget && payload.jsxFile ? { jsxFile: payload.jsxFile } : {}),
           }),
         });
 

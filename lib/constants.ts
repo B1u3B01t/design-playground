@@ -591,11 +591,13 @@ export interface CursorChatSubmitPayload {
   /** When true, edit the target file in-place instead of creating iterations */
   editMode?: boolean;
   /** Render mode of the target node */
-  renderMode?: 'react' | 'html';
+  renderMode?: 'react' | 'html' | 'jsx';
   /** HTML page folder for the target (when renderMode is 'html') */
   htmlPageSlug?: string;
   /** HTML iteration folder (when targeting an HTML iteration) */
   htmlIterationFolder?: string;
+  /** On-canvas JSX filename in canvas-components/ (when renderMode is 'jsx') */
+  jsxFile?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -620,9 +622,11 @@ export interface GenerationStartPayload {
   /** Flow-space position where the generation was initiated */
   flowPosition?: { x: number; y: number };
   /** Render mode for generated nodes */
-  renderMode?: 'react' | 'html';
+  renderMode?: 'react' | 'html' | 'jsx';
   /** HTML page folder name (when renderMode is 'html') */
   htmlFolder?: string;
+  /** Base or iteration filename in canvas-components/ (when renderMode is 'jsx') */
+  jsxFile?: string;
   /** When true, this is an edit-in-place operation — no skeleton nodes should be created */
   editMode?: boolean;
   /** When true, this is an adoption operation — presence bubbles show green spinner */
@@ -662,8 +666,10 @@ export interface DragIteratePayload {
   model?: string;
   provider?: import('./providers/types').ProviderId;
   sourceFilename?: string;
-  renderMode?: 'react' | 'html';
+  renderMode?: 'react' | 'html' | 'jsx';
   htmlFolder?: string;
+  /** Base or iteration JSX filename (when renderMode is 'jsx') */
+  jsxFile?: string;
 }
 
 // ---------------------------------------------------------------------------
