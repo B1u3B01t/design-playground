@@ -20,6 +20,7 @@ import { resolveRegistryItem, generateAdoptPrompt } from '../registry';
 import { getIterationComponent } from '../iterations';
 import { CancelGenerationButton } from './shared/IterateDialogParts';
 import { SizeButtons } from './shared/SizeButtons';
+import { loadOnCanvasComponentModule } from './oncanvas-loader';
 import {
   COMPONENT_SIZE_CHANGE_EVENT,
   GENERATION_START_EVENT,
@@ -117,7 +118,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
   useEffect(() => {
     if (!isJsx || !data.jsxFile) return;
     let cancelled = false;
-    import('@/app/playground/canvas-components')
+    loadOnCanvasComponentModule()
       .then(mod => {
         if (cancelled) return;
         const comp = mod.getOnCanvasComponent(data.jsxFile!);

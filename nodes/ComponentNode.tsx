@@ -8,6 +8,7 @@ import { resolveRegistryItem } from '../registry';
 import { CancelGenerationButton } from './shared/IterateDialogParts';
 import IterateDialog from './shared/IterateDialog';
 import { SizeButtons } from './shared/SizeButtons';
+import { loadOnCanvasComponentModule } from './oncanvas-loader';
 
 import { useAsyncProps, useScrollCapture, useHtmlContent } from '../hooks/useNodeShared';
 import { useTunnelShare } from '../hooks/useTunnelShare';
@@ -69,7 +70,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
     if (!isJsx || !data.jsxFile) return;
     let cancelled = false;
 
-    import('@/app/playground/canvas-components')
+    loadOnCanvasComponentModule()
       .then(mod => {
         if (cancelled) return;
         const comp = mod.getOnCanvasComponent(data.jsxFile!);
