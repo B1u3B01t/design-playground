@@ -109,6 +109,7 @@ export function formatReferenceNodesSection(
     sourcePath?: string;
     screenshotPath?: string;
     imagePath?: string;
+    imageUrl?: string;
     textContent?: string;
   }[],
 ): string {
@@ -127,7 +128,7 @@ export function formatReferenceNodesSection(
     const node = nodes[i];
     const typeLabel = node.type === 'text' ? 'text note' : node.type === 'image' ? 'image reference' : node.type === 'iteration' ? 'iteration' : 'component';
     const path = node.type === 'text' ? undefined : node.type === 'image'
-      ? node.imagePath
+      ? (node.imagePath || node.imageUrl)
       : (node.sourcePath || (node.sourceFilename
         ? `src/app/playground/iterations/${node.sourceFilename}`
         : undefined));
@@ -137,8 +138,13 @@ export function formatReferenceNodesSection(
     if (node.type === 'text' && node.textContent) {
       lines.push(`   Text note content: "${node.textContent}"`);
       lines.push(`   Use this text as design context or instructions.`);
-    } else if (node.type === 'image' && node.imagePath) {
-      lines.push(`   Image: ${node.imagePath}`);
+    } else if (node.type === 'image' && (node.imagePath || node.imageUrl)) {
+      if (node.imagePath) {
+        lines.push(`   Repo file: ${node.imagePath}`);
+      }
+      if (node.imageUrl) {
+        lines.push(`   Public URL: ${node.imageUrl}`);
+      }
       lines.push(`   Read this image to understand the visual design to match.`);
     } else if (node.screenshotPath) {
       lines.push(`   Screenshot: ${node.screenshotPath}`);

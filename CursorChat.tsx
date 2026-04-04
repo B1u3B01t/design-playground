@@ -305,6 +305,9 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
             componentName: node.componentName,
             type: node.type,
             sourceFilename: node.sourceFilename,
+            ...(node.type === 'image'
+              ? { imagePath: node.imagePath, imageUrl: node.imageUrl }
+              : {}),
           }))
         : undefined,
     };
