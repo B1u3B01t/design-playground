@@ -1,12 +1,12 @@
 import type { ProviderConfig, AgentSpawnOptions } from './types';
 
 function buildAgentArgs(opts: AgentSpawnOptions): string[] {
-  const args = [
-    '-p',
-    '--dangerously-skip-permissions',
-    '--output-format', 'text',
-    '--verbose',
-  ];
+  const args = ['-p', '--dangerously-skip-permissions', '--verbose'];
+  if (opts.claudeDetailedStdout) {
+    args.push('--output-format', 'stream-json', '--include-partial-messages');
+  } else {
+    args.push('--output-format', 'text');
+  }
   if (opts.model)        args.push('--model', opts.model);
   if (opts.effort)       args.push('--effort', opts.effort);
   if (opts.maxBudgetUsd) args.push('--max-budget-usd', String(opts.maxBudgetUsd));

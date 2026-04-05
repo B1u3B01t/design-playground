@@ -12,13 +12,16 @@ import {
   GENERATION_COMPLETE_EVENT,
   GENERATION_ERROR_EVENT,
   GENERATION_QUEUED_EVENT,
+  GENERATION_AGENT_PREVIEW_EVENT,
   PAN_TO_POSITION_EVENT,
   FIT_COMPONENT_NODES_EVENT,
   PRESENCE_BUBBLES_STORAGE_KEY,
   type GenerationStartPayload,
   type GenerationErrorPayload,
   type GenerationQueuedPayload,
+  type GenerationAgentPreviewPayload,
 } from './lib/constants';
+import { cn } from './lib/utils';
 import ModelSettingsModal from './ModelSettingsModal';
 import KeyboardShortcutsModal from './KeyboardShortcutsModal';
 
@@ -35,6 +38,8 @@ interface PresenceBubble {
   flowPosition: { x: number; y: number } | null;
   /** Distinguishes adopt operations from normal generation */
   type?: 'iterate' | 'edit' | 'adopt';
+  /** Live assistant text from Claude Code stream-json (not persisted) */
+  agentPreviewText?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -71,10 +76,11 @@ export default function PlaygroundHeader({
     } catch { /* ignore */ }
   }, []);
 
-  // Persist presence bubbles to localStorage
+  // Persist presence bubbles to localStorage (omit large live preview text)
   useEffect(() => {
     try {
-      localStorage.setItem(PRESENCE_BUBBLES_STORAGE_KEY, JSON.stringify(presenceBubbles));
+      const storable = presenceBubbles.map(({ agentPreviewText: _omit, ...rest }) => rest);
+      localStorage.setItem(PRESENCE_BUBBLES_STORAGE_KEY, JSON.stringify(storable));
     } catch { /* ignore */ }
   }, [presenceBubbles]);
 
@@ -107,7 +113,15 @@ export default function PlaygroundHeader({
         if (queuedIdx !== -1) {
           return prev.map((b, i) =>
             i === queuedIdx
-              ? { ...b, status: 'generating' as const, model: detail.model || b.model, provider: detail.provider ?? b.provider, flowPosition: detail.flowPosition ?? b.flowPosition, type: bubbleType }
+              ? {
+                  ...b,
+                  status: 'generating' as const,
+                  model: detail.model || b.model,
+                  provider: detail.provider ?? b.provider,
+                  flowPosition: detail.flowPosition ?? b.flowPosition,
+                  type: bubbleType,
+                  agentPreviewText: undefined,
+                }
               : b
           );
         }
@@ -122,6 +136,7 @@ export default function PlaygroundHeader({
           status: 'generating',
           flowPosition: detail.flowPosition ?? null,
           type: bubbleType,
+          agentPreviewText: undefined,
         };
         return [...prev, bubble];
       });
@@ -149,15 +164,29 @@ export default function PlaygroundHeader({
       );
     };
 
+    const handleAgentPreview = (e: Event) => {
+      const d = (e as CustomEvent<GenerationAgentPreviewPayload>).detail;
+      setPresenceBubbles((prev) =>
+        prev.map((b) =>
+          b.componentId === d.componentId &&
+          (b.status === 'generating' || b.status === 'done')
+            ? { ...b, agentPreviewText: d.text }
+            : b,
+        ),
+      );
+    };
+
     window.addEventListener(GENERATION_QUEUED_EVENT, handleQueued);
     window.addEventListener(GENERATION_START_EVENT, handleStart);
     window.addEventListener(GENERATION_COMPLETE_EVENT, handleComplete);
     window.addEventListener(GENERATION_ERROR_EVENT, handleError);
+    window.addEventListener(GENERATION_AGENT_PREVIEW_EVENT, handleAgentPreview);
     return () => {
       window.removeEventListener(GENERATION_QUEUED_EVENT, handleQueued);
       window.removeEventListener(GENERATION_START_EVENT, handleStart);
       window.removeEventListener(GENERATION_COMPLETE_EVENT, handleComplete);
       window.removeEventListener(GENERATION_ERROR_EVENT, handleError);
+      window.removeEventListener(GENERATION_AGENT_PREVIEW_EVENT, handleAgentPreview);
       // Clean up timers
       for (const timer of removeTimersRef.current.values()) clearTimeout(timer);
       removeTimersRef.current.clear();
@@ -302,8 +331,14 @@ export default function PlaygroundHeader({
                 : bubble.type === 'adopt'
                   ? `Adopting — ${displayName}`
                   : `${displayName} — ${bubble.status}`;
-               return (
-                <Tooltip key={bubble.id}>
+
+              const showClaudeStreamTooltip =
+                bubble.provider === 'claude-code' &&
+                (bubble.status === 'generating' ||
+                  (bubble.status === 'done' && Boolean(bubble.agentPreviewText?.trim())));
+
+              return (
+                <Tooltip key={bubble.id} delayDuration={showClaudeStreamTooltip ? 280 : undefined}>
                   <TooltipTrigger asChild>
                 <div
                   className="presence-bubble group"
@@ -338,8 +373,36 @@ export default function PlaygroundHeader({
                   </button>
                 </div>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom" className="text-xs">
-                    {tooltipText}
+                  <TooltipContent
+                    side="bottom"
+                    sideOffset={6}
+                    className={cn(
+                      showClaudeStreamTooltip
+                        ? 'max-w-[min(20rem,calc(100vw-2rem))] p-0 border border-stone-200/90 bg-white text-stone-800 shadow-lg pointer-events-auto overflow-hidden rounded-lg'
+                        : 'text-xs',
+                    )}
+                  >
+                    {showClaudeStreamTooltip ? (
+                      <>
+                        <div className="border-b border-stone-100/90 px-3 py-2 text-[11px] font-medium text-stone-600 bg-gradient-to-b from-stone-50 to-stone-50/80">
+                          {bubble.status === 'done'
+                            ? `${displayName} · done`
+                            : bubble.type === 'adopt'
+                              ? `Adopting — ${displayName}`
+                              : displayName}
+                        </div>
+                        <div
+                          className="max-h-44 min-h-[2.75rem] overflow-y-auto overscroll-y-contain px-3 py-2 text-[11px] leading-relaxed font-mono text-stone-700 whitespace-pre-wrap break-words bg-white"
+                          onWheel={(e) => e.stopPropagation()}
+                        >
+                          {bubble.agentPreviewText?.trim()
+                            ? bubble.agentPreviewText
+                            : 'Waiting for assistant text…'}
+                        </div>
+                      </>
+                    ) : (
+                      <p>{tooltipText}</p>
+                    )}
                   </TooltipContent>
                 </Tooltip>
               );

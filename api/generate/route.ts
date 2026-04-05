@@ -306,6 +306,51 @@ function closeLogStream() {
   }
 }
 
+/** Max assistant preview string length (tail kept) — caps SSE payload size. */
+const AGENT_PREVIEW_MAX_CHARS = 14_000;
+/** Ignore absurdly long JSONL lines (e.g. system init) when scanning for text deltas. */
+const JSONL_PARSE_MAX_LINE_CHARS = 512_000;
+
+/**
+ * Append assistant `text_delta` chunks from complete JSONL lines (Claude Code stream-json).
+ * Returns whether the preview text changed.
+ */
+function appendAssistantTextFromJsonlLines(
+  lines: string[],
+  assistantPreview: { value: string },
+): boolean {
+  let changed = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0 || !trimmed.startsWith('{')) continue;
+    if (trimmed.length > JSONL_PARSE_MAX_LINE_CHARS) continue;
+    try {
+      const obj = JSON.parse(trimmed) as {
+        type?: string;
+        event?: {
+          type?: string;
+          delta?: { type?: string; text?: string };
+        };
+      };
+      if (
+        obj.type === 'stream_event' &&
+        obj.event?.type === 'content_block_delta' &&
+        obj.event.delta?.type === 'text_delta' &&
+        typeof obj.event.delta.text === 'string'
+      ) {
+        assistantPreview.value += obj.event.delta.text;
+        changed = true;
+      }
+    } catch {
+      /* ignore non-JSON or unexpected shape */
+    }
+  }
+  if (assistantPreview.value.length > AGENT_PREVIEW_MAX_CHARS) {
+    assistantPreview.value = assistantPreview.value.slice(-AGENT_PREVIEW_MAX_CHARS);
+  }
+  return changed;
+}
+
 // ---------------------------------------------------------------------------
 // API handlers
 // ---------------------------------------------------------------------------
@@ -329,6 +374,8 @@ export async function POST(req: Request) {
       effort?: string;
       maxBudgetUsd?: number;
       maxTurns?: number;
+      /** Claude Code: when not `false`, use stream-json JSONL stdout (default true). */
+      claudeDetailedStdout?: boolean;
       htmlFolder?: string;
       jsxFile?: string;
     } | null;
@@ -342,8 +389,12 @@ export async function POST(req: Request) {
 
     const { prompt, model } = body;
     const providerId: ProviderId = body.provider ?? 'cursor';
-    // Sanitize componentId for use in file paths (prevent path traversal)
-    const componentId = String(body.componentId).replace(/[^A-Za-z0-9-_]/g, '_').slice(0, 200) || 'component';
+    const streamJsonForPreview =
+      providerId === 'claude-code' && body.claudeDetailedStdout !== false;
+    /** Same string the client sends (e.g. `html:checkout`) — must match presence bubbles / SSE consumers. */
+    const clientComponentId = String(body.componentId).slice(0, 400);
+    // Sanitize for file paths / lockfile only (colon and other chars → `_`)
+    const componentId = clientComponentId.replace(/[^A-Za-z0-9-_]/g, '_').slice(0, 200) || 'component';
     const timestamp = Date.now();
     const generationId = `${componentId}-${timestamp}`;
 
@@ -356,14 +407,19 @@ export async function POST(req: Request) {
     const header = [
       `=== Generation started at ${new Date().toISOString()} ===`,
       `Provider: ${providerName}`,
-      `Component: ${componentId}`,
+      `Component: ${clientComponentId}`,
       ...(model ? [`Model: ${model}`] : []),
       ``,
       `=== Prompt ===`,
       prompt,
       ``,
       `=== Agent Output ===`,
-      ``,
+      ...(streamJsonForPreview
+        ? [
+            '(Raw stream-json is not written to this file. Live assistant text appears in the presence-bubble tooltip.)',
+            '',
+          ]
+        : ['']),
     ].join('\n');
     
     fs.writeFileSync(currentChatLogPath, header);
@@ -379,6 +435,9 @@ export async function POST(req: Request) {
           effort: body.effort as 'low' | 'medium' | 'high' | 'max' | undefined,
           maxBudgetUsd: body.maxBudgetUsd,
           maxTurns: body.maxTurns,
+          ...(providerId === 'claude-code'
+            ? { claudeDetailedStdout: body.claudeDetailedStdout !== false }
+            : {}),
         }, process.cwd());
 
         // Write lockfile so we can recover from HMR
@@ -391,9 +450,38 @@ export async function POST(req: Request) {
 
         let stderr = '';
 
-        // Stream stdout to log file (non-blocking)
+        const assistantPreview = { value: '' };
+        let stdoutLineBuf = '';
+        let previewThrottleTimer: ReturnType<typeof setTimeout> | null = null;
+
+        const flushAgentPreview = () => {
+          generationEvents.emit('agent-preview', {
+            componentId: clientComponentId,
+            text: assistantPreview.value,
+          });
+        };
+
+        const scheduleAgentPreview = () => {
+          if (previewThrottleTimer) return;
+          previewThrottleTimer = setTimeout(() => {
+            previewThrottleTimer = null;
+            flushAgentPreview();
+          }, 80);
+        };
+
+        // Stream stdout: plain text goes to chat log; stream-json is parsed for UI only (not logged).
         currentProcess.stdout?.on('data', (data: Buffer) => {
-          currentLogStream?.write(data);
+          const chunk = data.toString('utf8');
+          if (!streamJsonForPreview) {
+            currentLogStream?.write(data);
+            return;
+          }
+          stdoutLineBuf += chunk;
+          const parts = stdoutLineBuf.split('\n');
+          stdoutLineBuf = parts.pop() ?? '';
+          if (appendAssistantTextFromJsonlLines(parts, assistantPreview)) {
+            scheduleAgentPreview();
+          }
         });
 
         // Stream stderr to log file (non-blocking)
@@ -409,6 +497,18 @@ export async function POST(req: Request) {
 
         // Handle process exit
         currentProcess.on('close', (code) => {
+          if (streamJsonForPreview && stdoutLineBuf.trim().length > 0) {
+            appendAssistantTextFromJsonlLines([stdoutLineBuf], assistantPreview);
+            stdoutLineBuf = '';
+          }
+          if (previewThrottleTimer) {
+            clearTimeout(previewThrottleTimer);
+            previewThrottleTimer = null;
+          }
+          if (streamJsonForPreview) {
+            flushAgentPreview();
+          }
+
           currentLogStream?.write(`\n=== Generation ended with code ${code} at ${new Date().toISOString()} ===\n`);
           closeLogStream();
           removeLockfile();
@@ -438,6 +538,18 @@ export async function POST(req: Request) {
 
         // Handle process errors
         currentProcess.on('error', (error) => {
+          if (streamJsonForPreview && stdoutLineBuf.trim().length > 0) {
+            appendAssistantTextFromJsonlLines([stdoutLineBuf], assistantPreview);
+            stdoutLineBuf = '';
+          }
+          if (previewThrottleTimer) {
+            clearTimeout(previewThrottleTimer);
+            previewThrottleTimer = null;
+          }
+          if (streamJsonForPreview) {
+            flushAgentPreview();
+          }
+
           const errorMessage = error.message.includes('ENOENT')
             ? getProviderNotFoundMessage(providerId)
             : error.message;
@@ -585,13 +697,29 @@ export async function GET(req: Request) {
           cleanup();
         };
 
+        const onAgentPreview = (payload: { componentId: string; text: string }) => {
+          try {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  type: 'agent-preview',
+                  componentId: payload.componentId,
+                  text: payload.text,
+                })}\n\n`,
+              ),
+            );
+          } catch { /* stream may already be closed */ }
+        };
+
         const cleanup = () => {
           generationEvents.removeListener('iteration-added', onIteration);
           generationEvents.removeListener('done', onDone);
+          generationEvents.removeListener('agent-preview', onAgentPreview);
         };
 
         generationEvents.on('iteration-added', onIteration);
         generationEvents.on('done', onDone);
+        generationEvents.on('agent-preview', onAgentPreview);
       },
     });
 

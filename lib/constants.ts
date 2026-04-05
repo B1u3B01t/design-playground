@@ -31,6 +31,12 @@ export const GENERATION_ERROR_EVENT = 'playground:generation-error';
 /** Fired when a generation request is queued behind an in-progress generation */
 export const GENERATION_QUEUED_EVENT = 'playground:generation-queued';
 
+/**
+ * Live Claude Code assistant text accumulated from stream-json (forwarded from SSE).
+ * Used for presence bubble tooltips during generation.
+ */
+export const GENERATION_AGENT_PREVIEW_EVENT = 'playground:generation-agent-preview';
+
 /** Fired when an adoption completes successfully */
 export const ADOPTION_COMPLETE_EVENT = 'playground:adoption-complete';
 
@@ -653,6 +659,12 @@ export interface GenerationQueuedPayload {
   model: string;
   provider?: import('./providers/types').ProviderId;
   flowPosition: { x: number; y: number } | null;
+}
+
+/** Payload for GENERATION_AGENT_PREVIEW_EVENT (Claude Code stream-json assistant text) */
+export interface GenerationAgentPreviewPayload {
+  componentId: string;
+  text: string;
 }
 
 /** Payload for DRAG_ITERATE_EVENT */

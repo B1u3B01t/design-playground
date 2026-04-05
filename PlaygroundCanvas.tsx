@@ -61,6 +61,7 @@ import {
   GENERATION_COMPLETE_EVENT,
   GENERATION_ERROR_EVENT,
   GENERATION_QUEUED_EVENT,
+  GENERATION_AGENT_PREVIEW_EVENT,
   PLAYGROUND_AUTO_ARRANGE_EVENT,
   DRAG_ITERATE_EVENT,
   DRAG_ITERATE_UNDO_DURATION_MS,
@@ -115,6 +116,7 @@ import {
   type GenerationCompletePayload,
   type GenerationErrorPayload,
   type GenerationQueuedPayload,
+  type GenerationAgentPreviewPayload,
   type DragIteratePayload,
   type CursorChatSubmitPayload,
   type JsxComponentInfo,
@@ -1066,6 +1068,15 @@ export default function PlaygroundCanvas() {
         const data = JSON.parse(event.data);
         if (data.type === 'iteration-added') {
           scanForIterations(false);
+        } else if (data.type === 'agent-preview' && data.componentId != null) {
+          window.dispatchEvent(
+            new CustomEvent<GenerationAgentPreviewPayload>(GENERATION_AGENT_PREVIEW_EVENT, {
+              detail: {
+                componentId: String(data.componentId),
+                text: typeof data.text === 'string' ? data.text : '',
+              },
+            }),
+          );
         } else if (data.type === 'done') {
           es.close();
         }
@@ -1204,6 +1215,8 @@ export default function PlaygroundCanvas() {
           jsxFile: genJsxFile,
         };
         setGenerationInfo(generationInfoRef.current);
+        // Subscribe to SSE for agent-preview (Claude stream-json) — same as iterate/freeform
+        startGenerationEventSource();
         return;
       }
 
@@ -1496,7 +1509,7 @@ export default function PlaygroundCanvas() {
       stopGenerationEventSource();
     };
     // Using refs for nodes and generationInfo so we don't need them in deps
-  }, [getNodeId, setNodes, setEdges, scanForIterations]);
+  }, [getNodeId, setNodes, setEdges, scanForIterations, startGenerationEventSource]);
 
   // ---------------------------------------------------------------------------
   // Drag-to-iterate handler
@@ -1669,6 +1682,7 @@ export default function PlaygroundCanvas() {
         return;
       }
 
+      const dragPf = getProviderFields();
       // Dispatch generation start (creates skeleton nodes in grid layout)
       window.dispatchEvent(
         new CustomEvent<GenerationStartPayload>(GENERATION_START_EVENT, {
@@ -1677,6 +1691,8 @@ export default function PlaygroundCanvas() {
             componentName,
             parentNodeId,
             iterationCount,
+            model: model || undefined,
+            provider: dragPf.provider as GenerationStartPayload['provider'],
             gridLayout: { rows: e.detail.rows, cols: e.detail.cols },
             ...(isDragHtml
               ? { renderMode: 'html' as const, htmlFolder: dragHtmlFolder }
@@ -1762,11 +1778,13 @@ export default function PlaygroundCanvas() {
     // If generation already in progress, queue it
     if (isGeneratingRef.current) {
       generationQueueRef.current.push(payload);
+      const queuePf = getProviderFields();
       window.dispatchEvent(
         new CustomEvent<GenerationQueuedPayload>(GENERATION_QUEUED_EVENT, {
           detail: {
             componentId: payload.targetComponentId || 'cursor-chat-freeform',
             model: payload.model || 'auto',
+            provider: queuePf.provider as GenerationQueuedPayload['provider'],
             flowPosition: payload.canvasPosition ?? null,
           },
         }),
@@ -1847,6 +1865,7 @@ export default function PlaygroundCanvas() {
         elementSelections: payload.elementSelections,
       });
 
+      const editPf = getProviderFields();
       // Dispatch GENERATION_START_EVENT so the presence bubble appears
       window.dispatchEvent(
         new CustomEvent<GenerationStartPayload>(GENERATION_START_EVENT, {
@@ -1856,6 +1875,7 @@ export default function PlaygroundCanvas() {
             parentNodeId: payload.targetNodeId,
             iterationCount: 0,
             model: payload.model || undefined,
+            provider: editPf.provider as GenerationStartPayload['provider'],
             flowPosition: payload.canvasPosition,
             editMode: true,
             ...(isHtmlEdit ? { renderMode: 'html' as const, htmlFolder: payload.htmlPageSlug } : {}),
@@ -1996,6 +2016,7 @@ export default function PlaygroundCanvas() {
 
     const isHtmlTarget = payload.renderMode === 'html' && !!payload.htmlPageSlug;
     const isJsxTarget = payload.renderMode === 'jsx' && !!payload.jsxFile;
+    const canvasGenPf = getProviderFields();
 
     if (targetNodeId && targetComponentId && targetComponentName && targetType) {
       // --- WITH TARGET NODE ---
@@ -2164,6 +2185,7 @@ export default function PlaygroundCanvas() {
             parentNodeId: targetNodeId,
             iterationCount,
             model: payloadModel || undefined,
+            provider: canvasGenPf.provider as GenerationStartPayload['provider'],
             flowPosition: payload.canvasPosition,
             ...(isHtmlTarget ? { renderMode: 'html' as const, htmlFolder: payload.htmlPageSlug } : {}),
             ...(isJsxTarget && payload.jsxFile
@@ -2183,7 +2205,7 @@ export default function PlaygroundCanvas() {
             componentId,
             iterationCount,
             model: payloadModel || undefined,
-            ...getProviderFields(),
+            ...canvasGenPf,
             ...(isHtmlTarget ? { htmlFolder: payload.htmlPageSlug } : {}),
             ...(isJsxTarget && payload.jsxFile ? { jsxFile: payload.jsxFile } : {}),
           }),
@@ -2236,6 +2258,7 @@ export default function PlaygroundCanvas() {
             parentNodeId: '',
             iterationCount: 0,
             model: payloadModel || 'auto',
+            provider: canvasGenPf.provider as GenerationStartPayload['provider'],
             flowPosition: payload.canvasPosition ?? undefined,
           },
         }),
@@ -2263,7 +2286,7 @@ export default function PlaygroundCanvas() {
             componentId: 'cursor-chat-freeform',
             iterationCount: 0,
             model: payloadModel || undefined,
-            ...getProviderFields(),
+            ...canvasGenPf,
           }),
         });
 

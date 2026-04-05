@@ -20,6 +20,12 @@ export interface AgentSpawnOptions {
   maxBudgetUsd?: number;
   /** Claude Code only — maximum number of agentic turns */
   maxTurns?: number;
+  /**
+   * Claude Code only — when true, use `--output-format stream-json` with
+   * `--include-partial-messages` for live UI parsing (not written to chat `.txt`).
+   * When false/omitted, use `text` and log stdout to the chat file.
+   */
+  claudeDetailedStdout?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -54,10 +60,13 @@ export interface ClaudeCodeOptions {
   effort: 'low' | 'medium' | 'high' | 'max';
   maxBudgetUsd: number | null;
   maxTurns: number | null;
+  /** When true, stream-json for live tooltip; chat download omits raw stream. When false, plain text in chat log. */
+  detailedStdout: boolean;
 }
 
 export const DEFAULT_CLAUDE_CODE_OPTIONS: ClaudeCodeOptions = {
   effort: 'high',
   maxBudgetUsd: null,
   maxTurns: null,
+  detailedStdout: true,
 };

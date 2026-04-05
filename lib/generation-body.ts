@@ -16,6 +16,7 @@ export function getProviderFields(): Record<string, unknown> {
     if (claudeCodeOptions.effort) fields.effort = claudeCodeOptions.effort;
     if (claudeCodeOptions.maxBudgetUsd != null) fields.maxBudgetUsd = claudeCodeOptions.maxBudgetUsd;
     if (claudeCodeOptions.maxTurns != null) fields.maxTurns = claudeCodeOptions.maxTurns;
+    fields.claudeDetailedStdout = claudeCodeOptions.detailedStdout;
   }
 
   return fields;

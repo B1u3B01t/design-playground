@@ -12,7 +12,7 @@ The playground spawns external AI agents via CLI tools. The provider abstraction
 | ID | CLI | Description |
 |----|-----|-------------|
 | `cursor` | `cursor agent` | Default. Uses Cursor's built-in AI agent. |
-| `claude-code` | `claude` | Anthropic's Claude Code CLI. Supports effort/budget/turns config. |
+| `claude-code` | `claude` | Anthropic's Claude Code CLI. With detailed stdout, stream-json drives the live presence-bubble tooltip; the downloaded chat `.txt` omits raw JSONL (stderr and a short note are still logged). |
 
 ## Files
 
@@ -41,9 +41,10 @@ interface ProviderConfig {
 ```ts
 interface AgentSpawnOptions {
   model?: string;
-  effort?: string;        // claude-code only
-  maxBudgetUsd?: number;  // claude-code only
-  maxTurns?: number;      // claude-code only
+  effort?: string;              // claude-code only
+  maxBudgetUsd?: number;        // claude-code only
+  maxTurns?: number;            // claude-code only
+  claudeDetailedStdout?: boolean; // claude-code only — stream-json for live UI vs plain text log
 }
 ```
 

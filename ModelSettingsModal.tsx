@@ -287,6 +287,26 @@ export default function ModelSettingsModal({ open, onOpenChange }: ModelSettings
                     className="w-full px-2 py-1.5 text-xs bg-white border border-stone-200 rounded-md text-stone-700 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-stone-400"
                   />
                 </div>
+
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={localClaudeOpts.detailedStdout}
+                    onChange={(e) =>
+                      setLocalClaudeOpts({
+                        ...localClaudeOpts,
+                        detailedStdout: e.target.checked,
+                      })
+                    }
+                    className="mt-0.5 rounded border-stone-300"
+                  />
+                  <span className="text-xs text-stone-600">
+                    <span className="font-medium text-stone-700">Detailed Claude log (stream-json)</span>
+                    <span className="block text-stone-500 mt-0.5">
+                      Streams assistant text to the header bubble tooltip during runs. Chat file download stays small (raw stream-json is not written there).
+                    </span>
+                  </span>
+                </label>
               </div>
             )}
           </div>
