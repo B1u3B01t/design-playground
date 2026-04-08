@@ -30,10 +30,13 @@ function ensureUnloadCleanup() {
  * Hook that manages the localhost.run tunnel and copies a public shareable
  * link for a specific component/iteration path.
  *
- * `componentPath` is the slug used by the /playground/iterations/[slug] page
- * — same value you'd pass to `window.open(...)` in "Open in new tab".
+ * `sharePath` can be:
+ * - a registry/iteration slug (e.g. "pricing-card"), which maps to
+ *   /playground/iterations/[slug], or
+ * - an absolute app path starting with "/" (e.g. "/landing/index.html"),
+ *   used for HTML page shares.
  */
-export function useTunnelShare(componentPath: string) {
+export function useTunnelShare(sharePath: string) {
   const [state, setState] = useState<ShareState>('idle');
   // Track in-flight timeouts so we can clear them if the component unmounts
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -86,7 +89,10 @@ export function useTunnelShare(componentPath: string) {
       }
 
       // 3. Build the full shareable URL
-      const shareUrl = `${tunnelBaseUrl}/playground/iterations/${componentPath}`;
+      const normalizedBase = tunnelBaseUrl.replace(/\/$/, '');
+      const shareUrl = sharePath.startsWith('/')
+        ? `${normalizedBase}${sharePath}`
+        : `${normalizedBase}/playground/iterations/${sharePath}`;
 
       // 4. Copy to clipboard
       await navigator.clipboard.writeText(shareUrl);
@@ -97,7 +103,7 @@ export function useTunnelShare(componentPath: string) {
       setState('error');
       timeoutRef.current = setTimeout(() => setState('idle'), 2000);
     }
-  }, [componentPath, state]);
+  }, [sharePath, state]);
 
   return { share, state };
 }

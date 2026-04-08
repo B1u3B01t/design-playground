@@ -93,7 +93,10 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   const { updateNodeData, setNodes } = useReactFlow();
   const isInteractive = !!selected;
 
-  const { share: handleShare, state: shareState } = useTunnelShare(isHtml ? (data.htmlFolder || componentId) : componentId);
+  const sharePath = isHtml
+    ? `/${data.htmlFolder || componentId}/index.html`
+    : componentId;
+  const { share: handleShare, state: shareState } = useTunnelShare(sharePath);
 
   // Prefer the persisted size from node data (survives reload), then registry default
   const [size, setSize] = useState<ComponentSize>(data.size || registryItem?.size || ((isHtml || isJsx) ? 'laptop' : 'default'));
@@ -156,6 +159,9 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
     }));
   };
 
+  const htmlSrc = isHtml ? `/${data.htmlFolder}/index.html?t=${iframeKey}` : '';
+  const htmlContent = useHtmlContent(htmlSrc, isHtml);
+
   if (!isHtml && !isJsx && !registryItem) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4 min-w-[200px]">
@@ -177,8 +183,6 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   const isFillMode = isResizing || isCustomResized;
   const isLargeComponent = isPreset || isFillMode;
   const displayDims = getDisplayDimensions(size);
-  const htmlSrc = isHtml ? `/${data.htmlFolder}/index.html?t=${iframeKey}` : '';
-  const htmlContent = useHtmlContent(htmlSrc, isHtml);
 
   return (
     <div

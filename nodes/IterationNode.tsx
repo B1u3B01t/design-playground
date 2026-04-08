@@ -135,7 +135,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
   );
 
   const iterationSlug = useMemo(() => isHtml
-    ? `${data.htmlFolder}/${data.htmlIterationFolder}`
+    ? `/${data.htmlFolder}/${data.htmlIterationFolder}/index.html`
     : data.filename.replace(/\.tsx$/, ''),
     [data.filename, isHtml, data.htmlFolder, data.htmlIterationFolder]);
   const { share: handleShare, state: shareState } = useTunnelShare(iterationSlug);
