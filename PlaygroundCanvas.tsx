@@ -126,6 +126,7 @@ import CursorChat from './CursorChat';
 import ElementHighlight from './ElementHighlight';
 import { useElementSelection } from './hooks/useElementSelection';
 import { useNodeSelection } from './hooks/useNodeSelection';
+import { useDesignEditorStore } from './lib/design-editor-store';
 import { ELEMENT_SELECTION_CHANGE_EVENT, NODE_SELECTION_CHANGE_EVENT } from './lib/constants';
 import { useDynamicBackground } from './hooks/useDynamicBackground';
 import { toast } from 'sonner';
@@ -584,126 +585,181 @@ export default function PlaygroundCanvas() {
     setIsScanning(true);
     try {
       // ------------------------------------------------------------------
-      // HTML iteration scanning (when active generation is for HTML)
+      // HTML iteration scanning
       // ------------------------------------------------------------------
       const info = generationInfoRef.current;
-      if (info?.renderMode === 'html' && info.htmlFolder) {
-        const htmlFolder = info.htmlFolder;
-        try {
-          const htmlResponse = await fetch('/playground/api/html-pages');
-          if (htmlResponse.ok) {
-            const { pages } = await htmlResponse.json() as { pages: { folder: string; iterations: { folder: string; number: number }[] }[] };
-            const page = pages.find((p: { folder: string }) => p.folder === htmlFolder);
-            if (page) {
-              const currentNodes = nodesRef.current;
-              const currentKnownIterations = knownIterationsRef.current;
-              const existingHtmlKeys = new Set([
-                ...currentKnownIterations,
-                ...currentNodes
-                  .filter(n => n.type === 'iteration' && n.data.renderMode === 'html')
-                  .map(n => `${n.data.htmlFolder}/${n.data.htmlIterationFolder}` as string),
-              ]);
+      try {
+        const htmlResponse = await fetch('/playground/api/html-pages');
+        if (htmlResponse.ok) {
+          const { pages } = await htmlResponse.json() as {
+            pages: {
+              folder: string;
+              iterations: { folder: string; number: number; parentId: string }[];
+            }[];
+          };
+          const pagesByFolder = new Map(pages.map((p) => [p.folder, p]));
 
-              const newHtmlIterations = page.iterations.filter(
-                (iter: { folder: string; number: number }) => !existingHtmlKeys.has(`${htmlFolder}/${iter.folder}`)
+          const currentNodes = nodesRef.current;
+          const currentKnownIterations = knownIterationsRef.current;
+
+          const htmlComponentNodes = currentNodes.filter(
+            (n) => n.type === 'component' && n.data.renderMode === 'html' && typeof n.data.htmlFolder === 'string',
+          );
+
+          const htmlFoldersToScan = new Set<string>();
+          if (info?.renderMode === 'html' && info.htmlFolder) {
+            htmlFoldersToScan.add(info.htmlFolder);
+          } else {
+            for (const node of htmlComponentNodes) {
+              htmlFoldersToScan.add(String(node.data.htmlFolder));
+            }
+          }
+
+          if (htmlFoldersToScan.size > 0) {
+            const existingHtmlKeys = new Set([
+              ...currentKnownIterations,
+              ...currentNodes
+                .filter(n => n.type === 'iteration' && n.data.renderMode === 'html')
+                .map(n => `${n.data.htmlFolder}/${n.data.htmlIterationFolder}` as string),
+            ]);
+
+            const knownHtmlNodeByKey = new Map<string, string>();
+            for (const node of currentNodes) {
+              if (node.type === 'iteration' && node.data.renderMode === 'html') {
+                knownHtmlNodeByKey.set(`${node.data.htmlFolder}/${node.data.htmlIterationFolder}`, node.id);
+              }
+            }
+
+            const skeletonsToRemove: string[] = [];
+            const newNodes: Node[] = [];
+            const newEdges: Edge[] = [];
+            const newKnownFilenames: string[] = [];
+            const pendingHtmlNodeByKey = new Map<string, string>();
+
+            for (const htmlFolder of htmlFoldersToScan) {
+              const page = pagesByFolder.get(htmlFolder);
+              if (!page) continue;
+
+              const pageRootNode = currentNodes.find(
+                (n) => n.type === 'component' && n.data.renderMode === 'html' && n.data.htmlFolder === htmlFolder,
               );
+              if (!pageRootNode) continue;
 
-              if (newHtmlIterations.length > 0) {
-                const remainingSkeletonIds = info
-                  ? info.skeletonNodeIds.filter(id => currentNodes.some(n => n.id === id))
-                  : [];
-                const skeletonsToRemove: string[] = [];
-                const newNodes: Node[] = [];
-                const newEdges: Edge[] = [];
-                const newKnownFilenames: string[] = [];
+              const isActiveHtmlGeneration = info?.renderMode === 'html' && info.htmlFolder === htmlFolder;
+              const remainingSkeletonIds = isActiveHtmlGeneration
+                ? info.skeletonNodeIds.filter(id => currentNodes.some(n => n.id === id))
+                : [];
 
-                newHtmlIterations.sort((a: { number: number }, b: { number: number }) => a.number - b.number);
+              const newHtmlIterations = page.iterations
+                .filter(iter => !existingHtmlKeys.has(`${htmlFolder}/${iter.folder}`))
+                .sort((a, b) => a.number - b.number);
 
-                for (const iter of newHtmlIterations) {
-                  const sourceNodeId = info.parentNodeId
-                    ? (currentNodes.find(n => n.id === info.parentNodeId)?.id || undefined)
-                    : undefined;
-                  const sourceNode = sourceNodeId
-                    ? (currentNodes.find(n => n.id === sourceNodeId) || newNodes.find(n => n.id === sourceNodeId))
-                    : undefined;
+              for (const iter of newHtmlIterations) {
+                const iterKey = `${htmlFolder}/${iter.folder}`;
+                existingHtmlKeys.add(iterKey);
 
-                  let position: { x: number; y: number };
-                  if (remainingSkeletonIds.length > 0) {
-                    const skeletonId = remainingSkeletonIds.shift()!;
-                    const skeletonNode = currentNodes.find(n => n.id === skeletonId);
-                    if (skeletonNode) {
-                      position = { ...skeletonNode.position };
-                      skeletonsToRemove.push(skeletonId);
-                    } else if (sourceNode) {
-                      const srcW = sourceNode.measured?.width ?? DEFAULT_COMPONENT_NODE_WIDTH;
-                      position = { x: sourceNode.position.x + srcW + ARRANGE_HORIZONTAL_GAP, y: sourceNode.position.y };
-                    } else {
-                      position = { x: 400, y: 200 };
-                    }
+                let sourceNodeId: string | undefined;
+                if (iter.parentId.startsWith('html:')) {
+                  const parentFolder = iter.parentId.slice('html:'.length);
+                  sourceNodeId = currentNodes.find(
+                    (n) => n.type === 'component' && n.data.renderMode === 'html' && n.data.htmlFolder === parentFolder,
+                  )?.id;
+                } else {
+                  sourceNodeId = knownHtmlNodeByKey.get(iter.parentId) || pendingHtmlNodeByKey.get(iter.parentId);
+                }
+
+                if (!sourceNodeId && isActiveHtmlGeneration && info.parentNodeId) {
+                  sourceNodeId = currentNodes.find(n => n.id === info.parentNodeId)?.id;
+                }
+                if (!sourceNodeId) {
+                  sourceNodeId = pageRootNode.id;
+                }
+
+                const sourceNode = sourceNodeId
+                  ? (currentNodes.find(n => n.id === sourceNodeId) || newNodes.find(n => n.id === sourceNodeId))
+                  : undefined;
+
+                let position: { x: number; y: number };
+                if (remainingSkeletonIds.length > 0) {
+                  const skeletonId = remainingSkeletonIds.shift()!;
+                  const skeletonNode = currentNodes.find(n => n.id === skeletonId);
+                  if (skeletonNode) {
+                    position = { ...skeletonNode.position };
+                    skeletonsToRemove.push(skeletonId);
                   } else if (sourceNode) {
                     const srcW = sourceNode.measured?.width ?? DEFAULT_COMPONENT_NODE_WIDTH;
                     position = { x: sourceNode.position.x + srcW + ARRANGE_HORIZONTAL_GAP, y: sourceNode.position.y };
                   } else {
                     position = { x: 400, y: 200 };
                   }
+                } else if (sourceNode) {
+                  const srcW = sourceNode.measured?.width ?? DEFAULT_COMPONENT_NODE_WIDTH;
+                  position = { x: sourceNode.position.x + srcW + ARRANGE_HORIZONTAL_GAP, y: sourceNode.position.y };
+                } else {
+                  position = { x: 400, y: 200 };
+                }
 
-                  const nodeId = getNodeId();
-                  const parentSize = (sourceNode?.data?.size as string | undefined) as import('./lib/constants').ComponentSize | undefined;
+                const nodeId = getNodeId();
+                const parentSize = (sourceNode?.data?.size as string | undefined) as import('./lib/constants').ComponentSize | undefined;
 
-                  newNodes.push({
-                    id: nodeId,
-                    type: 'iteration',
-                    position,
-                    data: {
-                      componentName: htmlFolder,
-                      iterationNumber: iter.number,
-                      filename: `${htmlFolder}/iteration-${iter.number}`,
-                      description: '',
-                      parentNodeId: sourceNodeId || undefined,
-                      parentSize,
-                      renderMode: 'html',
-                      htmlFolder,
-                      htmlIterationFolder: iter.folder,
-                      onDelete: handleIterationDelete,
-                      onAdopt: handleIterationAdopt,
-                    },
+                newNodes.push({
+                  id: nodeId,
+                  type: 'iteration',
+                  position,
+                  data: {
+                    componentName: htmlFolder,
+                    iterationNumber: iter.number,
+                    filename: `${htmlFolder}/iteration-${iter.number}`,
+                    description: '',
+                    parentNodeId: sourceNodeId || undefined,
+                    parentSize,
+                    renderMode: 'html',
+                    htmlFolder,
+                    htmlIterationFolder: iter.folder,
+                    onDelete: handleIterationDelete,
+                    onAdopt: handleIterationAdopt,
+                  },
+                });
+
+                knownHtmlNodeByKey.set(iterKey, nodeId);
+                pendingHtmlNodeByKey.set(iterKey, nodeId);
+
+                if (sourceNodeId) {
+                  newEdges.push({
+                    id: `edge_${sourceNodeId}_${nodeId}`,
+                    source: sourceNodeId,
+                    target: nodeId,
+                    type: 'smoothstep',
+                    animated: false,
+                    style: ITERATION_EDGE_STYLE,
                   });
-
-                  if (sourceNodeId) {
-                    newEdges.push({
-                      id: `edge_${sourceNodeId}_${nodeId}`,
-                      source: sourceNodeId,
-                      target: nodeId,
-                      type: 'smoothstep',
-                      animated: false,
-                      style: ITERATION_EDGE_STYLE,
-                    });
-                  }
-
-                  newKnownFilenames.push(`${htmlFolder}/${iter.folder}`);
                 }
 
-                if (newNodes.length > 0) {
-                  const skeletonSet = new Set(skeletonsToRemove);
-                  setNodes(nds => [
-                    ...nds.filter(n => !skeletonSet.has(n.id)),
-                    ...newNodes,
-                  ]);
-                  setEdges(eds => [
-                    ...eds.filter(e => !skeletonSet.has(e.target)),
-                    ...newEdges,
-                  ]);
-                  knownIterationsRef.current = [...knownIterationsRef.current, ...newKnownFilenames];
-                  setKnownIterations(prev => [...prev, ...newKnownFilenames]);
-                  if (resetTimeoutOnFind) resetPollTimeout();
-                }
+                newKnownFilenames.push(iterKey);
               }
             }
+
+            if (newNodes.length > 0) {
+              const skeletonSet = new Set(skeletonsToRemove);
+              setNodes(nds => [
+                ...nds.filter(n => !skeletonSet.has(n.id)),
+                ...newNodes,
+              ]);
+              setEdges(eds => [
+                ...eds.filter(e => !skeletonSet.has(e.target)),
+                ...newEdges,
+              ]);
+              knownIterationsRef.current = [...knownIterationsRef.current, ...newKnownFilenames];
+              setKnownIterations(prev => [...prev, ...newKnownFilenames]);
+              if (resetTimeoutOnFind) resetPollTimeout();
+            }
           }
-        } catch (error) {
-          console.error('Error scanning HTML iterations:', error);
         }
-        // For HTML generations, skip the React iteration scan
+      } catch (error) {
+        console.error('Error scanning HTML iterations:', error);
+      }
+      // For active HTML generations, skip the React iteration scan
+      if (info?.renderMode === 'html' && info.htmlFolder) {
         return;
       }
 
@@ -2616,7 +2672,6 @@ export default function PlaygroundCanvas() {
   // Paste images or HTML from clipboard onto the canvas
   useEffect(() => {
     const wrapper = reactFlowWrapper.current;
-    if (!wrapper) return;
 
     const handlePaste = async (e: ClipboardEvent) => {
       // Don't intercept pastes into text inputs
@@ -2683,7 +2738,13 @@ export default function PlaygroundCanvas() {
 
       // --- JSX paste (checked before HTML since JSX also contains HTML tags) ---
       const rawPlain = (e.clipboardData?.getData('text/plain') || '').trim();
-      if (rawPlain && looksLikeJsx(rawPlain)) {
+      const rawHtmlForDetect = (e.clipboardData?.getData('text/html') || '').trim();
+      // Browser-copied content includes clipboard markers; skip JSX detection in that case
+      const isBrowserCopy = rawHtmlForDetect && (
+        rawHtmlForDetect.includes('<!--StartFragment-->') ||
+        rawHtmlForDetect.includes('<meta charset=')
+      );
+      if (!isBrowserCopy && rawPlain && looksLikeJsx(rawPlain)) {
         e.preventDefault();
         try {
           // Determine next frame number by scanning existing JSX components and HTML pages
@@ -2763,7 +2824,7 @@ export default function PlaygroundCanvas() {
       }
 
       // --- HTML paste ---
-      const rawHtml = (e.clipboardData?.getData('text/html') || '').trim();
+      const rawHtml = rawHtmlForDetect || (e.clipboardData?.getData('text/html') || '').trim();
       const looksLikeHtmlContent = (s: string) => /<[a-z][\s\S]*>/i.test(s);
 
       let pastedHtml: string | null = null;
@@ -2840,8 +2901,8 @@ export default function PlaygroundCanvas() {
       }
     };
 
-    wrapper.addEventListener('paste', handlePaste);
-    return () => wrapper.removeEventListener('paste', handlePaste);
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
   }, [screenToFlowPosition, getNodeId, setNodes]);
 
   // Create HTML page from context menu
@@ -2918,8 +2979,12 @@ export default function PlaygroundCanvas() {
   }, [createHtmlDialog]);
 
   // Handle node deletion - check for children first
+  const clearOverridesForNode = useDesignEditorStore((s) => s.clearOverridesForNode);
+  const clearAllDesignOverrides = useDesignEditorStore((s) => s.clearAllOverrides);
+
   const onNodesDelete = useCallback(async (deletedNodes: Node[]) => {
     for (const node of deletedNodes) {
+      clearOverridesForNode(node.id);
       if (node.type === 'image' && node.data.filename) {
         try {
           await fetch('/playground/api/images', {
@@ -2952,7 +3017,7 @@ export default function PlaygroundCanvas() {
         }
       }
     }
-  }, [edges]);
+  }, [edges, clearOverridesForNode]);
 
   // Handle cascade or reparent deletion
   const handleDeleteWithMode = useCallback(async (mode: 'cascade' | 'reparent') => {
@@ -3335,11 +3400,12 @@ export default function PlaygroundCanvas() {
     setEdges([]);
     setKnownIterations([]);
     setCollapsedNodeIds(new Set());
+    clearAllDesignOverrides();
 
     localStorage.removeItem(STORAGE_KEY);
 
     setShowClearDialog(false);
-  }, [setNodes, setEdges, setKnownIterations, setCollapsedNodeIds, stopPolling]);
+  }, [setNodes, setEdges, setKnownIterations, setCollapsedNodeIds, stopPolling, clearAllDesignOverrides]);
 
   return (
     <TooltipProvider>

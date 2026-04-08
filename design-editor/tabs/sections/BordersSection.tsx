@@ -5,6 +5,7 @@ import { useDesignEditorStore } from '../../../lib/design-editor-store';
 import SectionCollapsible from '../../shared/SectionCollapsible';
 import PropertyRow from '../../shared/PropertyRow';
 import UnitInput from '../../shared/UnitInput';
+import { rgbToHex } from '../../shared/unit-utils';
 import { useCallback } from 'react';
 
 interface SectionProps {
@@ -16,15 +17,6 @@ interface SectionProps {
 }
 
 const BORDER_STYLE_OPTIONS = ['none', 'solid', 'dashed', 'dotted', 'double', 'groove', 'ridge'];
-
-function rgbToHex(rgb: string): string {
-  const match = rgb.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-  if (!match) return rgb.startsWith('#') ? rgb : '#000000';
-  const r = parseInt(match[1]).toString(16).padStart(2, '0');
-  const g = parseInt(match[2]).toString(16).padStart(2, '0');
-  const b = parseInt(match[3]).toString(16).padStart(2, '0');
-  return `#${r}${g}${b}`;
-}
 
 export default function BordersSection({ computedStyles, nodeId, cssSelector, isIframe }: SectionProps) {
   const addStyleOverride = useDesignEditorStore((s) => s.addStyleOverride);

@@ -6,12 +6,25 @@
  */
 export function looksLikeJsx(text: string): boolean {
   if (!text) return false;
-  const hasImport = /\bimport\s+/.test(text);
+
+  // Never classify full HTML documents as JSX
+  if (/^\s*<!doctype\s/i.test(text) || /^\s*<html[\s>]/i.test(text)) {
+    return false;
+  }
+
+  const hasModuleImport = /\bimport\s+.*\s+from\s+['"]/.test(text);
   const hasExportDefault = /\bexport\s+default\b/.test(text);
   const hasReactImport = /from\s+['"]react['"]/.test(text);
   const hasCapitalTag = /<[A-Z][A-Za-z0-9]*[\s/>]/.test(text);
   const hasCurlyInJsx = /\{[^}]+\}/.test(text) && /<[a-zA-Z]/.test(text);
-  return hasImport || hasExportDefault || hasReactImport || (hasCapitalTag && hasCurlyInJsx);
+
+  // Require strong React/module signals to avoid false positives with HTML
+  if (hasReactImport) return true;
+  if (hasExportDefault && hasModuleImport) return true;
+  if (hasModuleImport && hasCapitalTag) return true;
+  if (hasCapitalTag && hasCurlyInJsx && (hasModuleImport || hasExportDefault)) return true;
+
+  return false;
 }
 
 /**

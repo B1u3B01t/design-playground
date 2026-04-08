@@ -3,7 +3,7 @@
 import type { ComputedStyles } from '../../../lib/computed-styles';
 import { useDesignEditorStore } from '../../../lib/design-editor-store';
 import SectionCollapsible from '../../shared/SectionCollapsible';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { parseValue } from '../../shared/unit-utils';
 
 interface SectionProps {
@@ -14,8 +14,12 @@ interface SectionProps {
   isTokenMode: boolean;
 }
 
-type Side = 'Top' | 'Right' | 'Bottom' | 'Left';
-const SIDES: Side[] = ['Top', 'Right', 'Bottom', 'Left'];
+const POSITION_CLASSES = {
+  top: 'top-0.5 left-1/2 -translate-x-1/2',
+  right: 'right-0.5 top-1/2 -translate-y-1/2',
+  bottom: 'bottom-0.5 left-1/2 -translate-x-1/2',
+  left: 'left-0.5 top-1/2 -translate-y-1/2',
+} as const;
 
 function SpacingInput({
   value,
@@ -27,24 +31,39 @@ function SpacingInput({
   position: 'top' | 'right' | 'bottom' | 'left';
 }) {
   const parsed = parseValue(value);
-  const display = parsed.number !== null ? String(Math.round(parsed.number)) : '—';
+  const displayFromProp = parsed.number !== null ? String(Math.round(parsed.number)) : '—';
 
-  const positionClasses = {
-    top: 'top-0.5 left-1/2 -translate-x-1/2',
-    right: 'right-0.5 top-1/2 -translate-y-1/2',
-    bottom: 'bottom-0.5 left-1/2 -translate-x-1/2',
-    left: 'left-0.5 top-1/2 -translate-y-1/2',
-  };
+  // Local state — commit on blur/enter, not on every keystroke
+  const [localValue, setLocalValue] = useState(displayFromProp);
+
+  // Sync from prop when it changes externally
+  useEffect(() => {
+    setLocalValue(displayFromProp);
+  }, [displayFromProp]);
+
+  const commit = useCallback(() => {
+    const num = parseFloat(localValue);
+    if (!isNaN(num)) {
+      onChange(`${num}px`);
+    } else {
+      // Reset to prop value on invalid input
+      setLocalValue(displayFromProp);
+    }
+  }, [localValue, onChange, displayFromProp]);
 
   return (
     <input
       type="text"
-      value={display}
-      onChange={(e) => {
-        const num = parseFloat(e.target.value);
-        if (!isNaN(num)) onChange(`${num}px`);
+      value={localValue}
+      onChange={(e) => setLocalValue(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          commit();
+          (e.target as HTMLInputElement).blur();
+        }
       }}
-      className={`absolute ${positionClasses[position]} w-[28px] text-center text-[10px] text-stone-500 bg-transparent border-none outline-none focus:text-stone-900 focus:bg-white focus:rounded px-0.5 tabular-nums`}
+      className={`absolute ${POSITION_CLASSES[position]} w-[28px] text-center text-[10px] text-stone-500 bg-transparent border-none outline-none focus:text-stone-900 focus:bg-white focus:rounded px-0.5 tabular-nums`}
     />
   );
 }

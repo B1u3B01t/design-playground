@@ -20,6 +20,7 @@ import { matchesAction, formatKeyCombo, getCombo } from './lib/keybindings';
 import type { SelectedElement } from './lib/element-context';
 import { useModelSettingsStore } from './lib/model-settings-store';
 import type { SelectedNodeContext } from './hooks/useNodeSelection';
+import { useDesignEditorStore } from './lib/design-editor-store';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -191,13 +192,14 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
 
   // Auto-open cursor chat when elements are selected while chat is inactive
   const prevElementCountRef = useRef(0);
+  const isDesignEditorOpen = useDesignEditorStore((s) => s.isOpen);
   useEffect(() => {
     const prevCount = prevElementCountRef.current;
     const curCount = selectedElements?.length ?? 0;
     prevElementCountRef.current = curCount;
 
-    // Only trigger when going from 0 to >0 elements
-    if (prevCount === 0 && curCount > 0 && modeRef.current === 'inactive') {
+    // Only trigger when going from 0 to >0 elements (skip when design editor is open)
+    if (prevCount === 0 && curCount > 0 && modeRef.current === 'inactive' && !isDesignEditorOpen) {
       // Place the chat near the first selected element
       const firstEl = selectedElements![0].element;
       const rect = firstEl.getBoundingClientRect();
@@ -214,18 +216,21 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
         place(clickX, clickY, hitNode);
       });
     }
-  }, [selectedElements, modeRef, activate, place, hitTestNode]);
+  }, [selectedElements, modeRef, activate, place, hitTestNode, isDesignEditorOpen]);
 
   // Programmatic open via custom event (e.g. after HTML page creation)
   useEffect(() => {
     const handleOpen = (e: Event) => {
-      const { targetNode: target, screenX, screenY, editMode: shouldEdit } =
+      const { targetNode: target, screenX, screenY, editMode: shouldEdit, deltaContext } =
         (e as CustomEvent<CursorChatOpenPayload>).detail;
 
       activate();
       requestAnimationFrame(() => {
         place(screenX + 16, screenY, target);
         if (shouldEdit) setEditMode(true);
+        if (deltaContext) {
+          setSegments([{ type: 'text', value: deltaContext }]);
+        }
       });
     };
 

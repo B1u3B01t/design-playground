@@ -2,38 +2,25 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useDesignEditorStore } from '../../lib/design-editor-store';
-import { NODE_SELECTION_CHANGE_EVENT } from '../../lib/constants';
 import type { SelectedNodeContext } from '../../hooks/useNodeSelection';
 import { parsePropsInterface, type ParsedProp } from '../props-parser';
+import { flatRegistry } from '../../registry';
 import PropertyRow from '../shared/PropertyRow';
 
-// Try to resolve the registry item for a component
-function getRegistryItem(componentId: string) {
-  try {
-    // Dynamic import to avoid circular deps
-    const { flatRegistry } = require('../../registry');
-    return flatRegistry[componentId] ?? null;
-  } catch {
-    return null;
-  }
+interface PropsTabProps {
+  selectedNodes: SelectedNodeContext[];
 }
 
-export default function PropsTab() {
-  const [selectedNode, setSelectedNode] = useState<SelectedNodeContext | null>(null);
+function getRegistryItem(componentId: string) {
+  return flatRegistry[componentId] ?? null;
+}
+
+export default function PropsTab({ selectedNodes }: PropsTabProps) {
   const [parsedProps, setParsedProps] = useState<ParsedProp[]>([]);
   const [currentProps, setCurrentProps] = useState<Record<string, unknown>>({});
   const { addPropOverride, propOverrides } = useDesignEditorStore();
 
-  // Listen for node selection
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const nodes: SelectedNodeContext[] = (e as CustomEvent).detail?.nodes ?? [];
-      const node = nodes.find((n) => n.type === 'component' || n.type === 'iteration') ?? null;
-      setSelectedNode(node);
-    };
-    window.addEventListener(NODE_SELECTION_CHANGE_EVENT, handler);
-    return () => window.removeEventListener(NODE_SELECTION_CHANGE_EVENT, handler);
-  }, []);
+  const selectedNode = selectedNodes.find((n) => n.type === 'component' || n.type === 'iteration') ?? null;
 
   // Parse props interface when selection changes
   useEffect(() => {
@@ -107,7 +94,7 @@ export default function PropsTab() {
               <PropertyRow key={prop.name} label={prop.name}>
                 <input
                   type="number"
-                  value={currentValue !== '' ? Number(currentValue) : ''}
+                  value={String(currentValue ?? '')}
                   onChange={(e) => handlePropChange(prop.name, parseFloat(e.target.value))}
                   className="w-[80px] px-1.5 py-1 text-[11px] bg-stone-50 border border-stone-200 rounded-lg text-stone-900 placeholder:text-stone-400 focus:border-stone-400 focus:ring-1 focus:ring-stone-400/15 outline-none text-right tabular-nums"
                 />

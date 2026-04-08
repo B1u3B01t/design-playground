@@ -194,11 +194,31 @@ export function getSelectionBridgeScript(): string {
     if (!e.data || !e.data.type) return;
 
     if (e.data.type === 'design-editor:get-styles') {
-      var target = document.querySelector(e.data.cssSelector);
+      var selector = e.data.cssSelector;
+      var target = document.querySelector(selector);
+      // If requesting 'body', auto-resolve to the first meaningful content child
+      if (selector === 'body' && target) {
+        var children = target.children;
+        for (var ci = 0; ci < children.length; ci++) {
+          var tag = children[ci].tagName.toLowerCase();
+          if (tag !== 'script' && tag !== 'style' && tag !== 'link' && tag !== 'meta' &&
+              !children[ci].hasAttribute('data-bridge') && !children[ci].hasAttribute('data-design-editor')) {
+            target = children[ci];
+            // Build a selector for the resolved element
+            selector = tag;
+            if (children[ci].id) selector = '#' + children[ci].id;
+            else if (children[ci].className && typeof children[ci].className === 'string') {
+              var cls = children[ci].className.trim().split(/\s+/).slice(0, 3).join('.');
+              if (cls) selector = tag + '.' + cls;
+            }
+            break;
+          }
+        }
+      }
       if (target) {
         window.parent.postMessage({
           type: 'design-editor:styles',
-          cssSelector: e.data.cssSelector,
+          cssSelector: selector,
           styles: extractStyles(target)
         }, '*');
       }
@@ -220,6 +240,9 @@ export function getSelectionBridgeScript(): string {
   // Capture-phase click so we intercept before page scripts
   document.addEventListener('click', onClick, true);
   document.addEventListener('mousemove', onMouseMove);
+
+  // Notify parent that the design editor bridge is ready
+  window.parent.postMessage({ type: 'design-editor:ready' }, '*');
 })();
 </script>`;
 }

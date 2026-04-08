@@ -140,12 +140,18 @@ export default function UnitInput({
         placeholder={placeholder}
         className="w-[52px] px-1.5 py-1 text-[11px] bg-stone-50 border border-stone-200 rounded-lg text-stone-900 placeholder:text-stone-400 focus:border-stone-400 focus:ring-1 focus:ring-stone-400/15 outline-none text-right tabular-nums"
       />
-      <select
-        value={currentUnit}
-        onChange={(e) => handleUnitChange(e.target.value as CSSUnit)}
+      {/* Scrub label — drag vertically to adjust value */}
+      <span
         onPointerDown={handleScrubStart}
         onPointerMove={handleScrubMove}
         onPointerUp={handleScrubEnd}
+        className="text-[10px] text-stone-400 cursor-ns-resize select-none px-0.5"
+      >
+        ↕
+      </span>
+      <select
+        value={currentUnit}
+        onChange={(e) => handleUnitChange(e.target.value as CSSUnit)}
         className="text-[10px] text-stone-400 bg-transparent border-none outline-none cursor-pointer py-0.5 min-w-[24px]"
       >
         {filteredUnits.map((u) => (

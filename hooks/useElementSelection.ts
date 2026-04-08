@@ -11,6 +11,7 @@ import { getHoldKey } from '../lib/keybindings';
 // Selectors for playground chrome that should be excluded from element selection
 const EXCLUDE_SELECTORS = [
   '[data-cursor-chat]',
+  '[data-design-editor-sidebar]',
   '.react-flow__controls',
   '.react-flow__minimap',
   '[data-playground-header]',
@@ -264,8 +265,8 @@ export function useElementSelection(): UseElementSelectionReturn {
 
       const target = e.target as HTMLElement;
 
-      // Don't intercept clicks on cursor chat
-      if (target.closest('[data-cursor-chat]')) return;
+      // Don't intercept clicks on cursor chat or design editor sidebar
+      if (target.closest('[data-cursor-chat]') || target.closest('[data-design-editor-sidebar]')) return;
 
       // If Alt is NOT held, clear selections on any click
       if (!altRef.current) {

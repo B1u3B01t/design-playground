@@ -15,13 +15,14 @@ interface DesignTabProps {
   cssSelector: string;
   isIframe: boolean;
   isTokenMode: boolean;
+  iframeError?: string | null;
 }
 
-export default function DesignTab({ computedStyles, nodeId, cssSelector, isIframe, isTokenMode }: DesignTabProps) {
+export default function DesignTab({ computedStyles, nodeId, cssSelector, isIframe, isTokenMode, iframeError }: DesignTabProps) {
   if (!computedStyles) {
     return (
       <div className="flex items-center justify-center h-32 text-[11px] text-stone-400">
-        Select an element to inspect
+        {iframeError ?? '⌘+click an element to inspect'}
       </div>
     );
   }

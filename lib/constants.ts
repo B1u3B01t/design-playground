@@ -450,7 +450,7 @@ export interface HtmlPageInfo {
   id: string;           // "html:landing"
   label: string;        // "landing"
   folder: string;       // "landing"
-  iterations: { folder: string; number: number }[];
+  iterations: { folder: string; number: number; parentId: string }[];
 }
 
 /** An iteration file within an HTML page directory */

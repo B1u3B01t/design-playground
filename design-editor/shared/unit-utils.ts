@@ -111,3 +111,16 @@ export function formatValue(num: number | null, unit: CSSUnit): string {
 function round(n: number): number {
   return Math.round(n * 100) / 100;
 }
+
+/**
+ * Convert an rgb/rgba color string to a hex color.
+ * Returns the input if it's already hex or not parseable.
+ */
+export function rgbToHex(rgb: string): string {
+  const match = rgb.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (!match) return rgb.startsWith('#') ? rgb : '#000000';
+  const r = parseInt(match[1]).toString(16).padStart(2, '0');
+  const g = parseInt(match[2]).toString(16).padStart(2, '0');
+  const b = parseInt(match[3]).toString(16).padStart(2, '0');
+  return `#${r}${g}${b}`;
+}

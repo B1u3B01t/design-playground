@@ -4,6 +4,7 @@ import type { ComputedStyles } from '../../../lib/computed-styles';
 import { useDesignEditorStore } from '../../../lib/design-editor-store';
 import SectionCollapsible from '../../shared/SectionCollapsible';
 import PropertyRow from '../../shared/PropertyRow';
+import { rgbToHex } from '../../shared/unit-utils';
 import { useCallback } from 'react';
 
 interface SectionProps {
@@ -33,15 +34,6 @@ function ColorInput({ value, onChange, label }: { value: string; onChange: (v: s
       </div>
     </PropertyRow>
   );
-}
-
-function rgbToHex(rgb: string): string {
-  const match = rgb.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-  if (!match) return rgb.startsWith('#') ? rgb : '#000000';
-  const r = parseInt(match[1]).toString(16).padStart(2, '0');
-  const g = parseInt(match[2]).toString(16).padStart(2, '0');
-  const b = parseInt(match[3]).toString(16).padStart(2, '0');
-  return `#${r}${g}${b}`;
 }
 
 export default function ColorsSection({ computedStyles, nodeId, cssSelector, isIframe }: SectionProps) {

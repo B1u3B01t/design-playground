@@ -17,6 +17,14 @@ interface TreeManifest {
   entries: Record<string, { parent: string }>;
 }
 
+function normalizeHtmlParent(pageFolder: string, parent: string): string {
+  if (!parent) return `html:${pageFolder}`;
+  if (parent.startsWith('html:')) return parent;
+  if (/^iteration-\d+$/.test(parent)) return `${pageFolder}/${parent}`;
+  if (/^[^/]+\/iteration-\d+$/.test(parent)) return parent;
+  return parent;
+}
+
 function readTreeManifest(): TreeManifest {
   try {
     if (fs.existsSync(TREE_PATH)) {
@@ -38,6 +46,7 @@ function scanHtmlPages(): HtmlPageInfo[] {
 
   const entries = fs.readdirSync(PUBLIC_DIR, { withFileTypes: true });
   const manifest = readTreeManifest();
+  let manifestChanged = false;
   const pages: HtmlPageInfo[] = [];
 
   for (const entry of entries) {
@@ -51,7 +60,7 @@ function scanHtmlPages(): HtmlPageInfo[] {
     if (!fs.existsSync(indexPath)) continue;
 
     // Scan for iteration subdirectories
-    const iterations: { folder: string; number: number }[] = [];
+    const iterations: { folder: string; number: number; parentId: string }[] = [];
     try {
       const subEntries = fs.readdirSync(pageDir, { withFileTypes: true });
       for (const sub of subEntries) {
@@ -60,7 +69,18 @@ function scanHtmlPages(): HtmlPageInfo[] {
         if (match) {
           const iterIndex = path.join(pageDir, sub.name, 'index.html');
           if (fs.existsSync(iterIndex)) {
-            iterations.push({ folder: sub.name, number: parseInt(match[1], 10) });
+            const iterKey = `${entry.name}/${sub.name}`;
+            const rawParent = manifest.entries[iterKey]?.parent || `html:${entry.name}`;
+            const normalizedParent = normalizeHtmlParent(entry.name, rawParent);
+            if (!manifest.entries[iterKey] || manifest.entries[iterKey].parent !== normalizedParent) {
+              manifest.entries[iterKey] = { parent: normalizedParent };
+              manifestChanged = true;
+            }
+            iterations.push({
+              folder: sub.name,
+              number: parseInt(match[1], 10),
+              parentId: normalizedParent,
+            });
           }
         }
       }
@@ -74,6 +94,10 @@ function scanHtmlPages(): HtmlPageInfo[] {
       folder: entry.name,
       iterations,
     });
+  }
+
+  if (manifestChanged) {
+    writeTreeManifest(manifest);
   }
 
   return pages;

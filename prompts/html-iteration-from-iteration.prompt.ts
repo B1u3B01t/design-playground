@@ -23,7 +23,7 @@ INSTRUCTIONS
    b. Save as: public/{{pageFolder}}/iteration-{{N}}/index.html
    c. Copy any local assets as needed (images, fonts, etc.)
    d. Add entry to public/.playground/html-tree.json:
-      { "version": 1, "entries": { "{{pageFolder}}/iteration-{{N}}": { "parent": "{{sourceIterationFolder}}" } } }
+      { "version": 1, "entries": { "{{pageFolder}}/iteration-{{N}}": { "parent": "{{pageFolder}}/{{sourceIterationFolder}}" } } }
    e. Only then start the next iteration
 
 CRITICAL REQUIREMENTS
