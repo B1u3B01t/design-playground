@@ -69,7 +69,25 @@ export interface CursorChatOpenPayload {
   screenX: number;
   screenY: number;
   editMode?: boolean;
+  /** Pre-filled instruction text from the design editor delta */
+  deltaContext?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Design Editor Events
+// ---------------------------------------------------------------------------
+
+/** Fired to toggle the design editor sidebar */
+export const DESIGN_EDITOR_TOGGLE_EVENT = 'playground:design-editor-toggle';
+
+/** Fired by PlaygroundCanvas when element selection changes */
+export const ELEMENT_SELECTION_CHANGE_EVENT = 'playground:element-selection-change';
+
+/** Fired by PlaygroundCanvas when node selection changes */
+export const NODE_SELECTION_CHANGE_EVENT = 'playground:node-selection-change';
+
+/** Fired when prop overrides are applied from the design editor */
+export const PROP_OVERRIDE_CHANGE_EVENT = 'playground:prop-override-change';
 
 // ---------------------------------------------------------------------------
 // localStorage Keys

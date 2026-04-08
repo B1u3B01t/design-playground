@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { LayoutGrid, Eraser, RefreshCw, X, Settings, Keyboard } from 'lucide-react';
+import { LayoutGrid, Eraser, RefreshCw, X, Settings, Keyboard, PanelRight } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { getModelIconConfig } from './lib/model-icons';
 import {
@@ -24,6 +24,7 @@ import {
 import { cn } from './lib/utils';
 import ModelSettingsModal from './ModelSettingsModal';
 import KeyboardShortcutsModal from './KeyboardShortcutsModal';
+import { DESIGN_EDITOR_TOGGLE_EVENT } from './lib/constants';
 
 // ---------------------------------------------------------------------------
 // Presence Bubble Type
@@ -243,6 +244,21 @@ export default function PlaygroundHeader({
 
         {/* Right: action icons + presence bubbles */}
         <div className="flex items-center gap-0.5">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent(DESIGN_EDITOR_TOGGLE_EVENT))}
+                className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
+                aria-label="Toggle design editor"
+              >
+                <PanelRight className="w-[18px] h-[18px]" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Design editor</p>
+            </TooltipContent>
+          </Tooltip>
+
           <Tooltip>
             <TooltipTrigger asChild>
               <button

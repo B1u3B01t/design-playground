@@ -143,6 +143,80 @@ export function getSelectionBridgeScript(): string {
     }
   });
 
+  // ── Design editor bridge ──
+
+  // Managed <style> tag for design editor overrides
+  var designStyleEl = null;
+
+  function getDesignStyleEl() {
+    if (!designStyleEl) {
+      designStyleEl = document.createElement('style');
+      designStyleEl.id = 'design-editor-overrides';
+      designStyleEl.setAttribute('data-design-editor', 'true');
+      (document.head || document.documentElement).appendChild(designStyleEl);
+    }
+    return designStyleEl;
+  }
+
+  // Extract computed styles for an element
+  var STYLE_PROPS = [
+    'display','flex-direction','flex-wrap','align-items','justify-content','gap',
+    'grid-template-columns','grid-template-rows','position','top','right','bottom','left',
+    'padding-top','padding-right','padding-bottom','padding-left',
+    'margin-top','margin-right','margin-bottom','margin-left',
+    'width','height','min-width','min-height','max-width','max-height',
+    'font-family','font-size','font-weight','line-height','letter-spacing',
+    'text-align','text-decoration','text-transform','color',
+    'background-color','background-image',
+    'border-top-width','border-right-width','border-bottom-width','border-left-width',
+    'border-top-style','border-right-style','border-bottom-style','border-left-style',
+    'border-top-color','border-right-color','border-bottom-color','border-left-color',
+    'border-top-left-radius','border-top-right-radius','border-bottom-right-radius','border-bottom-left-radius',
+    'box-shadow','opacity','overflow','overflow-x','overflow-y',
+    'z-index','transform','transition'
+  ];
+
+  function kebabToCamel(s) {
+    return s.replace(/-([a-z])/g, function(_, c) { return c.toUpperCase(); });
+  }
+
+  function extractStyles(el) {
+    var cs = window.getComputedStyle(el);
+    var out = {};
+    for (var i = 0; i < STYLE_PROPS.length; i++) {
+      out[kebabToCamel(STYLE_PROPS[i])] = cs.getPropertyValue(STYLE_PROPS[i]);
+    }
+    return out;
+  }
+
+  // Handle design editor messages from parent
+  window.addEventListener('message', function(e) {
+    if (!e.data || !e.data.type) return;
+
+    if (e.data.type === 'design-editor:get-styles') {
+      var target = document.querySelector(e.data.cssSelector);
+      if (target) {
+        window.parent.postMessage({
+          type: 'design-editor:styles',
+          cssSelector: e.data.cssSelector,
+          styles: extractStyles(target)
+        }, '*');
+      }
+    } else if (e.data.type === 'design-editor:inject-style') {
+      getDesignStyleEl().textContent = e.data.rules || '';
+    } else if (e.data.type === 'design-editor:remove-style') {
+      if (designStyleEl) {
+        designStyleEl.textContent = '';
+      }
+    } else if (e.data.type === 'design-editor:set-text') {
+      var textTarget = document.querySelector(e.data.cssSelector);
+      if (textTarget) textTarget.textContent = e.data.text;
+    } else if (e.data.type === 'design-editor:set-attribute') {
+      var attrTarget = document.querySelector(e.data.cssSelector);
+      if (attrTarget) attrTarget.setAttribute(e.data.attr, e.data.value);
+    }
+  });
+
   // Capture-phase click so we intercept before page scripts
   document.addEventListener('click', onClick, true);
   document.addEventListener('mousemove', onMouseMove);

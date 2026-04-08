@@ -9,7 +9,9 @@ import PlaygroundHeader from './PlaygroundHeader';
 import DiscoveryModal, { type DiscoveryEntry } from './DiscoveryModal';
 import { getProviderFields } from './lib/generation-body';
 import { matchesAction } from './lib/keybindings';
-import { ADD_ALL_QUEUE_STORAGE_KEY } from './lib/constants';
+import { ADD_ALL_QUEUE_STORAGE_KEY, DESIGN_EDITOR_TOGGLE_EVENT } from './lib/constants';
+import { useDesignEditorStore } from './lib/design-editor-store';
+import DesignEditorSidebar from './design-editor/DesignEditorSidebar';
 import { preloadAllComponents } from './registry';
 
 export interface PendingChild {
@@ -58,6 +60,25 @@ export default function PlaygroundClient() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+
+  // Design editor toggle (via event or keybinding)
+  const designEditorToggle = useDesignEditorStore((s) => s.toggle);
+  useEffect(() => {
+    const handler = () => designEditorToggle();
+    window.addEventListener(DESIGN_EDITOR_TOGGLE_EVENT, handler);
+    return () => window.removeEventListener(DESIGN_EDITOR_TOGGLE_EVENT, handler);
+  }, [designEditorToggle]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (matchesAction(e, 'design-editor.toggle')) {
+        e.preventDefault();
+        designEditorToggle();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [designEditorToggle]);
 
   // Auto-scan on first visit
   useEffect(() => {
@@ -513,7 +534,14 @@ export default function PlaygroundClient() {
             </svg>
           </button>
 
-          {/* Canvas — always full size, sidebar overlays */}
+          {/* Design editor sidebar — floating panel on the right */}
+          <div
+            className="absolute top-3 right-3 bottom-3 z-10 transition-all duration-[250ms] ease-in-out"
+          >
+            <DesignEditorSidebar />
+          </div>
+
+          {/* Canvas — always full size, sidebars overlay */}
           <div className="flex-1 relative">
             <PlaygroundCanvas />
           </div>

@@ -126,6 +126,7 @@ import CursorChat from './CursorChat';
 import ElementHighlight from './ElementHighlight';
 import { useElementSelection } from './hooks/useElementSelection';
 import { useNodeSelection } from './hooks/useNodeSelection';
+import { ELEMENT_SELECTION_CHANGE_EVENT, NODE_SELECTION_CHANGE_EVENT } from './lib/constants';
 import { useDynamicBackground } from './hooks/useDynamicBackground';
 import { toast } from 'sonner';
 import { wrapHtmlFragment } from './lib/html-utils';
@@ -1772,6 +1773,20 @@ export default function PlaygroundCanvas() {
   // ---------------------------------------------------------------------------
   const elementSelection = useElementSelection();
   const nodeSelection = useNodeSelection();
+
+  // Emit selection changes to design editor sidebar
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(ELEMENT_SELECTION_CHANGE_EVENT, {
+      detail: { elements: elementSelection.selectedElements },
+    }));
+  }, [elementSelection.selectedElements]);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(NODE_SELECTION_CHANGE_EVENT, {
+      detail: { nodes: nodeSelection.selectedNodes },
+    }));
+  }, [nodeSelection.selectedNodes]);
+
   const generationQueueRef = useRef<CursorChatSubmitPayload[]>([]);
 
   const handleCursorChatSubmit = useCallback(async (payload: CursorChatSubmitPayload) => {

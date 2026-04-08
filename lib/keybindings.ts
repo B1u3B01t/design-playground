@@ -26,7 +26,8 @@ export type PlaygroundAction =
   | 'iterate.run'
   | 'element-select.hold'
   | 'sidebar.toggle'
-  | 'canvas.add-text';
+  | 'canvas.add-text'
+  | 'design-editor.toggle';
 
 export interface KeybindingDefinition {
   action: PlaygroundAction;
@@ -96,6 +97,13 @@ export const DEFAULT_KEYBINDINGS: KeybindingDefinition[] = [
     description: 'Place a new text note on the canvas',
     category: 'Canvas',
     defaultCombo: { key: 't' },
+  },
+  {
+    action: 'design-editor.toggle',
+    label: 'Toggle Design Editor',
+    description: 'Show or hide the design editor sidebar',
+    category: 'Sidebar',
+    defaultCombo: { key: 'd', meta: true, shift: true },
   },
 ];
 
