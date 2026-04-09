@@ -251,7 +251,8 @@ export async function DELETE(req: Request) {
     const { pageFolder, iterationFolder } = body;
 
     // Validate names to prevent directory traversal
-    if (pageFolder.includes('..') || (iterationFolder && iterationFolder.includes('..'))) {
+    const iterDir = path.resolve(PUBLIC_DIR, pageFolder, iterationFolder);
+    if (!iterDir.startsWith(PUBLIC_DIR + path.sep)) {
       return NextResponse.json(
         { success: false, error: 'Invalid path' },
         { status: 400 },

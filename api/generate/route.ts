@@ -27,11 +27,15 @@ const TEMP_DIR = path.join(process.cwd(), TEMP_DIR_RELATIVE);
 const LOCKFILE_PATH = path.join(TEMP_DIR, GENERATION_LOCKFILE_FILENAME);
 const ITERATIONS_DIR = path.join(process.cwd(), 'src/app/playground/iterations');
 
+// Maximum generation duration (10 minutes)
+const GENERATION_TIMEOUT_MS = 10 * 60 * 1000;
+
 // Global state for managing the running generation
 let currentProcess: ChildProcess | null = null;
 let currentChatLogPath: string | null = null;
 let currentLogStream: fs.WriteStream | null = null;
 let isGenerating = false;
+let generationTimer: NodeJS.Timeout | null = null;
 
 // ---------------------------------------------------------------------------
 // File-watching event emitter for progressive iteration detection
@@ -306,6 +310,28 @@ function closeLogStream() {
   }
 }
 
+function clearGenerationTimer() {
+  if (generationTimer) {
+    clearTimeout(generationTimer);
+    generationTimer = null;
+  }
+}
+
+function startGenerationTimer() {
+  clearGenerationTimer();
+  generationTimer = setTimeout(() => {
+    if (currentProcess && !currentProcess.killed) {
+      currentLogStream?.write(`\n=== Generation timed out after ${GENERATION_TIMEOUT_MS / 60000} minutes at ${new Date().toISOString()} ===\n`);
+      currentProcess.kill('SIGTERM');
+      setTimeout(() => {
+        if (currentProcess && !currentProcess.killed) {
+          currentProcess.kill('SIGKILL');
+        }
+      }, 2000);
+    }
+  }, GENERATION_TIMEOUT_MS);
+}
+
 /** Max assistant preview string length (tail kept) — caps SSE payload size. */
 const AGENT_PREVIEW_MAX_CHARS = 14_000;
 /** Ignore absurdly long JSONL lines (e.g. system init) when scanning for text deltas. */
@@ -448,6 +474,9 @@ export async function POST(req: Request) {
         // Start watching iterations directory for progressive detection
         startFileWatcher(body.htmlFolder, body.jsxFile);
 
+        // Start generation timeout watchdog
+        startGenerationTimer();
+
         let stderr = '';
 
         const assistantPreview = { value: '' };
@@ -497,6 +526,7 @@ export async function POST(req: Request) {
 
         // Handle process exit
         currentProcess.on('close', (code) => {
+          clearGenerationTimer();
           if (streamJsonForPreview && stdoutLineBuf.trim().length > 0) {
             appendAssistantTextFromJsonlLines([stdoutLineBuf], assistantPreview);
             stdoutLineBuf = '';
@@ -538,6 +568,7 @@ export async function POST(req: Request) {
 
         // Handle process errors
         currentProcess.on('error', (error) => {
+          clearGenerationTimer();
           if (streamJsonForPreview && stdoutLineBuf.trim().length > 0) {
             appendAssistantTextFromJsonlLines([stdoutLineBuf], assistantPreview);
             stdoutLineBuf = '';
@@ -570,6 +601,7 @@ export async function POST(req: Request) {
         });
 
       } catch (spawnError) {
+        clearGenerationTimer();
         closeLogStream();
         removeLockfile();
         isGenerating = false;
@@ -584,6 +616,7 @@ export async function POST(req: Request) {
     });
 
   } catch (error) {
+    clearGenerationTimer();
     closeLogStream();
     removeLockfile();
     isGenerating = false;
