@@ -5,7 +5,6 @@ import { useNodeId, useReactFlow, NodeResizeControl } from '@xyflow/react';
 import { ArrowUpRight, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { resolveRegistryItem } from '../registry';
-import { CancelGenerationButton } from './shared/IterateDialogParts';
 import IterateDialog from './shared/IterateDialog';
 import { SizeButtons } from './shared/SizeButtons';
 import { loadOnCanvasComponentModule } from './oncanvas-loader';
@@ -368,10 +367,6 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
 
         {/* Right-side vertical action toolbar — always in DOM, invisible when not selected */}
         <div className={`absolute top-0 left-full pl-2 flex flex-col items-center gap-2 nodrag transition-opacity ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-            {isGlobalGenerating ? (
-              <CancelGenerationButton />
-            ) : (
-              <>
                 {/* Iterate — circle blue button with bolt */}
                 <IterateDialog
                   componentId={componentId}
@@ -421,8 +416,6 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                     </p>
                   </TooltipContent>
                 </Tooltip>
-              </>
-            )}
           </div>
       </div>
 

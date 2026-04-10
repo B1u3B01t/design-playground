@@ -18,7 +18,6 @@ import {
 } from '../ui/alert-dialog';
 import { resolveRegistryItem, generateAdoptPrompt } from '../registry';
 import { getIterationComponent } from '../iterations';
-import { CancelGenerationButton } from './shared/IterateDialogParts';
 import { SizeButtons } from './shared/SizeButtons';
 import { loadOnCanvasComponentModule } from './oncanvas-loader';
 import {
@@ -640,10 +639,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
 
         {/* Right-side vertical action toolbar — always in DOM, invisible when not selected */}
         <div className={`absolute top-0 left-full pl-2 flex flex-col items-center gap-2 nodrag transition-opacity ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-            {/* Iterate or cancel */}
-            {isGlobalGenerating ? (
-              <CancelGenerationButton />
-            ) : (
+            {/* Iterate */}
               <IterateDialog
                 componentId={isJsx ? `jsx:${data.componentName}` : isHtml ? `html:${data.htmlFolder}` : registryId}
                 componentName={data.componentName}
@@ -655,7 +651,6 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
                 htmlIterationFolder={data.htmlIterationFolder}
                 jsxFile={data.jsxFile}
               />
-            )}
 
             {/* Use this (adopt) */}
             <Tooltip>

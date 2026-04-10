@@ -339,13 +339,57 @@ const JSONL_PARSE_MAX_LINE_CHARS = 512_000;
 
 /**
  * Append assistant `text_delta` chunks from complete JSONL lines (Claude Code stream-json).
- * Returns whether the preview text changed.
+ * Also scans event payloads for session/chat identifiers that can be surfaced to callers.
  */
 function appendAssistantTextFromJsonlLines(
   lines: string[],
   assistantPreview: { value: string },
-): boolean {
+): { textChanged: boolean; sessionId: string | null } {
   let changed = false;
+  let discoveredSessionId: string | null = null;
+
+  const readString = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  };
+
+  const findSessionId = (value: unknown, depth = 0): string | null => {
+    if (depth > 4 || value == null) return null;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const nested = findSessionId(item, depth + 1);
+        if (nested) return nested;
+      }
+      return null;
+    }
+    if (typeof value !== 'object') return null;
+
+    const obj = value as Record<string, unknown>;
+    const direct =
+      readString(obj.session_id) ??
+      readString(obj.sessionId) ??
+      readString(obj.conversation_id) ??
+      readString(obj.conversationId) ??
+      readString(obj.thread_id) ??
+      readString(obj.threadId) ??
+      readString(obj.chat_id) ??
+      readString(obj.chatId);
+    if (direct) return direct;
+
+    const messageObj = obj.message;
+    if (messageObj && typeof messageObj === 'object' && !Array.isArray(messageObj)) {
+      const messageId = readString((messageObj as Record<string, unknown>).id);
+      if (messageId) return messageId;
+    }
+
+    for (const nestedValue of Object.values(obj)) {
+      const nested = findSessionId(nestedValue, depth + 1);
+      if (nested) return nested;
+    }
+    return null;
+  };
+
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed.length === 0 || !trimmed.startsWith('{')) continue;
@@ -367,6 +411,9 @@ function appendAssistantTextFromJsonlLines(
         assistantPreview.value += obj.event.delta.text;
         changed = true;
       }
+      if (!discoveredSessionId) {
+        discoveredSessionId = findSessionId(obj);
+      }
     } catch {
       /* ignore non-JSON or unexpected shape */
     }
@@ -374,7 +421,7 @@ function appendAssistantTextFromJsonlLines(
   if (assistantPreview.value.length > AGENT_PREVIEW_MAX_CHARS) {
     assistantPreview.value = assistantPreview.value.slice(-AGENT_PREVIEW_MAX_CHARS);
   }
-  return changed;
+  return { textChanged: changed, sessionId: discoveredSessionId };
 }
 
 // ---------------------------------------------------------------------------
@@ -480,6 +527,7 @@ export async function POST(req: Request) {
         let stderr = '';
 
         const assistantPreview = { value: '' };
+        let claudeSessionId: string | null = null;
         let stdoutLineBuf = '';
         let previewThrottleTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -508,7 +556,12 @@ export async function POST(req: Request) {
           stdoutLineBuf += chunk;
           const parts = stdoutLineBuf.split('\n');
           stdoutLineBuf = parts.pop() ?? '';
-          if (appendAssistantTextFromJsonlLines(parts, assistantPreview)) {
+          const parsed = appendAssistantTextFromJsonlLines(parts, assistantPreview);
+          if (!claudeSessionId && parsed.sessionId) {
+            claudeSessionId = parsed.sessionId;
+            currentLogStream?.write(`\nClaude Session ID: ${claudeSessionId}\n`);
+          }
+          if (parsed.textChanged) {
             scheduleAgentPreview();
           }
         });
@@ -528,7 +581,11 @@ export async function POST(req: Request) {
         currentProcess.on('close', (code) => {
           clearGenerationTimer();
           if (streamJsonForPreview && stdoutLineBuf.trim().length > 0) {
-            appendAssistantTextFromJsonlLines([stdoutLineBuf], assistantPreview);
+            const parsed = appendAssistantTextFromJsonlLines([stdoutLineBuf], assistantPreview);
+            if (!claudeSessionId && parsed.sessionId) {
+              claudeSessionId = parsed.sessionId;
+              currentLogStream?.write(`\nClaude Session ID: ${claudeSessionId}\n`);
+            }
             stdoutLineBuf = '';
           }
           if (previewThrottleTimer) {
@@ -552,6 +609,7 @@ export async function POST(req: Request) {
             resolve(NextResponse.json({
               success: true,
               generationId,
+              claudeSessionId,
               message: 'Generation completed successfully',
             }));
           } else {
@@ -560,6 +618,7 @@ export async function POST(req: Request) {
                 success: false,
                 error: stderr || `${providerName} agent exited with code ${code}`,
                 generationId,
+                claudeSessionId,
               },
               { status: 500 }
             ));
@@ -570,7 +629,11 @@ export async function POST(req: Request) {
         currentProcess.on('error', (error) => {
           clearGenerationTimer();
           if (streamJsonForPreview && stdoutLineBuf.trim().length > 0) {
-            appendAssistantTextFromJsonlLines([stdoutLineBuf], assistantPreview);
+            const parsed = appendAssistantTextFromJsonlLines([stdoutLineBuf], assistantPreview);
+            if (!claudeSessionId && parsed.sessionId) {
+              claudeSessionId = parsed.sessionId;
+              currentLogStream?.write(`\nClaude Session ID: ${claudeSessionId}\n`);
+            }
             stdoutLineBuf = '';
           }
           if (previewThrottleTimer) {
