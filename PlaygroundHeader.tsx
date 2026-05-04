@@ -1,9 +1,20 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { LayoutGrid, Eraser, RefreshCw, X, Settings, Keyboard } from 'lucide-react';
+import Image from 'next/image';
+import { LayoutGrid, Eraser, RefreshCw, X, Settings, Keyboard, ChevronDown, Copy, Palette } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { getModelIconConfig } from './lib/model-icons';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
+import cursorIcon from './assets/cursor-icon.svg';
+import finderIcon from './assets/finder-icon.png';
+import githubDesktopIcon from './assets/github-desktop-icon.png';
+import antigravityIcon from './assets/antigravity-icon.png';
 import {
   PLAYGROUND_AUTO_ARRANGE_EVENT,
   ITERATION_FETCH_EVENT,
@@ -24,6 +35,7 @@ import {
 import { cn } from './lib/utils';
 import ModelSettingsModal from './ModelSettingsModal';
 import KeyboardShortcutsModal from './KeyboardShortcutsModal';
+import DesignSystemModal from './DesignSystemModal';
 
 // ---------------------------------------------------------------------------
 // Presence Bubble Type
@@ -51,6 +63,16 @@ interface PlaygroundHeaderProps {
   onToggleSidebar: () => void;
 }
 
+type OpenInTarget = 'finder' | 'cursor' | 'antigravity' | 'github-desktop';
+
+interface ProjectContext {
+  projectName: string;
+  projectPath: string;
+}
+
+const ICON_SRC = (icon: unknown) =>
+  (icon as { src?: string }).src ?? (icon as string);
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -61,8 +83,42 @@ export default function PlaygroundHeader({
 }: PlaygroundHeaderProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [designOpen, setDesignOpen] = useState(false);
   const [presenceBubbles, setPresenceBubbles] = useState<PresenceBubble[]>([]);
+  const [projectContext, setProjectContext] = useState<ProjectContext>({
+    projectName: 'project',
+    projectPath: '',
+  });
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+  const [pathCopied, setPathCopied] = useState(false);
   const removeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const copyFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const response = await fetch('/playground/api/open-in');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (typeof data?.projectName === 'string' && typeof data?.projectPath === 'string') {
+          setProjectContext({
+            projectName: data.projectName,
+            projectPath: data.projectPath,
+          });
+        }
+      } catch {
+        // Ignore failures — project menu is best effort in dev.
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (copyFeedbackTimerRef.current) {
+        clearTimeout(copyFeedbackTimerRef.current);
+      }
+    };
+  }, []);
 
   // Hydrate presence bubbles from localStorage after mount to avoid SSR mismatch
   useEffect(() => {
@@ -231,15 +287,99 @@ export default function PlaygroundHeader({
     }
   };
 
+  const handleOpenTarget = useCallback(async (target: OpenInTarget) => {
+    try {
+      await fetch('/playground/api/open-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target }),
+      });
+    } catch {
+      // Ignore for now — this action is best effort.
+    } finally {
+      setProjectMenuOpen(false);
+    }
+  }, []);
+
+  const handleCopyPath = useCallback(async () => {
+    if (!projectContext.projectPath) return;
+    try {
+      await navigator.clipboard.writeText(projectContext.projectPath);
+      setPathCopied(true);
+      if (copyFeedbackTimerRef.current) clearTimeout(copyFeedbackTimerRef.current);
+      copyFeedbackTimerRef.current = setTimeout(() => setPathCopied(false), 1200);
+    } catch {
+      // Ignore copy failures to avoid interrupting flow.
+    } finally {
+      setProjectMenuOpen(false);
+    }
+  }, [projectContext.projectPath]);
+
   return (
     <TooltipProvider>
       <header
         className="flex items-center justify-between px-4 h-12 bg-gradient-to-b from-stone-50 to-transparent flex-shrink-0"
       >
-        {/* Left: route label */}
-        <span className="text-sm font-medium text-stone-800 tracking-tight select-none">
-          /playground
-        </span>
+        {/* Left: route label + open-in menu */}
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-stone-500 tracking-tight select-none">
+            /playground
+          </span>
+          <DropdownMenu open={projectMenuOpen} onOpenChange={setProjectMenuOpen}>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-mono text-stone-800 hover:bg-stone-200/60 transition-colors"
+                aria-label="Open project in external app"
+              >
+                <span className="truncate max-w-[220px]">{projectContext.projectName}</span>
+                <ChevronDown className="w-3.5 h-3.5 text-stone-500" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="start"
+              side="bottom"
+              sideOffset={6}
+              className="w-48 rounded-lg border border-stone-200 bg-white/95 p-1 shadow-[0_12px_24px_rgba(28,25,23,0.12)] backdrop-blur-sm"
+            >
+              <DropdownMenuItem
+                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-mono text-stone-700 cursor-pointer"
+                onSelect={() => handleOpenTarget('finder')}
+              >
+                <Image src={ICON_SRC(finderIcon)} alt="" width={16} height={16} className="rounded-sm" />
+                <span>Finder</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-mono text-stone-700 cursor-pointer"
+                onSelect={() => handleOpenTarget('cursor')}
+              >
+                <Image src={ICON_SRC(cursorIcon)} alt="" width={16} height={16} className="rounded-sm" />
+                <span>Cursor</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-mono text-stone-700 cursor-pointer"
+                onSelect={() => handleOpenTarget('antigravity')}
+              >
+                <Image src={ICON_SRC(antigravityIcon)} alt="" width={16} height={16} className="rounded-sm" />
+                <span>Antigravity</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-mono text-stone-700 cursor-pointer"
+                onSelect={() => handleOpenTarget('github-desktop')}
+              >
+                <Image src={ICON_SRC(githubDesktopIcon)} alt="" width={16} height={16} className="rounded-sm" />
+                <span>GitHub Desktop</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-mono text-stone-700 cursor-pointer"
+                onSelect={handleCopyPath}
+              >
+                <Copy className="h-4 w-4 text-stone-500" />
+                <span>{pathCopied ? 'Copied!' : 'Copy path'}</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
 
         {/* Right: action icons + presence bubbles */}
         <div className="flex items-center gap-0.5">
@@ -255,6 +395,21 @@ export default function PlaygroundHeader({
             </TooltipTrigger>
             <TooltipContent side="bottom">
               <p>Keyboard shortcuts</p>
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setDesignOpen(true)}
+                className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
+                aria-label="Design system"
+              >
+                <Palette className="w-[18px] h-[18px]" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Design system</p>
             </TooltipContent>
           </Tooltip>
 
@@ -414,6 +569,7 @@ export default function PlaygroundHeader({
 
       <ModelSettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} />
       <KeyboardShortcutsModal open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      <DesignSystemModal open={designOpen} onOpenChange={setDesignOpen} />
     </TooltipProvider>
   );
 }

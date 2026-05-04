@@ -2,6 +2,7 @@
 
 import { memo } from 'react';
 import { Loader2 } from 'lucide-react';
+import { NodeLabel } from './shared/NodeLabel';
 
 interface SkeletonIterationNodeProps {
   data: {
@@ -30,16 +31,9 @@ function SkeletonIterationNode({ data }: SkeletonIterationNodeProps) {
       {/* Top bar — mirrors ComponentNode's label bar */}
       <div className="flex items-center justify-between px-0.5 pb-1.5">
         <div className="flex items-center gap-1.5">
-          <span
-            className="text-[11px] font-medium select-none leading-none"
-            style={{ fontFamily: 'var(--font-geist-mono), monospace', color: '#0B99FF' }}
-          >
-            {data.componentName}
-          </span>
+          <NodeLabel color="#0B99FF">{data.componentName}</NodeLabel>
           <div className="w-px h-3 bg-stone-200 shrink-0" />
-          <span className="text-[11px] text-stone-400 select-none leading-none" style={{ fontFamily: 'var(--font-geist-mono), monospace' }}>
-            #{data.iterationNumber}
-          </span>
+          <NodeLabel color="#A8A29E">#{data.iterationNumber}</NodeLabel>
         </div>
         <div className="flex items-center gap-1 text-[10px] text-stone-400 select-none">
           <Loader2 className="w-2.5 h-2.5 animate-spin" />

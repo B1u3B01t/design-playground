@@ -6,7 +6,6 @@ import {
   Controls,
   Background,
   BackgroundVariant,
-  MiniMap,
   useNodesState,
   useEdgesState,
   addEdge,
@@ -52,6 +51,7 @@ import {
 } from './prompts/shared-sections';
 import { freeformReferencePrompt } from './prompts/freeform-reference.prompt';
 import { editPrompt } from './prompts/edit.prompt';
+import { createPagePrompt, RESERVED_TOP_LEVEL_SLUGS } from './prompts/create-page.prompt';
 import { generateHtmlIterationPrompt, generateHtmlIterationFromIterationPrompt } from './lib/html-prompts';
 import { generateJsxIterationPrompt, generateJsxIterationFromIterationPrompt } from './lib/jsx-prompts';
 import { captureAndSaveScreenshot, getScreenshotFilename } from './lib/captureAndSaveScreenshot';
@@ -73,9 +73,19 @@ import {
 
   ARRANGE_START_X,
   ARRANGE_START_Y,
-  ARRANGE_VERTICAL_GAP,
   ARRANGE_HORIZONTAL_GAP,
-  ARRANGE_GROUP_GAP,
+  ARRANGE_BENTO_TILE_GAP_X,
+  ARRANGE_BENTO_TILE_GAP_Y,
+  ARRANGE_BENTO_CLUSTER_MAX_WIDTH,
+  ARRANGE_BENTO_CLUSTER_GAP_X,
+  ARRANGE_BENTO_CLUSTER_GAP_Y,
+  ARRANGE_BENTO_CLUSTER_ROW_MAX_WIDTH,
+  ARRANGE_LABEL_PADDING_X_BASE,
+  ARRANGE_LABEL_PADDING_Y_BASE,
+  ARRANGE_COLLISION_MIN_SEPARATION,
+  ARRANGE_COLLISION_MAX_PASSES,
+  NODE_LABEL_SCALE_THRESHOLD,
+  NODE_LABEL_MAX_INV_SCALE,
   DEFAULT_ITERATION_NODE_WIDTH,
   DEFAULT_ITERATION_NODE_HEIGHT,
   DEFAULT_COMPONENT_NODE_WIDTH,
@@ -87,12 +97,6 @@ import {
   POST_GENERATION_SCAN_DELAY,
   POST_GENERATION_ARRANGE_DELAY,
   SKELETON_ARRANGE_DELAY,
-  MINIMAP_SKELETON_COLOR,
-  MINIMAP_ITERATION_COLOR,
-  MINIMAP_COMPONENT_COLOR,
-  MINIMAP_IMAGE_COLOR,
-  MINIMAP_TEXT_COLOR,
-  MINIMAP_MASK_COLOR,
   BACKGROUND_COLOR,
   DND_DATA_KEY,
   HTML_ID_PREFIX,
@@ -126,6 +130,7 @@ import CursorChat from './CursorChat';
 import ElementHighlight from './ElementHighlight';
 import { useElementSelection } from './hooks/useElementSelection';
 import { useNodeSelection } from './hooks/useNodeSelection';
+import { useInteractiveNodeStore } from './lib/interactive-node-store';
 import { useDynamicBackground } from './hooks/useDynamicBackground';
 import { toast } from 'sonner';
 import { wrapHtmlFragment } from './lib/html-utils';
@@ -296,11 +301,17 @@ export default function PlaygroundCanvas() {
   }, [collapsedNodeIds]);
   
   // Right-click context menu
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId?: string } | null>(null);
   const [createHtmlDialog, setCreateHtmlDialog] = useState<{ screenX: number; screenY: number } | null>(null);
   const [newHtmlPageName, setNewHtmlPageName] = useState('');
   const [createHtmlError, setCreateHtmlError] = useState('');
   const newHtmlInputRef = useRef<HTMLInputElement>(null);
+
+  const [createPageDialog, setCreatePageDialog] = useState<{ screenX: number; screenY: number } | null>(null);
+  const [newPageDescription, setNewPageDescription] = useState('');
+  const [createPageError, setCreatePageError] = useState('');
+  const [creatingPage, setCreatingPage] = useState(false);
+  const newPageInputRef = useRef<HTMLTextAreaElement>(null);
 
   // Delete cascade/reparent dialog
   const [deleteDialogNode, setDeleteDialogNode] = useState<Node | null>(null);
@@ -1792,8 +1803,14 @@ export default function PlaygroundCanvas() {
       return;
     }
 
+    const chatMode = payload.chatMode ?? (payload.editMode ? 'edit' : 'explore');
+    const isRawMode = chatMode === 'raw';
+    const rawPrompt = payload.text.trim();
+
+    if (isRawMode && !rawPrompt) return;
+
     // ── Edit Mode: modify file in-place, no iterations ──
-    if (payload.editMode && payload.targetNodeId) {
+    if (chatMode === 'edit' && payload.targetNodeId) {
       const isHtmlEdit = payload.renderMode === 'html';
       const isJsxEdit = payload.renderMode === 'jsx' && !!payload.jsxFile;
       const editComponentId = payload.targetComponentId || 'edit-mode';
@@ -1946,9 +1963,11 @@ export default function PlaygroundCanvas() {
       sourceFilename,
     } = payload;
 
-    // Combine skill prompts
+    // Combine skill prompts (raw mode bypasses all prompt composition)
     let combinedSkillPrompt: string | undefined;
-    if (skillPrompts.length > 0) {
+    if (isRawMode) {
+      combinedSkillPrompt = undefined;
+    } else if (skillPrompts.length > 0) {
       combinedSkillPrompt = skillPrompts.join('\n\n');
     } else if (!text) {
       // Use default skills only when no explicit skills selected and text is empty
@@ -1956,14 +1975,16 @@ export default function PlaygroundCanvas() {
       combinedSkillPrompt = defaultPrompt || undefined;
     }
 
-    const customInstructions = text || DEFAULT_EMPTY_ITERATION_INSTRUCTIONS;
+    const customInstructions = isRawMode
+      ? rawPrompt
+      : (text || DEFAULT_EMPTY_ITERATION_INSTRUCTIONS);
     const hasElementSelections = (payload.elementSelections?.length ?? 0) > 0;
     const stylingMode: StylingMode = payload.skillIds?.includes('no-bound-explore')
       ? 'inline-css' : DEFAULT_STYLING_MODE;
 
-    // Build reference nodes section from shift-drag selection
+    // Build reference nodes section from shift-drag selection (skipped in raw mode)
     let referenceNodesSection = '';
-    if (payload.referenceNodes && payload.referenceNodes.length > 0) {
+    if (!isRawMode && payload.referenceNodes && payload.referenceNodes.length > 0) {
       // Filter out the target node from references (no need to reference itself)
       const refNodes = payload.referenceNodes.filter((n) => n.nodeId !== targetNodeId);
 
@@ -2020,59 +2041,64 @@ export default function PlaygroundCanvas() {
 
     if (targetNodeId && targetComponentId && targetComponentName && targetType) {
       // --- WITH TARGET NODE ---
-      let prompt: string;
+      let prompt = rawPrompt;
       const componentId = targetComponentId;
       const componentName = targetComponentName;
       const iterationCount = payload.iterationCount ?? CURSOR_CHAT_DEFAULT_COUNT;
-
-      // Fetch next available iteration number
       let startNumber = 1;
-      try {
-        if (isHtmlTarget) {
-          const response = await fetch('/playground/api/html-pages');
-          if (response.ok) {
-            const { pages } = await response.json();
-            const page = pages.find((p: { folder: string }) => p.folder === payload.htmlPageSlug);
-            const maxNumber = page?.iterations.reduce(
-              (max: number, i: { number: number }) => Math.max(max, i.number), 0
-            ) ?? 0;
-            startNumber = maxNumber + 1;
-          }
-        } else if (isJsxTarget && payload.jsxFile) {
-          const baseFilename = payload.jsxFile.replace(/\.iteration-\d+\.tsx$/, '.tsx');
-          const response = await fetch('/playground/api/oncanvas-components');
-          if (response.ok) {
-            const { components } = await response.json() as { components: JsxComponentInfo[] };
-            const comp = components.find(c => c.filename === baseFilename);
-            const maxNumber = comp?.iterations.reduce(
-              (max: number, i: { iterationNumber: number }) => Math.max(max, i.iterationNumber),
-              0,
-            ) ?? 0;
-            startNumber = maxNumber + 1;
-          }
-        } else {
-          const cleanName = componentName.replace(/\s+/g, '');
-          const response = await fetch('/playground/api/iterations');
-          if (response.ok) {
-            const { iterations } = await response.json();
-            const componentIterations = iterations.filter(
-              (i: { componentName: string }) => i.componentName === cleanName
-            );
-            const maxNumber = componentIterations.reduce(
-              (max: number, i: { iterationNumber: number }) =>
-                Math.max(max, i.iterationNumber),
-              0
-            );
-            startNumber = maxNumber + 1;
-          }
-        }
-      } catch { /* use default */ }
+      let screenshotPath: string | undefined;
 
-      // Capture screenshot of the target node
-      const screenshotFilename = getScreenshotFilename(componentName, sourceFilename);
-      const screenshotPath = await captureAndSaveScreenshot(targetNodeId, screenshotFilename);
+      if (isRawMode) {
+        prompt = rawPrompt;
+      } else {
+        // Fetch next available iteration number
+        try {
+          if (isHtmlTarget) {
+            const response = await fetch('/playground/api/html-pages');
+            if (response.ok) {
+              const { pages } = await response.json();
+              const page = pages.find((p: { folder: string }) => p.folder === payload.htmlPageSlug);
+              const maxNumber = page?.iterations.reduce(
+                (max: number, i: { number: number }) => Math.max(max, i.number), 0
+              ) ?? 0;
+              startNumber = maxNumber + 1;
+            }
+          } else if (isJsxTarget && payload.jsxFile) {
+            const baseFilename = payload.jsxFile.replace(/\.iteration-\d+\.tsx$/, '.tsx');
+            const response = await fetch('/playground/api/oncanvas-components');
+            if (response.ok) {
+              const { components } = await response.json() as { components: JsxComponentInfo[] };
+              const comp = components.find(c => c.filename === baseFilename);
+              const maxNumber = comp?.iterations.reduce(
+                (max: number, i: { iterationNumber: number }) => Math.max(max, i.iterationNumber),
+                0,
+              ) ?? 0;
+              startNumber = maxNumber + 1;
+            }
+          } else {
+            const cleanName = componentName.replace(/\s+/g, '');
+            const response = await fetch('/playground/api/iterations');
+            if (response.ok) {
+              const { iterations } = await response.json();
+              const componentIterations = iterations.filter(
+                (i: { componentName: string }) => i.componentName === cleanName
+              );
+              const maxNumber = componentIterations.reduce(
+                (max: number, i: { iterationNumber: number }) =>
+                  Math.max(max, i.iterationNumber),
+                0
+              );
+              startNumber = maxNumber + 1;
+            }
+          }
+        } catch { /* use default */ }
 
-      if (isHtmlTarget && payload.htmlPageSlug) {
+        // Capture screenshot of the target node
+        const screenshotFilename = getScreenshotFilename(componentName, sourceFilename);
+        screenshotPath = (await captureAndSaveScreenshot(targetNodeId, screenshotFilename)) ?? undefined;
+      }
+
+      if (!isRawMode && isHtmlTarget && payload.htmlPageSlug) {
         // HTML iteration
         if (targetType === 'iteration' && payload.htmlIterationFolder) {
           prompt = generateHtmlIterationFromIterationPrompt(
@@ -2082,7 +2108,7 @@ export default function PlaygroundCanvas() {
             startNumber,
             customInstructions,
             combinedSkillPrompt,
-            screenshotPath ?? undefined,
+            screenshotPath,
           );
         } else {
           prompt = generateHtmlIterationPrompt(
@@ -2091,10 +2117,10 @@ export default function PlaygroundCanvas() {
             startNumber,
             customInstructions,
             combinedSkillPrompt,
-            screenshotPath ?? undefined,
+            screenshotPath,
           );
         }
-      } else if (isJsxTarget && payload.jsxFile) {
+      } else if (!isRawMode && isJsxTarget && payload.jsxFile) {
         const baseFile = payload.jsxFile.replace(/\.iteration-\d+\.tsx$/, '.tsx');
         if (targetType === 'iteration' && sourceFilename) {
           prompt = generateJsxIterationFromIterationPrompt(
@@ -2104,7 +2130,7 @@ export default function PlaygroundCanvas() {
             startNumber,
             customInstructions,
             combinedSkillPrompt,
-            screenshotPath ?? undefined,
+            screenshotPath,
           );
         } else {
           prompt = generateJsxIterationPrompt(
@@ -2113,10 +2139,10 @@ export default function PlaygroundCanvas() {
             startNumber,
             customInstructions,
             combinedSkillPrompt,
-            screenshotPath ?? undefined,
+            screenshotPath,
           );
         }
-      } else if (targetType === 'iteration' && sourceFilename) {
+      } else if (!isRawMode && targetType === 'iteration' && sourceFilename) {
         // Iterate from iteration
         if (hasElementSelections) {
           prompt = generateElementIterationFromIterationPrompt(
@@ -2129,7 +2155,7 @@ export default function PlaygroundCanvas() {
             customInstructions,
             combinedSkillPrompt,
             stylingMode,
-            screenshotPath ?? undefined,
+            screenshotPath,
             referenceNodesSection,
           );
         } else {
@@ -2142,11 +2168,11 @@ export default function PlaygroundCanvas() {
             customInstructions,
             combinedSkillPrompt,
             stylingMode,
-            screenshotPath ?? undefined,
+            screenshotPath,
             referenceNodesSection,
           );
         }
-      } else {
+      } else if (!isRawMode) {
         // Component iteration
         if (hasElementSelections) {
           prompt = generateElementIterationPrompt(
@@ -2158,7 +2184,7 @@ export default function PlaygroundCanvas() {
             customInstructions,
             combinedSkillPrompt,
             stylingMode,
-            screenshotPath ?? undefined,
+            screenshotPath,
             referenceNodesSection,
           );
         } else {
@@ -2170,7 +2196,7 @@ export default function PlaygroundCanvas() {
             customInstructions,
             combinedSkillPrompt,
             stylingMode,
-            screenshotPath ?? undefined,
+            screenshotPath,
             referenceNodesSection,
           );
         }
@@ -2266,7 +2292,9 @@ export default function PlaygroundCanvas() {
 
       // Build prompt — use freeform-reference template if reference nodes exist
       let freeformPrompt: string;
-      if (referenceNodesSection) {
+      if (isRawMode) {
+        freeformPrompt = rawPrompt;
+      } else if (referenceNodesSection) {
         freeformPrompt = freeformReferencePrompt({
           skillSection: combinedSkillPrompt ? formatSkillSection(combinedSkillPrompt) : '',
           referenceNodesSection,
@@ -2550,6 +2578,7 @@ export default function PlaygroundCanvas() {
 
   const handlePaneClick = useCallback(() => {
     setContextMenu(null);
+    useInteractiveNodeStore.getState().setInteractiveNodeId(null);
   }, []);
 
   // Right-click context menu on canvas pane
@@ -2557,6 +2586,55 @@ export default function PlaygroundCanvas() {
     event.preventDefault();
     setContextMenu({ x: event.clientX, y: event.clientY });
   }, []);
+
+  // Right-click context menu on a node — also select the node so the
+  // z-order actions in the menu have a clear target.
+  const handleNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
+    event.preventDefault();
+    setNodes((nds) => nds.map((n) => (n.id === node.id ? { ...n, selected: true } : n)));
+    setContextMenu({ x: event.clientX, y: event.clientY, nodeId: node.id });
+  }, [setNodes]);
+
+  // Re-stack selected nodes (or the right-clicked node) along the z-axis.
+  const handleZOrder = useCallback((op: 'front' | 'back' | 'forward' | 'backward') => {
+    setNodes((nds) => {
+      const targetIds = new Set<string>();
+      for (const n of nds) if (n.selected) targetIds.add(n.id);
+      if (targetIds.size === 0 && contextMenu?.nodeId) targetIds.add(contextMenu.nodeId);
+      if (targetIds.size === 0) return nds;
+
+      const z = (n: Node) => n.zIndex ?? 0;
+      const others = nds.filter((n) => !targetIds.has(n.id));
+      const targets = nds.filter((n) => targetIds.has(n.id));
+
+      if (op === 'front') {
+        const max = nds.reduce((m, n) => Math.max(m, z(n)), 0);
+        const next = max + 1;
+        return nds.map((n) => (targetIds.has(n.id) ? { ...n, zIndex: next } : n));
+      }
+      if (op === 'back') {
+        const min = nds.reduce((m, n) => Math.min(m, z(n)), 0);
+        const next = min - 1;
+        return nds.map((n) => (targetIds.has(n.id) ? { ...n, zIndex: next } : n));
+      }
+      // one-step: swap zIndex with the nearest non-selected neighbor.
+      const dir: 1 | -1 = op === 'forward' ? 1 : -1;
+      const targetZs = targets.map(z);
+      const refZ = dir === 1 ? Math.max(...targetZs) : Math.min(...targetZs);
+      const candidates = others
+        .map(z)
+        .filter((zz) => (dir === 1 ? zz > refZ : zz < refZ))
+        .sort((a, b) => (dir === 1 ? a - b : b - a));
+      if (candidates.length === 0) {
+        // already at the extreme — bump past it so a subsequent action still has effect.
+        const next = refZ + dir;
+        return nds.map((n) => (targetIds.has(n.id) ? { ...n, zIndex: next } : n));
+      }
+      const swapZ = candidates[0];
+      const next = dir === 1 ? swapZ + 1 : swapZ - 1;
+      return nds.map((n) => (targetIds.has(n.id) ? { ...n, zIndex: next } : n));
+    });
+  }, [setNodes, contextMenu]);
 
   // Close context menu on any click outside
   useEffect(() => {
@@ -2597,6 +2675,48 @@ export default function PlaygroundCanvas() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [screenToFlowPosition, setNodes, getNodeId]);
+
+  // Z-order shortcuts: Cmd/Ctrl + ] / [ (with Shift for front/back).
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      let op: 'front' | 'back' | 'forward' | 'backward' | null = null;
+      if (matchesAction(e, 'canvas.bring-to-front')) op = 'front';
+      else if (matchesAction(e, 'canvas.send-to-back')) op = 'back';
+      else if (matchesAction(e, 'canvas.bring-forward')) op = 'forward';
+      else if (matchesAction(e, 'canvas.send-backward')) op = 'backward';
+      if (!op) return;
+      const active = document.activeElement;
+      if (active) {
+        const tag = active.tagName.toLowerCase();
+        if (tag === 'input' || tag === 'textarea') return;
+        if ((active as HTMLElement).isContentEditable) return;
+        if (active.closest('[role="dialog"]') || active.closest('[data-radix-popper-content-wrapper]')) return;
+      }
+      e.preventDefault();
+      handleZOrder(op);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [handleZOrder]);
+
+  // Suppress browser history swipe (macOS trackpad two-finger swipe-back/forward).
+  // React's onWheel is passive — preventDefault() is a no-op there — so we
+  // attach the listener imperatively with { passive: false }. We only block
+  // horizontal-dominant wheel events; vertical scroll and React Flow's
+  // panOnScroll are untouched.
+  useEffect(() => {
+    const wrapper = reactFlowWrapper.current;
+    if (!wrapper) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        e.preventDefault();
+      }
+    };
+
+    wrapper.addEventListener('wheel', handleWheel, { passive: false });
+    return () => wrapper.removeEventListener('wheel', handleWheel);
+  }, []);
 
   // Paste images or HTML from clipboard onto the canvas
   useEffect(() => {
@@ -2902,6 +3022,92 @@ export default function PlaygroundCanvas() {
     }
   }, [createHtmlDialog]);
 
+  // Focus textarea when create-page dialog opens
+  useEffect(() => {
+    if (createPageDialog && newPageInputRef.current) {
+      requestAnimationFrame(() => newPageInputRef.current?.focus());
+    }
+  }, [createPageDialog]);
+
+  // Create new Next.js page from context menu
+  const handleCreatePage = useCallback(async () => {
+    const description = newPageDescription.trim();
+    if (!description) return;
+    setCreatePageError('');
+    setCreatingPage(true);
+
+    const skillPromptText = (await loadDefaultSkillPrompt()) ?? '';
+    const skillSection = skillPromptText ? formatSkillSection(skillPromptText) : '';
+    const prompt = createPagePrompt({
+      skillSection,
+      description,
+      stylingConstraint: getStylingConstraint(DEFAULT_STYLING_MODE),
+      reservedSlugs: RESERVED_TOP_LEVEL_SLUGS.join(', '),
+    });
+
+    const componentId = 'cursor-chat-new-page';
+    const pf = getProviderFields();
+    const toastId = `create-page-${Date.now()}`;
+    toast.loading('Creating new page…', { id: toastId, duration: Infinity });
+
+    window.dispatchEvent(
+      new CustomEvent<GenerationStartPayload>(GENERATION_START_EVENT, {
+        detail: {
+          componentId,
+          componentName: 'New Page',
+          parentNodeId: '',
+          iterationCount: 0,
+          model: undefined,
+          provider: pf.provider as GenerationStartPayload['provider'],
+        },
+      }),
+    );
+
+    try {
+      const response = await fetch('/playground/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          componentId,
+          iterationCount: 0,
+          ...pf,
+        }),
+      });
+      const data = await response.json().catch(() => ({ success: false }));
+      if (!response.ok || !data.success) {
+        const errMsg = data?.error || `Page creation failed (${response.status})`;
+        toast.error(errMsg, { id: toastId, duration: 6000 });
+        setCreatePageError(errMsg);
+        window.dispatchEvent(
+          new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+            detail: { componentId, parentNodeId: '', error: errMsg },
+          }),
+        );
+        return;
+      }
+      toast.success('Page created — drag from sidebar to canvas', { id: toastId, duration: 5000 });
+      window.dispatchEvent(
+        new CustomEvent<GenerationCompletePayload>(GENERATION_COMPLETE_EVENT, {
+          detail: { componentId, parentNodeId: '', output: '' },
+        }),
+      );
+      setCreatePageDialog(null);
+      setNewPageDescription('');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      toast.error(msg, { id: toastId, duration: 6000 });
+      setCreatePageError(msg);
+      window.dispatchEvent(
+        new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+          detail: { componentId, parentNodeId: '', error: msg },
+        }),
+      );
+    } finally {
+      setCreatingPage(false);
+    }
+  }, [newPageDescription]);
+
   // Handle node deletion - check for children first
   const onNodesDelete = useCallback(async (deletedNodes: Node[]) => {
     for (const node of deletedNodes) {
@@ -3028,17 +3234,26 @@ export default function PlaygroundCanvas() {
   }, [deleteDialogNode, nodes, edges, setNodes, setEdges]);
 
   // ---------------------------------------------------------------------------
-  // Auto-arrange: tree-expanding-rightward layout
-  // Each component is a root. Its iterations (and their sub-iterations) expand rightward.
+  // Auto-arrange: bento cluster layout
+  // Each component and all of its visible descendants are laid out as a local bento cluster.
+  // Component clusters are then packed left-to-right in rows with spacing between clusters.
   // ---------------------------------------------------------------------------
   const autoArrangeNodes = useCallback((andFitView: boolean = false) => {
     const componentNodes = nodes.filter(n => n.type === 'component');
-    if (componentNodes.length === 0) return;
 
     const START_X = ARRANGE_START_X;
     const START_Y = ARRANGE_START_Y;
-    const VERTICAL_GAP = ARRANGE_VERTICAL_GAP;
-    const GROUP_GAP = ARRANGE_GROUP_GAP;
+    const TILE_GAP_X = ARRANGE_BENTO_TILE_GAP_X;
+    const TILE_GAP_Y = ARRANGE_BENTO_TILE_GAP_Y;
+    const CLUSTER_MAX_WIDTH = ARRANGE_BENTO_CLUSTER_MAX_WIDTH;
+    const CLUSTER_GAP_X = ARRANGE_BENTO_CLUSTER_GAP_X;
+    const CLUSTER_GAP_Y = ARRANGE_BENTO_CLUSTER_GAP_Y;
+    const CLUSTER_ROW_MAX_WIDTH = ARRANGE_BENTO_CLUSTER_ROW_MAX_WIDTH;
+    const COLLISION_MIN_SEPARATION = ARRANGE_COLLISION_MIN_SEPARATION;
+    const COLLISION_MAX_PASSES = ARRANGE_COLLISION_MAX_PASSES;
+    const LABEL_PADDING_X_BASE = ARRANGE_LABEL_PADDING_X_BASE;
+    const LABEL_PADDING_Y_BASE = ARRANGE_LABEL_PADDING_Y_BASE;
+    const zoom = Math.max(getViewport().zoom, 0.0001);
 
     // Helper to get node dimensions
     const getNodeSize = (node: Node): { width: number; height: number } => {
@@ -3051,6 +3266,25 @@ export default function PlaygroundCanvas() {
       }
       return { width: DEFAULT_COMPONENT_NODE_WIDTH, height: DEFAULT_COMPONENT_NODE_HEIGHT };
     };
+    const getEffectiveNodeFootprint = (node: Node): { width: number; height: number } => {
+      const base = getNodeSize(node);
+      const inverseLabelScale = Math.min(
+        NODE_LABEL_MAX_INV_SCALE,
+        Math.max(1, NODE_LABEL_SCALE_THRESHOLD / zoom),
+      );
+      const zoomGrowth = Math.max(0, inverseLabelScale - 1);
+      const extraX = LABEL_PADDING_X_BASE * zoomGrowth;
+      const extraY = LABEL_PADDING_Y_BASE * zoomGrowth;
+      return {
+        width: base.width + extraX,
+        height: base.height + extraY,
+      };
+    };
+
+    const nodeOrder = new Map<string, number>();
+    nodes.forEach((node, index) => nodeOrder.set(node.id, index));
+    const sortByStableNodeOrder = (a: string, b: string) =>
+      (nodeOrder.get(a) ?? Number.MAX_SAFE_INTEGER) - (nodeOrder.get(b) ?? Number.MAX_SAFE_INTEGER);
 
     // Build adjacency list from edges (parent -> children)
     const childrenMap = new Map<string, string[]>();
@@ -3059,8 +3293,11 @@ export default function PlaygroundCanvas() {
       existing.push(edge.target);
       childrenMap.set(edge.source, existing);
     });
+    childrenMap.forEach((children, parentId) => {
+      childrenMap.set(parentId, children.sort(sortByStableNodeOrder));
+    });
 
-    // Build a set of all visible node IDs (respect collapse state)
+    // Build visibility map based on collapsed state
     const collapsed = collapsedNodeIdsRef.current;
     const hiddenNodeIds = new Set<string>();
     const markDescendantsHidden = (parentId: string) => {
@@ -3075,103 +3312,238 @@ export default function PlaygroundCanvas() {
     const nodeMap = new Map<string, Node>();
     nodes.forEach(n => nodeMap.set(n.id, n));
 
-    // Compute total vertical height of a node + its descendants stacked vertically
-    const verticalSubtreeHeightCache = new Map<string, number>();
-    const computeVerticalSubtreeHeight = (nodeId: string): number => {
-      if (verticalSubtreeHeightCache.has(nodeId)) return verticalSubtreeHeightCache.get(nodeId)!;
+    const collectVisibleClusterNodeIds = (rootNodeId: string): string[] => {
+      const collected: string[] = [];
+      const visited = new Set<string>();
+      const queue: string[] = [rootNodeId];
 
-      const node = nodeMap.get(nodeId);
-      if (!node) { verticalSubtreeHeightCache.set(nodeId, 0); return 0; }
+      while (queue.length > 0) {
+        const currentId = queue.shift()!;
+        if (visited.has(currentId) || hiddenNodeIds.has(currentId)) continue;
+        const currentNode = nodeMap.get(currentId);
+        if (!currentNode) continue;
 
-      const nodeHeight = getNodeSize(node).height;
-      const children = (childrenMap.get(nodeId) || []).filter(id => !hiddenNodeIds.has(id));
-
-      if (children.length === 0) {
-        verticalSubtreeHeightCache.set(nodeId, nodeHeight);
-        return nodeHeight;
+        visited.add(currentId);
+        collected.push(currentId);
+        const children = (childrenMap.get(currentId) || []).filter(childId => !hiddenNodeIds.has(childId));
+        queue.push(...children);
       }
 
-      let childrenHeight = 0;
-      children.forEach((childId, idx) => {
-        childrenHeight += computeVerticalSubtreeHeight(childId);
-        if (idx < children.length - 1) childrenHeight += VERTICAL_GAP;
-      });
-
-      const height = nodeHeight + VERTICAL_GAP + childrenHeight;
-      verticalSubtreeHeightCache.set(nodeId, height);
-      return height;
+      return collected;
     };
 
-    // Position map
-    const positionMap = new Map<string, { x: number; y: number }>();
+    const getDepthByNodeId = (rootNodeId: string, clusterNodeIds: Set<string>): Map<string, number> => {
+      const depthByNodeId = new Map<string, number>();
+      const queue: Array<{ nodeId: string; depth: number }> = [{ nodeId: rootNodeId, depth: 0 }];
 
-    // Recursively position a node and its descendants vertically (children stacked below)
-    const positionVerticalSubtree = (nodeId: string, x: number, yStart: number) => {
-      const node = nodeMap.get(nodeId);
-      if (!node) return;
+      while (queue.length > 0) {
+        const { nodeId, depth } = queue.shift()!;
+        if (depthByNodeId.has(nodeId) || !clusterNodeIds.has(nodeId)) continue;
 
-      positionMap.set(nodeId, { x, y: yStart });
+        depthByNodeId.set(nodeId, depth);
+        const children = (childrenMap.get(nodeId) || []).filter(childId => clusterNodeIds.has(childId));
+        children.forEach(childId => queue.push({ nodeId: childId, depth: depth + 1 }));
+      }
 
-      const nodeHeight = getNodeSize(node).height;
-      const children = (childrenMap.get(nodeId) || []).filter(id => !hiddenNodeIds.has(id));
-
-      let childY = yStart + nodeHeight + VERTICAL_GAP;
-      children.forEach(childId => {
-        positionVerticalSubtree(childId, x, childY);
-        childY += computeVerticalSubtreeHeight(childId) + VERTICAL_GAP;
-      });
+      return depthByNodeId;
     };
 
-    // Process each component: components stacked vertically, iterations spread horizontally
-    const H_GAP = ARRANGE_HORIZONTAL_GAP;
-    let currentGroupY = START_Y;
-    componentNodes.forEach(componentNode => {
-      const compSize = getNodeSize(componentNode);
+    const layoutClusterBento = (
+      rootNodeId: string,
+      clusterNodeIds: string[],
+      anchorRootAtTopLeft: boolean,
+    ): {
+      positions: Map<string, { x: number; y: number }>;
+      width: number;
+      height: number;
+    } => {
+      const localPositions = new Map<string, { x: number; y: number }>();
+      if (clusterNodeIds.length === 0) {
+        return { positions: localPositions, width: 0, height: 0 };
+      }
 
-      // Place component node
-      positionMap.set(componentNode.id, { x: START_X, y: currentGroupY });
+      const nodeIdSet = new Set(clusterNodeIds);
+      const depthByNodeId = getDepthByNodeId(rootNodeId, nodeIdSet);
 
-      const iterations = (childrenMap.get(componentNode.id) || []).filter(id => !hiddenNodeIds.has(id));
-
-      let iterX = START_X + compSize.width + H_GAP;
-      let rowHeight = compSize.height;
-
-      iterations.forEach(iterId => {
-        const iterNode = nodeMap.get(iterId);
-        if (!iterNode) return;
-        const iterSize = getNodeSize(iterNode);
-
-        // Place iteration at same Y as component, spread horizontally
-        positionMap.set(iterId, { x: iterX, y: currentGroupY });
-
-        // Place sub-children of this iteration vertically below it
-        const subChildren = (childrenMap.get(iterId) || []).filter(id => !hiddenNodeIds.has(id));
-        let subY = currentGroupY + iterSize.height + VERTICAL_GAP;
-        subChildren.forEach(subChildId => {
-          positionVerticalSubtree(subChildId, iterX, subY);
-          subY += computeVerticalSubtreeHeight(subChildId) + VERTICAL_GAP;
+      const orderedTiles = clusterNodeIds
+        .filter(nodeId => !anchorRootAtTopLeft || nodeId !== rootNodeId)
+        .sort((a, b) => {
+          const depthDelta = (depthByNodeId.get(a) ?? Number.MAX_SAFE_INTEGER) -
+            (depthByNodeId.get(b) ?? Number.MAX_SAFE_INTEGER);
+          if (depthDelta !== 0) return depthDelta;
+          return sortByStableNodeOrder(a, b);
         });
 
-        // Row height = max of component height vs each iteration's full vertical subtree
-        rowHeight = Math.max(rowHeight, computeVerticalSubtreeHeight(iterId));
+      let cursorX = 0;
+      let cursorY = 0;
+      let rowHeight = 0;
+      let maxRight = 0;
+      let maxBottom = 0;
 
-        iterX += iterSize.width + H_GAP;
+      const placeTile = (nodeId: string, x: number, y: number) => {
+        const node = nodeMap.get(nodeId);
+        if (!node) return;
+        const size = getEffectiveNodeFootprint(node);
+        localPositions.set(nodeId, { x, y });
+        maxRight = Math.max(maxRight, x + size.width);
+        maxBottom = Math.max(maxBottom, y + size.height);
+      };
+
+      if (anchorRootAtTopLeft && nodeIdSet.has(rootNodeId)) {
+        const rootNode = nodeMap.get(rootNodeId);
+        if (rootNode) {
+          const rootSize = getEffectiveNodeFootprint(rootNode);
+          placeTile(rootNodeId, 0, 0);
+          cursorX = rootSize.width + TILE_GAP_X;
+          rowHeight = rootSize.height;
+        }
+      }
+
+      orderedTiles.forEach(tileNodeId => {
+        const tileNode = nodeMap.get(tileNodeId);
+        if (!tileNode) return;
+
+        const tileSize = getEffectiveNodeFootprint(tileNode);
+        const wouldOverflow = cursorX > 0 && cursorX + tileSize.width > CLUSTER_MAX_WIDTH;
+        if (wouldOverflow) {
+          cursorY += rowHeight + TILE_GAP_Y;
+          cursorX = 0;
+          rowHeight = 0;
+        }
+
+        placeTile(tileNodeId, cursorX, cursorY);
+        rowHeight = Math.max(rowHeight, tileSize.height);
+        cursorX += tileSize.width + TILE_GAP_X;
       });
 
-      currentGroupY += rowHeight + GROUP_GAP;
+      return {
+        positions: localPositions,
+        width: maxRight,
+        height: maxBottom,
+      };
+    };
+
+    const clusterLayouts: Array<{
+      clusterId: string;
+      positions: Map<string, { x: number; y: number }>;
+      width: number;
+      height: number;
+    }> = [];
+    const assignedNodeIds = new Set<string>();
+
+    componentNodes.forEach(componentNode => {
+      const clusterNodeIds = collectVisibleClusterNodeIds(componentNode.id)
+        .filter(nodeId => !assignedNodeIds.has(nodeId));
+      if (clusterNodeIds.length === 0) return;
+
+      clusterNodeIds.forEach(nodeId => assignedNodeIds.add(nodeId));
+      const layout = layoutClusterBento(componentNode.id, clusterNodeIds, true);
+      clusterLayouts.push({
+        clusterId: componentNode.id,
+        positions: layout.positions,
+        width: layout.width,
+        height: layout.height,
+      });
     });
 
-    // Position orphan nodes (not reachable from any component)
-    const positionedIds = new Set(positionMap.keys());
-    const orphans = nodes.filter(n => !positionedIds.has(n.id) && !hiddenNodeIds.has(n.id));
-    if (orphans.length > 0) {
-      let orphanY = currentGroupY;
-      orphans.forEach(node => {
-        const size = getNodeSize(node);
-        positionMap.set(node.id, { x: START_X, y: orphanY });
-        orphanY += size.height + VERTICAL_GAP;
+    // Keep non-hidden, non-component leftovers in a fallback bento cluster.
+    const orphanNodeIds = nodes
+      .map(node => node.id)
+      .filter(nodeId => !hiddenNodeIds.has(nodeId) && !assignedNodeIds.has(nodeId));
+    if (orphanNodeIds.length > 0) {
+      orphanNodeIds.forEach(nodeId => assignedNodeIds.add(nodeId));
+      const layout = layoutClusterBento(orphanNodeIds[0], orphanNodeIds, false);
+      clusterLayouts.push({
+        clusterId: '__orphans__',
+        positions: layout.positions,
+        width: layout.width,
+        height: layout.height,
       });
     }
+
+    const clusterOrigins = new Map<string, { x: number; y: number }>();
+    let clusterCursorX = START_X;
+    let clusterCursorY = START_Y;
+    let currentRowHeight = 0;
+    const maxClusterRowRight = START_X + CLUSTER_ROW_MAX_WIDTH;
+
+    clusterLayouts.forEach(clusterLayout => {
+      const shouldWrapRow = clusterCursorX > START_X &&
+        clusterCursorX + clusterLayout.width > maxClusterRowRight;
+      if (shouldWrapRow) {
+        clusterCursorX = START_X;
+        clusterCursorY += currentRowHeight + CLUSTER_GAP_Y;
+        currentRowHeight = 0;
+      }
+
+      clusterOrigins.set(clusterLayout.clusterId, { x: clusterCursorX, y: clusterCursorY });
+      clusterCursorX += clusterLayout.width + CLUSTER_GAP_X;
+      currentRowHeight = Math.max(currentRowHeight, clusterLayout.height);
+    });
+
+    const positionMap = new Map<string, { x: number; y: number }>();
+    clusterLayouts.forEach(clusterLayout => {
+      const origin = clusterOrigins.get(clusterLayout.clusterId);
+      if (!origin) return;
+
+      clusterLayout.positions.forEach((localPosition, nodeId) => {
+        positionMap.set(nodeId, {
+          x: origin.x + localPosition.x,
+          y: origin.y + localPosition.y,
+        });
+      });
+    });
+
+    const effectiveSizeByNodeId = new Map<string, { width: number; height: number }>();
+    positionMap.forEach((_, nodeId) => {
+      const node = nodeMap.get(nodeId);
+      if (!node) return;
+      effectiveSizeByNodeId.set(nodeId, getEffectiveNodeFootprint(node));
+    });
+    const positionedNodeIds = Array.from(positionMap.keys()).sort(sortByStableNodeOrder);
+    const hasOverlap = (
+      aPos: { x: number; y: number },
+      aSize: { width: number; height: number },
+      bPos: { x: number; y: number },
+      bSize: { width: number; height: number },
+    ) => {
+      const aRight = aPos.x + aSize.width + COLLISION_MIN_SEPARATION;
+      const aBottom = aPos.y + aSize.height + COLLISION_MIN_SEPARATION;
+      const bRight = bPos.x + bSize.width + COLLISION_MIN_SEPARATION;
+      const bBottom = bPos.y + bSize.height + COLLISION_MIN_SEPARATION;
+      return aPos.x < bRight && aRight > bPos.x && aPos.y < bBottom && aBottom > bPos.y;
+    };
+    const resolveCollisions = () => {
+      for (let pass = 0; pass < COLLISION_MAX_PASSES; pass += 1) {
+        let movedAny = false;
+        for (let i = 0; i < positionedNodeIds.length; i += 1) {
+          const leftNodeId = positionedNodeIds[i];
+          const leftPos = positionMap.get(leftNodeId);
+          const leftSize = effectiveSizeByNodeId.get(leftNodeId);
+          if (!leftPos || !leftSize) continue;
+          for (let j = i + 1; j < positionedNodeIds.length; j += 1) {
+            const rightNodeId = positionedNodeIds[j];
+            const rightPos = positionMap.get(rightNodeId);
+            const rightSize = effectiveSizeByNodeId.get(rightNodeId);
+            if (!rightPos || !rightSize) continue;
+            if (!hasOverlap(leftPos, leftSize, rightPos, rightSize)) continue;
+
+            const pushX = (leftPos.x + leftSize.width + COLLISION_MIN_SEPARATION) - rightPos.x;
+            const pushY = (leftPos.y + leftSize.height + COLLISION_MIN_SEPARATION) - rightPos.y;
+            if (pushX <= 0 || pushY <= 0) continue;
+
+            if (pushX <= pushY) {
+              positionMap.set(rightNodeId, { x: rightPos.x + pushX, y: rightPos.y });
+            } else {
+              positionMap.set(rightNodeId, { x: rightPos.x, y: rightPos.y + pushY });
+            }
+            movedAny = true;
+          }
+        }
+        if (!movedAny) break;
+      }
+    };
+    resolveCollisions();
 
     // Apply positions
     setNodes(currentNodes =>
@@ -3189,7 +3561,7 @@ export default function PlaygroundCanvas() {
         fitView(FITVIEW_AFTER_ARRANGE);
       }, ARRANGE_FITVIEW_DELAY);
     }
-  }, [nodes, edges, setNodes, fitView]);
+  }, [nodes, edges, setNodes, fitView, getViewport]);
 
   // Handle auto-arrange event (triggered after skeleton nodes are added)
   useEffect(() => {
@@ -3340,6 +3712,7 @@ export default function PlaygroundCanvas() {
           onDrop={onDrop}
           onPaneClick={handlePaneClick}
           onPaneContextMenu={handlePaneContextMenu}
+          onNodeContextMenu={handleNodeContextMenu}
           nodeTypes={nodeTypes}
           {...(initialState?.viewport
             ? { defaultViewport: initialState.viewport }
@@ -3361,19 +3734,6 @@ export default function PlaygroundCanvas() {
           {/* <Controls
             className="!bg-white !border-stone-200 !rounded-lg !shadow-sm [&>button]:!bg-white [&>button]:!border-stone-200 [&>button]:!text-stone-600 [&>button:hover]:!bg-stone-50"
           /> */}
-          <MiniMap
-            className="bg-white !border-stone-200 rounded-lg !shadow-sm !bottom-4 !right-4"
-            nodeColor={(node) => {
-              if (node.type === 'skeleton') return MINIMAP_SKELETON_COLOR;
-              if (node.type === 'iteration') return MINIMAP_ITERATION_COLOR;
-              if (node.type === 'drag-ghost') return '#0B99FF';
-              if (node.type === 'image') return MINIMAP_IMAGE_COLOR;
-              if (node.type === 'text') return MINIMAP_TEXT_COLOR;
-              return MINIMAP_COMPONENT_COLOR;
-            }}
-            maskColor={MINIMAP_MASK_COLOR}
-            position="bottom-right"
-          />
         <Background
           variant={BackgroundVariant.Dots}
           gap={dynamicBg.gap}
@@ -3446,6 +3806,141 @@ export default function PlaygroundCanvas() {
             </svg>
             create new frame
           </button>
+          <button
+            className="flex items-center gap-2 w-full px-3 py-2 text-[13px] text-stone-700 hover:bg-stone-100 transition-colors text-left rounded-3xl"
+            onClick={(e) => {
+              e.stopPropagation();
+              setCreatePageDialog({ screenX: contextMenu.x, screenY: contextMenu.y });
+              setContextMenu(null);
+              setNewPageDescription('');
+              setCreatePageError('');
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M3 9h18" />
+              <path d="M9 21V9" />
+            </svg>
+            create new page
+          </button>
+          {(contextMenu.nodeId || nodes.some((n) => n.selected)) && (
+            <>
+              <div className="my-1 mx-2 h-px bg-stone-200" />
+              <button
+                className="flex items-center gap-2 w-full px-3 py-2 text-[13px] text-stone-700 hover:bg-stone-100 transition-colors text-left rounded-3xl"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleZOrder('front');
+                  setContextMenu(null);
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500">
+                  <rect x="7" y="7" width="13" height="13" rx="2" />
+                  <path d="M4 16V6a2 2 0 0 1 2-2h10" />
+                </svg>
+                bring to front
+              </button>
+              <button
+                className="flex items-center gap-2 w-full px-3 py-2 text-[13px] text-stone-700 hover:bg-stone-100 transition-colors text-left rounded-3xl"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleZOrder('forward');
+                  setContextMenu(null);
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500">
+                  <rect x="9" y="9" width="11" height="11" rx="2" />
+                  <path d="M4 14V6a2 2 0 0 1 2-2h8" />
+                </svg>
+                bring forward
+              </button>
+              <button
+                className="flex items-center gap-2 w-full px-3 py-2 text-[13px] text-stone-700 hover:bg-stone-100 transition-colors text-left rounded-3xl"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleZOrder('backward');
+                  setContextMenu(null);
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500">
+                  <rect x="4" y="4" width="11" height="11" rx="2" />
+                  <path d="M20 10v8a2 2 0 0 1-2 2h-8" />
+                </svg>
+                send backward
+              </button>
+              <button
+                className="flex items-center gap-2 w-full px-3 py-2 text-[13px] text-stone-700 hover:bg-stone-100 transition-colors text-left rounded-3xl"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleZOrder('back');
+                  setContextMenu(null);
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500">
+                  <rect x="4" y="4" width="13" height="13" rx="2" />
+                  <path d="M20 8v10a2 2 0 0 1-2 2H8" />
+                </svg>
+                send to back
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Create new page dialog */}
+      {createPageDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-start"
+          onClick={() => {
+            if (creatingPage) return;
+            setCreatePageDialog(null);
+            setNewPageDescription('');
+            setCreatePageError('');
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl border border-stone-200 shadow-xl p-4 w-[360px] animate-in fade-in-0 zoom-in-95 duration-150"
+            style={{ position: 'fixed', left: createPageDialog.screenX, top: createPageDialog.screenY }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-[13px] font-semibold text-stone-800 mb-1">New Page</h3>
+            <p className="text-[11px] text-stone-500 mb-3">Describe the page. The AI will pick a slug, scaffold it, and register it in the Pages section.</p>
+            <textarea
+              ref={newPageInputRef}
+              rows={4}
+              placeholder="A landing page for our pricing plans, with a 3-tier comparison table…"
+              value={newPageDescription}
+              onChange={(e) => { setNewPageDescription(e.target.value); setCreatePageError(''); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleCreatePage(); }
+                if (e.key === 'Escape' && !creatingPage) { setCreatePageDialog(null); setNewPageDescription(''); setCreatePageError(''); }
+              }}
+              disabled={creatingPage}
+              className="w-full px-3 py-2 text-[13px] bg-stone-50 border border-stone-200 rounded-xl text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 transition-colors resize-none disabled:opacity-50"
+            />
+            {createPageError && (
+              <p className="text-[11px] text-red-500 mt-1.5">{createPageError}</p>
+            )}
+            <div className="flex justify-between items-center gap-2 mt-3">
+              <span className="text-[10px] text-stone-400">⌘↵ to submit</span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setCreatePageDialog(null); setNewPageDescription(''); setCreatePageError(''); }}
+                  disabled={creatingPage}
+                  className="px-3 py-1.5 text-[12px] text-stone-500 hover:text-stone-700 rounded-xl hover:bg-stone-100 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreatePage}
+                  disabled={!newPageDescription.trim() || creatingPage}
+                  className="px-3 py-1.5 text-[12px] bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {creatingPage ? 'Creating…' : 'Create'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

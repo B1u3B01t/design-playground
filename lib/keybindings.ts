@@ -26,7 +26,11 @@ export type PlaygroundAction =
   | 'iterate.run'
   | 'element-select.hold'
   | 'sidebar.toggle'
-  | 'canvas.add-text';
+  | 'canvas.add-text'
+  | 'canvas.bring-to-front'
+  | 'canvas.send-to-back'
+  | 'canvas.bring-forward'
+  | 'canvas.send-backward';
 
 export interface KeybindingDefinition {
   action: PlaygroundAction;
@@ -96,6 +100,34 @@ export const DEFAULT_KEYBINDINGS: KeybindingDefinition[] = [
     description: 'Place a new text note on the canvas',
     category: 'Canvas',
     defaultCombo: { key: 't' },
+  },
+  {
+    action: 'canvas.bring-to-front',
+    label: 'Bring to Front',
+    description: 'Move selected nodes to the top of the stacking order',
+    category: 'Canvas',
+    defaultCombo: { key: ']', meta: true, shift: true },
+  },
+  {
+    action: 'canvas.send-to-back',
+    label: 'Send to Back',
+    description: 'Move selected nodes to the bottom of the stacking order',
+    category: 'Canvas',
+    defaultCombo: { key: '[', meta: true, shift: true },
+  },
+  {
+    action: 'canvas.bring-forward',
+    label: 'Bring Forward',
+    description: 'Move selected nodes one step up in the stacking order',
+    category: 'Canvas',
+    defaultCombo: { key: ']', meta: true },
+  },
+  {
+    action: 'canvas.send-backward',
+    label: 'Send Backward',
+    description: 'Move selected nodes one step down in the stacking order',
+    category: 'Canvas',
+    defaultCombo: { key: '[', meta: true },
   },
 ];
 

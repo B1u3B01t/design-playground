@@ -7,11 +7,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { resolveRegistryItem } from '../registry';
 import IterateDialog from './shared/IterateDialog';
 import { SizeButtons } from './shared/SizeButtons';
+import { NodeLabel } from './shared/NodeLabel';
 import { loadOnCanvasComponentModule } from './oncanvas-loader';
 
 import { useAsyncProps, useScrollCapture, useHtmlContent } from '../hooks/useNodeShared';
 import { useTunnelShare } from '../hooks/useTunnelShare';
 import ComponentErrorBoundary from './ComponentErrorBoundary';
+import { useInteractiveNodeStore, useIsInteractiveNode } from '../lib/interactive-node-store';
+import { useFrameHoverHint } from './shared/FrameHoverHint';
 import {
   COMPONENT_SIZE_CHANGE_EVENT,
   GENERATION_START_EVENT,
@@ -68,21 +71,35 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   useEffect(() => {
     if (!isJsx || !data.jsxFile) return;
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
-    loadOnCanvasComponentModule()
-      .then(mod => {
-        if (cancelled) return;
-        const comp = mod.getOnCanvasComponent(data.jsxFile!);
-        if (comp) {
-          setJsxComponent(() => comp);
-          setJsxError(null);
-        }
-      })
-      .catch(err => {
-        if (!cancelled) setJsxError(String(err));
-      });
+    // Poll the module barrel until the new file shows up. HMR can take a few
+    // seconds to recompile after the file is written to disk; without polling,
+    // freshly pasted frames stay stuck on "Loading component…" until refresh.
+    const attempt = (delay: number) => {
+      loadOnCanvasComponentModule()
+        .then(mod => {
+          if (cancelled) return;
+          const comp = mod.getOnCanvasComponent(data.jsxFile!);
+          if (comp) {
+            setJsxComponent(() => comp);
+            setJsxError(null);
+            return;
+          }
+          if (delay <= 8000) {
+            timer = setTimeout(() => attempt(Math.min(delay * 1.5, 2000)), delay);
+          }
+        })
+        .catch(err => {
+          if (!cancelled) setJsxError(String(err));
+        });
+    };
+    attempt(300);
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [isJsx, data.jsxFile, jsxLoadAttempt]);
 
   const { resolvedProps, isLoadingProps, propsError } = useAsyncProps((isHtml || isJsx) ? '' : componentId);
@@ -90,7 +107,41 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
 
   const nodeId = useNodeId();
   const { updateNodeData, setNodes } = useReactFlow();
-  const isInteractive = !!selected;
+  const isInteractive = useIsInteractiveNode(nodeId);
+  const setInteractiveNodeId = useInteractiveNodeStore((s) => s.setInteractiveNodeId);
+
+  const handleFrameDoubleClick = useCallback(() => {
+    if (nodeId) setInteractiveNodeId(nodeId);
+  }, [nodeId, setInteractiveNodeId]);
+
+  const hoverHint = useFrameHoverHint(!isInteractive);
+
+  // Clear interactive mode if this node becomes deselected
+  useEffect(() => {
+    if (!selected && isInteractive) setInteractiveNodeId(null);
+  }, [selected, isInteractive, setInteractiveNodeId]);
+
+  // Listen for Escape inside same-origin iframe to exit interactive mode
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  useEffect(() => {
+    if (!isInteractive) return;
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setInteractiveNodeId(null);
+    };
+    window.addEventListener('keydown', handleEsc);
+    const iframe = iframeRef.current;
+    let innerDoc: Document | null = null;
+    try {
+      innerDoc = iframe?.contentDocument ?? null;
+      innerDoc?.addEventListener('keydown', handleEsc);
+    } catch {
+      // cross-origin iframe — skip
+    }
+    return () => {
+      window.removeEventListener('keydown', handleEsc);
+      try { innerDoc?.removeEventListener('keydown', handleEsc); } catch { /* noop */ }
+    };
+  }, [isInteractive, setInteractiveNodeId]);
 
   const sharePath = isHtml
     ? `/${data.htmlFolder || componentId}/index.html`
@@ -98,7 +149,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   const { share: handleShare, state: shareState } = useTunnelShare(sharePath);
 
   // Prefer the persisted size from node data (survives reload), then registry default
-  const [size, setSize] = useState<ComponentSize>(data.size || registryItem?.size || ((isHtml || isJsx) ? 'laptop' : 'default'));
+  const [size, setSize] = useState<ComponentSize>(data.size || registryItem?.size || (isHtml ? 'laptop' : 'default'));
   const [isResizing, setIsResizing] = useState(false);
   const [isCustomResized, setIsCustomResized] = useState(!!data.customResized);
 
@@ -220,25 +271,17 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
 
       {/* ── Top bar — always visible label, controls only when selected ── */}
       <div className="flex items-center justify-between px-0.5 pb-1.5 cursor-grab">
-        {/* Left: label (always) + size buttons (selected only) */}
+        {/* Left: label (always) */}
         <div className="flex items-center gap-1.5">
-          <span
-            className="text-[11px] font-medium select-none leading-none"
-            style={{
-              fontFamily: 'var(--font-geist-mono), monospace',
-              color: isHtml ? '#F97316' : isJsx ? '#7C3AED' : '#0B99FF',
-            }}
-          >
+          <NodeLabel color={isHtml ? '#F97316' : isJsx ? '#7C3AED' : '#0B99FF'}>
             {label}
-          </span>
-          <div className={`flex items-center gap-1.5 transition-opacity nodrag ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-            <div className="w-px h-3 bg-stone-200 shrink-0" />
-            <SizeButtons currentSize={size} onSizeChange={handleSizeChange} />
-          </div>
+          </NodeLabel>
         </div>
 
-        {/* Right: expand icon — invisible when not selected, always occupies space */}
-        <div className={`transition-opacity nodrag ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+        {/* Right: size controls + expand icon — invisible when not selected */}
+        <div className={`flex items-center gap-1.5 transition-opacity nodrag ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+          <div className="w-px h-3 bg-stone-200 shrink-0" />
+          <SizeButtons currentSize={size} onSizeChange={handleSizeChange} />
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -266,9 +309,13 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
         {/* Component frame */}
         <div
           data-screenshot-target
+          data-interactive={isInteractive ? 'true' : undefined}
+          onDoubleClick={handleFrameDoubleClick}
+          onMouseMove={hoverHint.onMouseMove}
+          onMouseLeave={hoverHint.onMouseLeave}
           className={`app-theme bg-background overflow-hidden rounded-xl ${isResizing ? '' : 'transition-all'} ${
             selected ? `ring-2 ${isHtml ? 'ring-orange-400' : isJsx ? 'ring-purple-400' : 'ring-[#0B99FF]'}` : ''
-          } ${isFillMode ? 'w-full h-full' : ''}`}
+          } ${isInteractive ? 'ring-offset-2' : ''} ${isFillMode ? 'w-full h-full' : ''}`}
           style={isJsx ? { contain: 'paint' } : undefined}
         >
           {isHtml ? (
@@ -283,6 +330,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
               }
             >
               <iframe
+                ref={iframeRef}
                 key={iframeKey}
                 srcDoc={htmlContent || undefined}
                 src={htmlContent ? undefined : htmlSrc}
@@ -327,7 +375,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
               onWheel={isInteractive ? handleWheel : undefined}
             >
               <div
-                className="bg-background"
+                className={isJsx ? 'bg-white' : 'bg-background'}
                 style={{ width: config.width, minHeight: config.height, zoom: config.scale }}
               >
                 {jsxError ? (
@@ -347,7 +395,10 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
             </div>
           ) : (
             /* Auto mode: intrinsic sizing */
-            <div className={`grid place-items-center p-4 ${isInteractive ? 'nodrag nowheel nopan' : ''}`}>
+            <div
+              className={`grid place-items-center p-4 ${isInteractive ? 'nodrag nowheel nopan' : ''}`}
+              style={isJsx ? { minWidth: '400px', minHeight: '400px' } : undefined}
+            >
               {jsxError ? (
                 <div className="text-xs text-red-500">{jsxError}</div>
               ) : isLoadingProps && !Object.keys(effectiveProps).length ? (
@@ -364,6 +415,8 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
             </div>
           )}
         </div>
+
+        {hoverHint.tooltip}
 
         {/* Right-side vertical action toolbar — always in DOM, invisible when not selected */}
         <div className={`absolute top-0 left-full pl-2 flex flex-col items-center gap-2 nodrag transition-opacity ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>

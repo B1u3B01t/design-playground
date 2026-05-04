@@ -19,6 +19,7 @@ import {
 import { resolveRegistryItem, generateAdoptPrompt } from '../registry';
 import { getIterationComponent } from '../iterations';
 import { SizeButtons } from './shared/SizeButtons';
+import { NodeLabel } from './shared/NodeLabel';
 import { loadOnCanvasComponentModule } from './oncanvas-loader';
 import {
   COMPONENT_SIZE_CHANGE_EVENT,
@@ -49,6 +50,8 @@ import { useAsyncProps, useScrollCapture, useHtmlContent } from '../hooks/useNod
 import { useTunnelShare } from '../hooks/useTunnelShare';
 import ComponentErrorBoundary from './ComponentErrorBoundary';
 import IterateDialog from './shared/IterateDialog';
+import { useInteractiveNodeStore, useIsInteractiveNode } from '../lib/interactive-node-store';
+import { useFrameHoverHint } from './shared/FrameHoverHint';
 
 interface IterationNodeProps {
   id: string;
@@ -94,7 +97,40 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [iframeKey, setIframeKey] = useState(() => Date.now());
 
-  const isInteractive = !!selected;
+  const isInteractive = useIsInteractiveNode(id);
+  const setInteractiveNodeId = useInteractiveNodeStore((s) => s.setInteractiveNodeId);
+
+  const handleFrameDoubleClick = useCallback(() => {
+    setInteractiveNodeId(id);
+  }, [id, setInteractiveNodeId]);
+
+  const hoverHint = useFrameHoverHint(!isInteractive);
+
+  useEffect(() => {
+    if (!selected && isInteractive) setInteractiveNodeId(null);
+  }, [selected, isInteractive, setInteractiveNodeId]);
+
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  useEffect(() => {
+    if (!isInteractive) return;
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setInteractiveNodeId(null);
+    };
+    window.addEventListener('keydown', handleEsc);
+    const iframe = iframeRef.current;
+    let innerDoc: Document | null = null;
+    try {
+      innerDoc = iframe?.contentDocument ?? null;
+      innerDoc?.addEventListener('keydown', handleEsc);
+    } catch {
+      // cross-origin iframe — skip
+    }
+    return () => {
+      window.removeEventListener('keydown', handleEsc);
+      try { innerDoc?.removeEventListener('keydown', handleEsc); } catch { /* noop */ }
+    };
+  }, [isInteractive, setInteractiveNodeId]);
+
   const isHtml = data.renderMode === 'html';
   const isJsx = data.renderMode === 'jsx';
 
@@ -117,14 +153,27 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
   useEffect(() => {
     if (!isJsx || !data.jsxFile) return;
     let cancelled = false;
-    loadOnCanvasComponentModule()
-      .then(mod => {
-        if (cancelled) return;
-        const comp = mod.getOnCanvasComponent(data.jsxFile!);
-        if (comp) setJsxComponent(() => comp);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const attempt = (delay: number) => {
+      loadOnCanvasComponentModule()
+        .then(mod => {
+          if (cancelled) return;
+          const comp = mod.getOnCanvasComponent(data.jsxFile!);
+          if (comp) {
+            setJsxComponent(() => comp);
+            return;
+          }
+          if (delay <= 8000) {
+            timer = setTimeout(() => attempt(Math.min(delay * 1.5, 2000)), delay);
+          }
+        })
+        .catch(() => {});
+    };
+    attempt(300);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [isJsx, data.jsxFile, jsxLoadAttempt]);
 
   const registryId = useMemo(
@@ -398,13 +447,14 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
     }
   };
 
-  // e.g. "PricingCard" + 3 → "pricing-card #3", or "landing #1" for HTML, or "frame-5 #1" for JSX
-  const iterationLabel = useMemo(() => {
-    if (isJsx) return `${data.jsxFile?.replace(/\.iteration-\d+\.tsx$/, '').replace('.tsx', '') || data.componentName} #${data.iterationNumber}`;
-    if (isHtml) return `${data.htmlFolder} #${data.iterationNumber}`;
+  // e.g. "PricingCard" -> "pricing-card", "landing", or "frame-5"
+  const iterationPageName = useMemo(() => {
+    if (isJsx) return data.jsxFile?.replace(/\.iteration-\d+\.tsx$/, '').replace('.tsx', '') || data.componentName;
+    if (isHtml) return data.htmlFolder || data.componentName;
     const key = data.componentName.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '');
-    return `${key} #${data.iterationNumber}`;
-  }, [data.componentName, data.iterationNumber, isHtml, isJsx, data.htmlFolder, data.jsxFile]);
+    return key;
+  }, [data.componentName, isHtml, isJsx, data.htmlFolder, data.jsxFile]);
+  const iterationLabel = `${iterationPageName} #${data.iterationNumber}`;
 
   // Resolved renderable component: JSX (from canvas-components) or React (from iterations registry)
   const RenderComponent = isJsx ? JsxComponent : IterationComponent;
@@ -446,8 +496,8 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
 
       {/* ── Top bar — label always, controls only when selected ── */}
       <div className="flex items-center justify-between px-0.5 pb-1.5 cursor-grab">
-        {/* Left: collapse toggle + label + size buttons */}
-        <div className="flex items-center gap-1.5 min-w-0">
+        {/* Left: collapse toggle + label */}
+        <div className="flex items-center gap-1.5">
           {data.hasChildren && (
             <button
               onClick={() =>
@@ -461,12 +511,11 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
               <ChevronRight className={`w-3 h-3 transition-transform ${data.isCollapsed ? '' : 'rotate-90'}`} />
             </button>
           )}
-          <span
-            className="text-[11px] font-medium select-none leading-none truncate"
-            style={{ fontFamily: 'var(--font-geist-mono), monospace', color: isJsx ? '#7C3AED' : isHtml ? '#F97316' : '#0B99FF' }}
-          >
-            {iterationLabel}
-          </span>
+          <NodeLabel className="text-stone-500 shrink-0">
+            <span className="text-[#0B99FF]">{iterationPageName}</span>
+            <span className="mx-1 text-stone-300">|</span>
+            <span className="text-stone-500">#{data.iterationNumber}</span>
+          </NodeLabel>
           {adoptionStatus === 'adopted' && (
             <span className="text-[9px] font-medium text-green-600 bg-green-50 border border-green-200 rounded-full px-1.5 py-0.5 leading-none select-none shrink-0">
               Adopted
@@ -478,14 +527,12 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
               adopting
             </span>
           )}
-          <div className={`flex items-center gap-1.5 transition-opacity nodrag ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-            <div className="w-px h-3 bg-stone-200 shrink-0" />
-            <SizeButtons currentSize={size} onSizeChange={handleSizeChange} />
-          </div>
         </div>
 
-        {/* Right: expand icon — invisible when not selected, always occupies space */}
-        <div className={`transition-opacity nodrag ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+        {/* Right: size controls + expand icon — invisible when not selected */}
+        <div className={`flex items-center gap-1.5 transition-opacity nodrag ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+          <div className="w-px h-3 bg-stone-200 shrink-0" />
+          <SizeButtons currentSize={size} onSizeChange={handleSizeChange} />
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -511,10 +558,14 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
         {/* Component frame */}
         <div
           data-screenshot-target
+          data-interactive={isInteractive ? 'true' : undefined}
+          onDoubleClick={handleFrameDoubleClick}
+          onMouseMove={hoverHint.onMouseMove}
+          onMouseLeave={hoverHint.onMouseLeave}
           className={`app-theme bg-background overflow-hidden rounded-xl ${isResizing ? '' : 'transition-all'} ${
             adoptionStatus === 'adopted' ? 'ring-2 ring-green-400'
               : selected ? `ring-2 ${isJsx ? 'ring-purple-400' : isHtml ? 'ring-orange-400' : 'ring-[#0B99FF]'}` : ''
-          } ${isFillMode ? 'w-full h-full' : ''}`}
+          } ${isInteractive ? 'ring-offset-2' : ''} ${isFillMode ? 'w-full h-full' : ''}`}
           style={isJsx ? { contain: 'paint' } : undefined}
         >
           {isHtml ? (
@@ -529,6 +580,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
               }
             >
               <iframe
+                ref={iframeRef}
                 key={iframeKey}
                 srcDoc={htmlContent || undefined}
                 src={htmlContent ? undefined : iterationHtmlUrl}
@@ -636,6 +688,8 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
             </div>
           )}
         </div>
+
+        {hoverHint.tooltip}
 
         {/* Right-side vertical action toolbar — always in DOM, invisible when not selected */}
         <div className={`absolute top-0 left-full pl-2 flex flex-col items-center gap-2 nodrag transition-opacity ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>

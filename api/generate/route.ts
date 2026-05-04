@@ -12,6 +12,7 @@ import {
 } from '../../lib/constants';
 import type { ProviderId } from '../../lib/providers';
 import { spawnAgent, getProviderNotFoundMessage, getProviderDisplayName } from '../../lib/providers';
+import { readDesignMd, buildSystemPromptAddon } from '../../lib/design-md-helpers';
 
 /**
  * Playground generation API - Agent CLI Integration
@@ -460,7 +461,20 @@ export async function POST(req: Request) {
       );
     }
 
-    const { prompt, model } = body;
+    let { prompt } = body;
+    const { model } = body;
+
+    // If the user has enabled "Use tokens in generation" in the Design System
+    // modal, prepend the parsed DESIGN.md as a system-prompt addon. The toggle
+    // state is mirrored into a `pg-design-inject` cookie by the modal.
+    const cookieHeader = req.headers.get('cookie') ?? '';
+    const designInjectEnabled = /(?:^|;\s*)pg-design-inject=1(?:;|$)/.test(cookieHeader);
+    if (designInjectEnabled) {
+      const md = readDesignMd();
+      if (md) {
+        prompt = buildSystemPromptAddon(md) + '\n' + prompt;
+      }
+    }
     const providerId: ProviderId = body.provider ?? 'cursor';
     const streamJsonForPreview =
       providerId === 'claude-code' && body.claudeDetailedStdout !== false;

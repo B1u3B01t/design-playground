@@ -123,7 +123,17 @@ export const MODELS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 export const CANVAS_MAX_ZOOM = 2;
 
 /** Minimum zoom level for the playground canvas */
-export const CANVAS_MIN_ZOOM = 0.05;
+export const CANVAS_MIN_ZOOM = 0.1;
+
+// ---------------------------------------------------------------------------
+// Node Label Zoom Scaling
+// ---------------------------------------------------------------------------
+
+/** Threshold zoom at/above which labels stay at their natural size (no inverse scaling) */
+export const NODE_LABEL_SCALE_THRESHOLD = 0.8;
+
+/** Maximum inverse-scale factor applied to node labels when zoomed out */
+export const NODE_LABEL_MAX_INV_SCALE = 7;
 
 // ---------------------------------------------------------------------------
 // Canvas Layout Constants
@@ -143,6 +153,36 @@ export const ARRANGE_GROUP_GAP = 100;
 
 /** Horizontal gap between the component column and iteration column (px) */
 export const ARRANGE_HORIZONTAL_GAP = 80;
+
+/** Horizontal gap between tiles inside a bento cluster (px) */
+export const ARRANGE_BENTO_TILE_GAP_X = 48;
+
+/** Vertical gap between tiles inside a bento cluster (px) */
+export const ARRANGE_BENTO_TILE_GAP_Y = 48;
+
+/** Maximum width before wrapping tiles inside a bento cluster (px) */
+export const ARRANGE_BENTO_CLUSTER_MAX_WIDTH = 2200;
+
+/** Horizontal gap between component clusters in global bento layout (px) */
+export const ARRANGE_BENTO_CLUSTER_GAP_X = 140;
+
+/** Vertical gap between component clusters in global bento layout (px) */
+export const ARRANGE_BENTO_CLUSTER_GAP_Y = 140;
+
+/** Maximum width before wrapping to a new row of clusters (px) */
+export const ARRANGE_BENTO_CLUSTER_ROW_MAX_WIDTH = 5200;
+
+/** Base horizontal label padding used when zoom scaling enlarges node labels */
+export const ARRANGE_LABEL_PADDING_X_BASE = 18;
+
+/** Base vertical label padding used when zoom scaling enlarges node labels */
+export const ARRANGE_LABEL_PADDING_Y_BASE = 14;
+
+/** Minimum gap preserved between effective node footprints during collision pass (px) */
+export const ARRANGE_COLLISION_MIN_SEPARATION = 16;
+
+/** Maximum number of deterministic collision-resolution passes */
+export const ARRANGE_COLLISION_MAX_PASSES = 12;
 
 /** Horizontal spacing between iteration nodes when placed below parent */
 export const ITERATION_HORIZONTAL_SPACING = 420;
@@ -596,6 +636,8 @@ export interface CursorChatSubmitPayload {
   }[];
   /** When true, edit the target file in-place instead of creating iterations */
   editMode?: boolean;
+  /** Cursor chat behavior mode */
+  chatMode?: 'explore' | 'edit' | 'raw';
   /** Render mode of the target node */
   renderMode?: 'react' | 'html' | 'jsx';
   /** HTML page folder for the target (when renderMode is 'html') */

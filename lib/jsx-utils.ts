@@ -45,15 +45,14 @@ export function wrapJsxComponent(source: string, componentName: string): string 
     return cleaned;
   }
 
-  // Case 2: named function or arrow component without default export
-  const fnMatch = cleaned.match(/^(?:export\s+)?(?:function|const)\s+([A-Z][A-Za-z0-9_]*)/);
-  if (fnMatch) {
-    const fnName = fnMatch[1];
-    // Remove leading 'export ' if present (we add our own default export)
-    const body = cleaned.replace(/^export\s+/, '');
-    const needsReactImport = !body.includes("from 'react'") && !body.includes('from "react"');
-    const reactImport = needsReactImport ? "import React from 'react';\n\n" : '';
-    return `${clientDirective}${reactImport}${body}\n\nexport default ${fnName};\n`;
+  // Case 2: named function or arrow component without default export.
+  // Prefer an exported PascalCase function/const; fall back to any PascalCase top-level binding.
+  const exportedFnMatch = cleaned.match(/(?:^|\n)\s*export\s+(?:function|const)\s+([A-Z][A-Za-z0-9_]*)/);
+  const anyFnMatch = exportedFnMatch ?? cleaned.match(/(?:^|\n)\s*(?:function|const)\s+([A-Z][A-Za-z0-9_]*)/);
+  if (anyFnMatch) {
+    const fnName = anyFnMatch[1];
+    const body = hasClientDirective ? cleaned : clientDirective + cleaned;
+    return `${body}\n\nexport default ${fnName};\n`;
   }
 
   // Case 3: bare JSX fragment — wrap in a generated function component

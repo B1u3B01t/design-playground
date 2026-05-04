@@ -20,6 +20,9 @@ data/*.mockData.ts
 canvas-components/*
 !canvas-components/index.ts
 
+# Eval harness run artifacts (per-run, not tracked)
+evals/runs/
+
 # ============================================================================
 # FRAMEWORK FILES (tracked in git)
 # ============================================================================

@@ -4,6 +4,12 @@
 /* stylelint-disable at-rule-no-unknown, csstools/use-nesting */
 
 .playground-main-view {
+    /* Prevent browser back/forward swipe gestures and pull-to-refresh while the
+       playground is open. Wheel-based history navigation (macOS trackpad) is
+       additionally suppressed via a non-passive wheel handler in
+       PlaygroundCanvas. */
+    overscroll-behavior: none;
+
     --background: #ffffff;
     --foreground: #1a1a1a;
     --card: #ffffff;

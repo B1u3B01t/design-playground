@@ -27,6 +27,9 @@ INSTRUCTIONS
       { "version": 1, "entries": { "{{pageFolder}}/iteration-{{N}}": { "parent": "html:{{pageFolder}}" } } }
    e. Only then start the next iteration
 
+FAST FAST FAST FAST!!!!!! MAKE IT FAST AND MAKE IT GOOD. MAKE IS FASTER FASTEST.
+RUN PARALLEL AGENTS WHILE CREATING THE ITERATIONS. TO MAKE IT EVEN FASTER.
+
 CRITICAL REQUIREMENTS
 - Output must be a complete, self-contained HTML file
 - All CSS must be inline (<style> tags or style="" attributes) — no external <link> stylesheets

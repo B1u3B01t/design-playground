@@ -47,18 +47,31 @@ function stripChildLeaves(items: RegistryItem[]): RegistryItem[] {
 // Tree node
 // ---------------------------------------------------------------------------
 
+interface PageContextPayload {
+  id: string;
+  label: string;
+  slug: string;
+}
+
 interface TreeNodeProps {
   item: RegistryItem;
   depth?: number;
   childrenMap: Map<string, RegistryLeafItem[]>;
   pendingChildren: Map<string, PendingChild[]>;
+  parentGroupId?: string;
+  onPageContextMenu?: (e: MouseEvent, payload: PageContextPayload) => void;
 }
 
 function focusNodeOnCanvas(componentId: string) {
   window.dispatchEvent(new CustomEvent(FOCUS_NODE_EVENT, { detail: { componentId } }));
 }
 
-function TreeNode({ item, depth = 0, childrenMap, pendingChildren }: TreeNodeProps) {
+function slugFromSourcePath(sourcePath: string): string | null {
+  const match = sourcePath.match(/^src\/app\/([^/]+)\/page\.tsx$/);
+  return match ? match[1] : null;
+}
+
+function TreeNode({ item, depth = 0, childrenMap, pendingChildren, parentGroupId, onPageContextMenu }: TreeNodeProps) {
   const [expanded, setExpanded] = useState(true);
 
   const handleDragStart = (e: DragEvent<HTMLDivElement>, componentId: string) => {
@@ -68,6 +81,9 @@ function TreeNode({ item, depth = 0, childrenMap, pendingChildren }: TreeNodePro
   };
 
   if (isGroup(item)) {
+    const sortedChildren = item.id === 'pages'
+      ? [...item.children].sort((a, b) => a.label.localeCompare(b.label))
+      : item.children;
     return (
       <div>
         <button
@@ -84,8 +100,16 @@ function TreeNode({ item, depth = 0, childrenMap, pendingChildren }: TreeNodePro
         </button>
         {expanded && (
           <div>
-            {item.children.map((child) => (
-              <TreeNode key={child.id} item={child} depth={depth + 1} childrenMap={childrenMap} pendingChildren={pendingChildren} />
+            {sortedChildren.map((child) => (
+              <TreeNode
+                key={child.id}
+                item={child}
+                depth={depth + 1}
+                childrenMap={childrenMap}
+                pendingChildren={pendingChildren}
+                parentGroupId={item.id}
+                onPageContextMenu={onPageContextMenu}
+              />
             ))}
           </div>
         )}
@@ -154,11 +178,14 @@ function TreeNode({ item, depth = 0, childrenMap, pendingChildren }: TreeNodePro
     }
 
     // Normal leaf — no children
+    const isPage = parentGroupId === 'pages';
+    const slug = isPage ? slugFromSourcePath(item.sourcePath) : null;
     return (
       <div
         draggable
         onDragStart={(e) => handleDragStart(e, item.id)}
         onDoubleClick={() => focusNodeOnCanvas(item.id)}
+        onContextMenu={isPage && slug && onPageContextMenu ? (e) => onPageContextMenu(e, { id: item.id, label: item.label, slug }) : undefined}
         className="flex items-center gap-1.5 px-2 py-1.5 text-[13px] text-stone-700 hover:text-stone-900 hover:bg-stone-100 rounded-2xl cursor-grab active:cursor-grabbing transition-colors group select-none"
         style={{ paddingLeft: `${depth * 10 + 8}px` }}
       >
@@ -224,12 +251,24 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
   useEffect(() => { fetchHtmlPages(); }, [fetchHtmlPages]);
 
   // Context menu state
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; frame: { id: string; label: string; frameType: 'html' | 'jsx' } } | null>(null);
+  type ContextMenuFrame =
+    | { id: string; label: string; frameType: 'html' | 'jsx' }
+    | { id: string; label: string; frameType: 'page'; slug: string };
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; frame: ContextMenuFrame } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
   const handleFrameContextMenu = useCallback((e: MouseEvent, frame: { id: string; label: string; frameType: 'html' | 'jsx' }) => {
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY, frame });
+  }, []);
+
+  const handlePageContextMenu = useCallback((e: MouseEvent, payload: PageContextPayload) => {
+    e.preventDefault();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      frame: { id: payload.id, label: payload.label, frameType: 'page', slug: payload.slug },
+    });
   }, []);
 
   const handleDeleteFrame = useCallback(async () => {
@@ -245,13 +284,19 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ pageFolder: folder }),
         });
-      } else {
+      } else if (frame.frameType === 'jsx') {
         const filename = frame.id.replace(JSX_ID_PREFIX, '') + '.tsx';
         await fetch('/playground/api/oncanvas-components', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ filename }),
         });
+      } else if (frame.frameType === 'page') {
+        const res = await fetch(`/playground/api/pages?slug=${encodeURIComponent(frame.slug)}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          console.error('[Sidebar] Page delete failed:', data?.error);
+        }
       }
       // Tell the canvas to remove nodes for this frame
       window.dispatchEvent(new CustomEvent(DELETE_FRAME_EVENT, { detail: { componentId: frame.id } }));
@@ -377,7 +422,7 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
                 ) : (
                   <ChevronRight className="w-3.5 h-3.5 shrink-0" />
                 )}
-                <span className="uppercase tracking-[0.08em] text-[10px]">Frames</span>
+                <span className="uppercase tracking-[0.08em] text-[10px]">Riffs</span>
               </button>
               <button
                 onClick={fetchHtmlPages}
@@ -412,7 +457,13 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
         {/* Component tree */}
         {filteredRegistry.length > 0 ? (
           filteredRegistry.map((item) => (
-            <TreeNode key={item.id} item={item} childrenMap={childrenMap} pendingChildren={pendingChildren} />
+            <TreeNode
+              key={item.id}
+              item={item}
+              childrenMap={childrenMap}
+              pendingChildren={pendingChildren}
+              onPageContextMenu={handlePageContextMenu}
+            />
           ))
         ) : filteredHtmlPages.length === 0 ? (
           <p className="text-xs text-stone-400 text-center py-3 select-none">No components found</p>

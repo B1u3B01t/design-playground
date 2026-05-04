@@ -114,7 +114,7 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
   const [segments, setSegments] = useState<Segment[]>([]);
   const [skills, setSkills] = useState<PlaygroundSkill[]>([]);
   const [iterationCount, setIterationCount] = useState(CURSOR_CHAT_DEFAULT_COUNT);
-  const [editMode, setEditMode] = useState(false);
+  const [chatMode, setChatMode] = useState<'explore' | 'edit' | 'raw'>('explore');
   const inlineRefContainerRef = useRef<HTMLDivElement | null>(null);
 
   const { models, isLoading: isLoadingModels } = useAvailableModels();
@@ -225,7 +225,7 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
       activate();
       requestAnimationFrame(() => {
         place(screenX + 16, screenY, target);
-        if (shouldEdit) setEditMode(true);
+        if (shouldEdit) setChatMode('edit');
       });
     };
 
@@ -258,15 +258,9 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
     const { text, skillPrompts, skillIds } = extractPayload();
     if (!text && skillPrompts.length === 0) return;
 
-    // If no target node but exactly one selected non-image node, promote it to target.
-    // Image nodes are always references (not targets to iterate on).
-    // With 2+ selected nodes and no click target → freeform with all as references.
-    const canPromote = selectedNodes?.length === 1 && selectedNodes[0].type !== 'image';
-    const effectiveTarget = targetNode
-      ?? (canPromote ? selectedNodes![0] : null);
-    const referenceOnly = effectiveTarget && !targetNode
-      ? undefined  // single selected node promoted to target, no references left
-      : selectedNodes;  // all selected nodes are references (freeform or click-target case)
+    // Keep canvas selection as references; only an explicitly placed node is treated as target.
+    const effectiveTarget = targetNode;
+    const referenceOnly = selectedNodes;
 
     const payload: CursorChatSubmitPayload = {
       text,
@@ -279,9 +273,10 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
       targetComponentName: effectiveTarget?.componentName ?? null,
       targetType: effectiveTarget?.type ?? null,
       sourceFilename: effectiveTarget?.sourceFilename,
-      iterationCount: editMode ? 1 : iterationCount,
+      iterationCount: chatMode === 'explore' ? iterationCount : 1,
       canvasPosition: flowPosition ?? { x: 0, y: 0 },
-      editMode,
+      editMode: chatMode === 'edit',
+      chatMode,
       renderMode: effectiveTarget?.renderMode,
       htmlPageSlug: effectiveTarget?.htmlPageSlug,
       htmlIterationFolder: effectiveTarget?.htmlIterationFolder,
@@ -321,7 +316,7 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
     deactivate();
 
     await onSubmit(payload);
-  }, [extractPayload, model, iterationCount, targetNode, flowPosition, deactivate, onSubmit, getInputEl, selectedElements, onClearElements, selectedNodes, onClearNodes]);
+  }, [extractPayload, model, iterationCount, targetNode, flowPosition, chatMode, deactivate, onSubmit, getInputEl, selectedElements, onClearElements, selectedNodes, onClearNodes]);
 
   // Keyboard handling
   useEffect(() => {
@@ -357,7 +352,11 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
       // Toggle edit/iterate mode (default: Cmd+E)
       if (matchesAction(e, 'cursor-chat.toggle-edit-mode')) {
         e.preventDefault();
-        setEditMode(m => !m);
+        setChatMode((prev) => {
+          if (prev === 'explore') return 'edit';
+          if (prev === 'edit') return 'raw';
+          return 'explore';
+        });
         return;
       }
 
@@ -475,7 +474,7 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
         {(
           (isPlaced && targetNode && (!selectedElements || selectedElements.length === 0)) ||
           (selectedElements && selectedElements.length > 0) ||
-          (selectedNodes && selectedNodes.length > 1)
+          (selectedNodes && selectedNodes.length > 0)
         ) && (
           <div className="flex flex-wrap items-center gap-1 mb-2">
             {/* Target component chip */}
@@ -532,8 +531,8 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
               </button>
             )}
 
-            {/* Node reference chips — shown for 2+ nodes, or single image-only selection */}
-            {selectedNodes && (selectedNodes.length > 1 || (selectedNodes.length === 1 && selectedNodes[0].type === 'image')) && selectedNodes.map((node) => (
+            {/* Node reference chips */}
+            {selectedNodes && selectedNodes.length > 0 && selectedNodes.map((node) => (
               <div
                 key={node.nodeId}
                 className="flex items-center gap-1 px-1.5 py-px select-none group"
@@ -577,7 +576,7 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
                 )}
               </div>
             ))}
-            {selectedNodes && (selectedNodes.length >= 2 || (selectedNodes.length === 1 && selectedNodes[0].type === 'image')) && onClearNodes && (
+            {selectedNodes && selectedNodes.length > 0 && onClearNodes && (
               <button
                 onClick={onClearNodes}
                 className="px-1.5 py-px text-[9px] text-stone-400 hover:text-stone-600 transition-colors pointer-events-auto select-none"
@@ -596,7 +595,13 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
             className="w-full cursor-chat-inline-input"
           >
             <InlineReferenceInput
-              placeholder={targetNode ? 'Describe variations...' : `Iterate, / for skills, using ${shortModelName}`}
+              placeholder={
+                chatMode === 'edit'
+                  ? 'Describe edits...'
+                  : chatMode === 'raw'
+                    ? 'Send raw prompt...'
+                    : (targetNode ? 'Describe variations...' : `Explore, using ${shortModelName}`)
+              }
               className="outline-none w-full border-none shadow-none ring-0 focus-visible:ring-0 focus-visible:border-none rounded-none px-0 py-0 text-left leading-[1.4]"
               style={{
                 background: 'transparent',
@@ -668,22 +673,30 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
               <span className="flex-shrink-0" style={{ opacity: 0.5 }}>Shift+Tab</span>
             </button>
 
-            {/* Edit/Iterate toggle */}
+            {/* Explore/Edit/Raw toggle */}
             <button
-              onClick={() => setEditMode(m => !m)}
+              onClick={() => {
+                setChatMode((prev) => {
+                  if (prev === 'explore') return 'edit';
+                  if (prev === 'edit') return 'raw';
+                  return 'explore';
+                });
+              }}
               className={`px-2 py-1 rounded-full text-[9px] font-medium transition-colors select-none ${
-                editMode
+                chatMode === 'edit'
                   ? 'bg-amber-100 text-amber-700 border border-amber-200'
-                  : 'bg-stone-50 text-stone-500 border border-stone-100 hover:text-stone-700'
+                  : chatMode === 'raw'
+                    ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                    : 'bg-stone-50 text-stone-500 border border-stone-100 hover:text-stone-700'
               }`}
             >
-              {editMode ? 'Edit' : 'Iterate'}
+              {chatMode === 'edit' ? 'Edit' : chatMode === 'raw' ? 'Raw' : 'Explore'}
               <span style={{ display: 'inline-block', width: 10 }} />
               <span style={{ opacity: 0.5 }}>{formatKeyCombo(getCombo('cursor-chat.toggle-edit-mode'))}</span>
             </button>
 
-            {/* Iteration count — drag to adjust, hidden in edit mode */}
-            {!editMode && (
+            {/* Iteration count — drag to adjust, shown only in explore mode */}
+            {chatMode === 'explore' && (
               <IterationCountDragger
                 count={iterationCount}
                 onChange={setIterationCount}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Check, Loader2, Plus, RefreshCw, Search, FileText, Layers, X } from 'lucide-react';
+import { Loader2, Plus, RefreshCw, Search, FileText, Layers, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -104,12 +104,7 @@ function DiscoveryCard({
       </div>
 
       <div className="shrink-0 pt-0.5">
-        {isAdded ? (
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-100">
-            <Check className="w-3 h-3 text-emerald-600" />
-            <span className="text-[11px] font-medium text-emerald-700">Added</span>
-          </div>
-        ) : isAdding ? (
+        {isAdding ? (
           <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-stone-100 border border-stone-150">
             <Loader2 className="w-3 h-3 animate-spin text-stone-500" />
             <span className="text-[11px] text-stone-500">Setting up…</span>
@@ -117,10 +112,23 @@ function DiscoveryCard({
         ) : (
           <button
             onClick={() => onAdd(entry)}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium text-stone-500 bg-white border border-stone-200 hover:text-stone-800 hover:border-stone-300 hover:shadow-sm transition-all"
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-all ${
+              isAdded
+                ? 'text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100'
+                : 'text-stone-500 bg-white border border-stone-200 hover:text-stone-800 hover:border-stone-300 hover:shadow-sm'
+            }`}
           >
-            <Plus className="w-3 h-3" />
-            Add
+            {isAdded ? (
+              <>
+                <RefreshCw className="w-3 h-3" />
+                Re-add
+              </>
+            ) : (
+              <>
+                <Plus className="w-3 h-3" />
+                Add
+              </>
+            )}
           </button>
         )}
       </div>

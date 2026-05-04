@@ -1,11 +1,12 @@
 'use client';
 
-import { memo } from 'react';
+import { memo, useCallback, useRef } from 'react';
 import { NodeResizeControl } from '@xyflow/react';
 import { ImageIcon, Trash2 } from 'lucide-react';
 import { useReactFlow } from '@xyflow/react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { RESIZE_MIN_WIDTH, RESIZE_MIN_HEIGHT } from '../lib/constants';
+import { NodeLabel } from './shared/NodeLabel';
 
 export interface ImageNodeData {
   imagePath: string;
@@ -15,7 +16,27 @@ export interface ImageNodeData {
 }
 
 function ImageNodeInner({ id, data, selected }: { id: string; data: ImageNodeData; selected?: boolean }) {
-  const { deleteElements } = useReactFlow();
+  const { deleteElements, setNodes, getNode } = useReactFlow();
+  const aspectAppliedRef = useRef(false);
+  const topBarRef = useRef<HTMLDivElement | null>(null);
+
+  const handleImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    if (aspectAppliedRef.current) return;
+    const img = e.currentTarget;
+    const ratio = img.naturalWidth / img.naturalHeight;
+    if (!ratio || !isFinite(ratio)) return;
+    const node = getNode(id);
+    if (!node) return;
+    const currentWidth = node.width ?? (node.measured?.width ?? 300);
+    const topBarH = topBarRef.current?.offsetHeight ?? 0;
+    const newHeight = Math.round(currentWidth / ratio + topBarH);
+    aspectAppliedRef.current = true;
+    setNodes((nodes) =>
+      nodes.map((n) =>
+        n.id === id ? { ...n, width: currentWidth, height: newHeight, style: { ...(n.style ?? {}), width: currentWidth, height: newHeight } } : n,
+      ),
+    );
+  }, [id, getNode, setNodes]);
 
   const handleDelete = async () => {
     try {
@@ -46,6 +67,7 @@ function ImageNodeInner({ id, data, selected }: { id: string; data: ImageNodeDat
         position="bottom-right"
         minWidth={RESIZE_MIN_WIDTH}
         minHeight={RESIZE_MIN_HEIGHT}
+        keepAspectRatio
         style={{
           background: 'transparent',
           border: 'none',
@@ -65,18 +87,10 @@ function ImageNodeInner({ id, data, selected }: { id: string; data: ImageNodeDat
         </svg>
       </NodeResizeControl>
 
-      {/* ── Top bar — label always visible, controls only when selected ── */}
-      <div className="flex items-center justify-between px-0.5 pb-1.5 cursor-grab">
+      {/* ── Top bar — label only when selected ── */}
+      <div ref={topBarRef} className={`flex items-center justify-between px-0.5 pb-1.5 cursor-grab transition-opacity ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
         <div className="flex items-center gap-1.5">
-          <span
-            className="text-[11px] font-medium select-none leading-none"
-            style={{
-              fontFamily: 'var(--font-geist-mono), monospace',
-              color: '#10B981',
-            }}
-          >
-            {data.originalName}
-          </span>
+          <NodeLabel color="#10B981">{data.originalName}</NodeLabel>
         </div>
       </div>
 
@@ -85,7 +99,7 @@ function ImageNodeInner({ id, data, selected }: { id: string; data: ImageNodeDat
         {/* Image frame */}
         <div
           data-screenshot-target
-          className={`app-theme bg-background overflow-hidden rounded-xl transition-all w-full h-full ${
+          className={`app-theme overflow-hidden rounded-xl transition-all w-full h-full ${
             selected ? 'ring-2 ring-emerald-400' : ''
           }`}
         >
@@ -97,6 +111,7 @@ function ImageNodeInner({ id, data, selected }: { id: string; data: ImageNodeDat
               alt={data.originalName}
               className="max-w-full max-h-full object-contain"
               draggable={false}
+              onLoad={handleImageLoad}
             />
           </div>
         </div>
