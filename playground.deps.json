@@ -3,8 +3,10 @@
   "dependencies": {
     "@xyflow/react": "latest",
     "lucide-react": "latest",
+    "@radix-ui/react-accordion": "latest",
     "@radix-ui/react-alert-dialog": "latest",
     "@radix-ui/react-dialog": "latest",
+    "@radix-ui/react-dropdown-menu": "latest",
     "@radix-ui/react-tooltip": "latest",
     "@radix-ui/react-slot": "latest",
     "class-variance-authority": "latest",
@@ -13,13 +15,13 @@
     "sonner": "latest",
     "@tailwindcss/typography": "latest",
     "tw-animate-css": "latest",
-    "html-to-image": "latest"
+    "html-to-image": "latest",
+    "zustand": "latest"
   },
   "requires": [
     "next",
     "react",
     "react-dom",
     "tailwindcss"
-  ],
-  "install": "npm install @xyflow/react lucide-react @radix-ui/react-alert-dialog @radix-ui/react-dialog @radix-ui/react-tooltip @radix-ui/react-slot class-variance-authority clsx tailwind-merge html-to-image"
+  ]
 }
