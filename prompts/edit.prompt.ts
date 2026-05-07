@@ -40,7 +40,7 @@ export function editPrompt(opts: EditPromptOptions): string {
   }
 
   if (opts.skillPrompt) {
-    sections.push('## Guidelines\n' + opts.skillPrompt);
+    sections.push('## Skills\n' + opts.skillPrompt);
   }
 
   if (opts.screenshotPath) {

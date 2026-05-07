@@ -12,10 +12,11 @@ export interface SelectedNodeContext {
   componentName: string;
   type: 'component' | 'iteration' | 'image' | 'text';
   sourceFilename?: string;
-  renderMode?: 'react' | 'html' | 'jsx';
+  renderMode?: 'react' | 'html' | 'jsx' | 'embed';
   htmlPageSlug?: string;
   htmlIterationFolder?: string;
   jsxFile?: string;
+  embedUrl?: string;
   imagePath?: string;
   imageUrl?: string;
 }
@@ -46,18 +47,23 @@ export function useNodeSelection(): UseNodeSelectionReturn {
           const compId = (data.componentId as string) || '';
           const isJsx = data.renderMode === 'jsx';
           const isHtml = data.renderMode === 'html';
+          const isEmbed = data.renderMode === 'embed';
+          const embedUrl = (data.embedUrl as string) || undefined;
           mapped.push({
             nodeId: node.id,
             componentId: compId,
-            componentName: isJsx
-              ? ((data.jsxFile as string)?.replace('.tsx', '') || compId)
-              : isHtml
-                ? ((data.htmlFolder as string) || compId)
-                : flatRegistry[compId]?.label || compId,
+            componentName: isEmbed
+              ? embedUrl || compId
+              : isJsx
+                ? ((data.jsxFile as string)?.replace('.tsx', '') || compId)
+                : isHtml
+                  ? ((data.htmlFolder as string) || compId)
+                  : flatRegistry[compId]?.label || compId,
             type: 'component',
-            renderMode: isJsx ? 'jsx' : isHtml ? 'html' : 'react',
+            renderMode: isEmbed ? 'embed' : isJsx ? 'jsx' : isHtml ? 'html' : 'react',
             htmlPageSlug: isHtml ? (data.htmlFolder as string) : undefined,
             jsxFile: isJsx ? (data.jsxFile as string) : undefined,
+            embedUrl: isEmbed ? embedUrl : undefined,
           });
         } else if (node.type === 'image') {
           mapped.push({

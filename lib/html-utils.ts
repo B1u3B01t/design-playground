@@ -1,4 +1,24 @@
 /**
+ * If the clipboard plain text is a single http(s) URL, returns a normalized
+ * href. Used for paste-to-embed on the playground canvas.
+ */
+export function parsePastedHttpUrl(plain: string): string | null {
+  const trimmed = plain.trim();
+  if (!trimmed) return null;
+  // Strip common Markdown / editor wrappers
+  const stripped = trimmed.replace(/^<+|>+$/g, '').trim();
+  const match = stripped.match(/^https?:\/\/[^\s<>"']+/i);
+  if (!match) return null;
+  try {
+    const u = new URL(match[0]);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    return u.href;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Detects whether the given HTML string is a full document or a fragment,
  * and wraps fragments in a bare-bones HTML skeleton.
  */

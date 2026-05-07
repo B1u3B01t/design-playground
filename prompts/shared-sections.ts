@@ -84,7 +84,7 @@ ${customInstructions.trim()}
 
 export function formatSkillSection(skillPrompt?: string): string {
   if (!skillPrompt || !skillPrompt.trim()) return '';
-  return `SKILL CONTEXT
+  return `SKILL CONTEXT (read each SKILL.md at the repo paths below)
 ══════════════
 
 ${skillPrompt.trim()}
@@ -113,6 +113,7 @@ export function formatReferenceNodesSection(
     imagePath?: string;
     imageUrl?: string;
     textContent?: string;
+    embedUrl?: string;
   }[],
 ): string {
   if (!nodes || nodes.length === 0) return '';
@@ -128,7 +129,19 @@ export function formatReferenceNodesSection(
 
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i];
-    const typeLabel = node.type === 'text' ? 'text note' : node.type === 'image' ? 'image reference' : node.type === 'iteration' ? 'iteration' : 'component';
+    const isUrlEmbed =
+      !!node.embedUrl ||
+      (node.type === 'component' && /^https?:\/\//i.test(node.componentName.trim()));
+    const typeLabel =
+      node.type === 'text'
+        ? 'text note'
+        : node.type === 'image'
+          ? 'image reference'
+          : node.type === 'iteration'
+            ? 'iteration'
+            : isUrlEmbed
+              ? 'url embed'
+              : 'component';
     const path = node.type === 'text' ? undefined : node.type === 'image'
       ? (node.imagePath || node.imageUrl)
       : (node.sourcePath || (node.sourceFilename
@@ -156,7 +169,9 @@ export function formatReferenceNodesSection(
   }
 
   lines.push('Maintain visual and structural consistency with these reference components.');
-  lines.push('Read the source code of each reference to understand the design patterns in use.');
+  lines.push(
+    'Use listed source paths when present; for url embed rows, rely on the URL and screenshot (there is no repo file).',
+  );
 
   return lines.join('\n');
 }

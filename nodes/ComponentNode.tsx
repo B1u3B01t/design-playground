@@ -36,12 +36,14 @@ interface ComponentNodeProps {
     size?: ComponentSize;
     /** Whether this node has been freeform-resized */
     customResized?: boolean;
-    /** Render mode: 'react' (default), 'html' for iframe-based, or 'jsx' for on-canvas pasted components */
-    renderMode?: 'react' | 'html' | 'jsx';
+    /** Render mode: 'react' (default), 'html' for saved HTML, 'jsx' for pasted TSX, 'embed' for pasted URLs */
+    renderMode?: 'react' | 'html' | 'jsx' | 'embed';
     /** HTML page folder name (when renderMode is 'html') */
     htmlFolder?: string;
     /** On-canvas JSX component filename in canvas-components/ (when renderMode is 'jsx') */
     jsxFile?: string;
+    /** Remote page URL (when renderMode is 'embed') */
+    embedUrl?: string;
   };
   selected?: boolean;
 }
@@ -49,8 +51,9 @@ interface ComponentNodeProps {
 function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   const componentId = data.componentId;
   const isHtml = data.renderMode === 'html';
-  const isJsx  = data.renderMode === 'jsx';
-  const registryItem = (isHtml || isJsx) ? null : resolveRegistryItem(componentId);
+  const isJsx = data.renderMode === 'jsx';
+  const isEmbed = data.renderMode === 'embed';
+  const registryItem = isHtml || isJsx || isEmbed ? null : resolveRegistryItem(componentId);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isGlobalGenerating, setIsGlobalGenerating] = useState(false);
   const [iframeKey, setIframeKey] = useState(() => Date.now());
@@ -102,7 +105,9 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
     };
   }, [isJsx, data.jsxFile, jsxLoadAttempt]);
 
-  const { resolvedProps, isLoadingProps, propsError } = useAsyncProps((isHtml || isJsx) ? '' : componentId);
+  const { resolvedProps, isLoadingProps, propsError } = useAsyncProps(
+    isHtml || isJsx || isEmbed ? '' : componentId,
+  );
   const handleWheel = useScrollCapture(scrollContainerRef);
 
   const nodeId = useNodeId();
@@ -146,10 +151,29 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   const sharePath = isHtml
     ? `/${data.htmlFolder || componentId}/index.html`
     : componentId;
-  const { share: handleShare, state: shareState } = useTunnelShare(sharePath);
+  const { share: handleTunnelShare, state: shareState } = useTunnelShare(sharePath);
+
+  const [embedLinkCopied, setEmbedLinkCopied] = useState(false);
+  const handleShare = useCallback(async () => {
+    if (isEmbed && data.embedUrl) {
+      try {
+        await navigator.clipboard.writeText(data.embedUrl);
+        setEmbedLinkCopied(true);
+        window.setTimeout(() => setEmbedLinkCopied(false), 2000);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    await handleTunnelShare();
+  }, [isEmbed, data.embedUrl, handleTunnelShare]);
+
+  const effectiveShareState = isEmbed ? (embedLinkCopied ? 'copied' : 'idle') : shareState;
 
   // Prefer the persisted size from node data (survives reload), then registry default
-  const [size, setSize] = useState<ComponentSize>(data.size || registryItem?.size || (isHtml ? 'laptop' : 'default'));
+  const [size, setSize] = useState<ComponentSize>(
+    data.size || registryItem?.size || (isHtml || isEmbed ? 'laptop' : 'default'),
+  );
   const [isResizing, setIsResizing] = useState(false);
   const [isCustomResized, setIsCustomResized] = useState(!!data.customResized);
 
@@ -212,7 +236,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   const htmlSrc = isHtml ? `/${data.htmlFolder}/index.html?t=${iframeKey}` : '';
   const htmlContent = useHtmlContent(htmlSrc, isHtml);
 
-  if (!isHtml && !isJsx && !registryItem) {
+  if (!isHtml && !isJsx && !isEmbed && !registryItem) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4 min-w-[200px]">
         <p className="text-red-600 text-sm">Unknown component: {componentId}</p>
@@ -220,13 +244,22 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
     );
   }
 
+  const embedUrlLabel = (() => {
+    if (!isEmbed || !data.embedUrl) return 'Embed';
+    const withoutScheme = data.embedUrl.replace(/^https?:\/\//i, '').trim();
+    const noTrailingSlash = withoutScheme.replace(/\/+$/, '');
+    return noTrailingSlash || 'Embed';
+  })();
+
   const Component = isJsx ? JsxComponent : registryItem?.Component;
   const props = registryItem?.props;
   const label = isHtml
     ? (data.htmlFolder || componentId)
     : isJsx
       ? (data.jsxFile?.replace('.tsx', '') || componentId)
-      : (registryItem?.label || componentId);
+      : isEmbed
+        ? embedUrlLabel
+        : (registryItem?.label || componentId);
   const effectiveProps = (resolvedProps ?? props ?? {}) as Record<string, unknown>;
   const config = SIZE_CONFIG[size];
   const isPreset = size !== 'default';
@@ -273,7 +306,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
       <div className="flex items-center justify-between px-0.5 pb-1.5 cursor-grab">
         {/* Left: label (always) */}
         <div className="flex items-center gap-1.5">
-          <NodeLabel color={isHtml ? '#F97316' : isJsx ? '#7C3AED' : '#0B99FF'}>
+          <NodeLabel color={isHtml ? '#F97316' : isJsx ? '#7C3AED' : isEmbed ? '#0D9488' : '#0B99FF'}>
             {label}
           </NodeLabel>
         </div>
@@ -286,11 +319,13 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => {
-                  const url = isHtml
-                    ? `/${data.htmlFolder}/index.html`
-                    : isJsx
-                      ? undefined
-                      : `/playground/iterations/${componentId}`;
+                  const url = isEmbed
+                    ? data.embedUrl
+                    : isHtml
+                      ? `/${data.htmlFolder}/index.html`
+                      : isJsx
+                        ? undefined
+                        : `/playground/iterations/${componentId}`;
                   if (url) window.open(url, '_blank', 'noopener,noreferrer');
                 }}
                 className="p-1 rounded text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
@@ -314,12 +349,13 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
           onMouseMove={hoverHint.onMouseMove}
           onMouseLeave={hoverHint.onMouseLeave}
           className={`app-theme bg-background overflow-hidden rounded-xl ${isResizing ? '' : 'transition-all'} ${
-            selected ? `ring-2 ${isHtml ? 'ring-orange-400' : isJsx ? 'ring-purple-400' : 'ring-[#0B99FF]'}` : ''
+            selected
+              ? `ring-2 ${isHtml ? 'ring-orange-400' : isJsx ? 'ring-purple-400' : isEmbed ? 'ring-teal-400' : 'ring-[#0B99FF]'}`
+              : ''
           } ${isInteractive ? 'ring-offset-2' : ''} ${isFillMode ? 'w-full h-full' : ''}`}
           style={isJsx ? { contain: 'paint' } : undefined}
         >
-          {isHtml ? (
-            /* HTML iframe rendering */
+          {isHtml || isEmbed ? (
             <div
               className="relative"
               style={isPreset
@@ -331,18 +367,22 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
             >
               <iframe
                 ref={iframeRef}
-                key={iframeKey}
-                srcDoc={htmlContent || undefined}
-                src={htmlContent ? undefined : htmlSrc}
+                key={isEmbed ? data.embedUrl : iframeKey}
+                {...(isEmbed
+                  ? { src: data.embedUrl }
+                  : { srcDoc: htmlContent || undefined, src: htmlContent ? undefined : htmlSrc })}
                 className="w-full h-full border-0"
                 style={isPreset
                   ? { width: config.width, height: config.height, transform: `scale(${config.scale})`, transformOrigin: 'top left' }
                   : { width: '100%', height: '100%' }
                 }
-                sandbox="allow-scripts allow-same-origin"
-                title={data.htmlFolder}
+                sandbox={
+                  isEmbed
+                    ? 'allow-scripts allow-same-origin allow-popups allow-forms allow-modals allow-downloads'
+                    : 'allow-scripts allow-same-origin'
+                }
+                title={isEmbed ? label : data.htmlFolder}
               />
-              {/* Pointer overlay prevents iframe from capturing clicks when not selected */}
               {!isInteractive && <div className="absolute inset-0" data-iframe-overlay />}
             </div>
           ) : isFillMode ? (
@@ -420,35 +460,35 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
 
         {/* Right-side vertical action toolbar — always in DOM, invisible when not selected */}
         <div className={`absolute top-0 left-full pl-2 flex flex-col items-center gap-2 nodrag transition-opacity ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-                {/* Iterate — circle blue button with bolt */}
-                <IterateDialog
-                  componentId={componentId}
-                  componentName={isHtml ? (data.htmlFolder || componentId) : label.replace(/\s*\(.*\)/, '')}
-                  parentNodeId={nodeId ?? ''}
-                  isGlobalGenerating={isGlobalGenerating}
-                  renderMode={data.renderMode as 'react' | 'html' | 'jsx' | undefined}
-                  htmlFolder={data.htmlFolder}
-                  jsxFile={data.jsxFile}
-                />
+                {!isEmbed ? (
+                  <IterateDialog
+                    componentId={componentId}
+                    componentName={isHtml ? (data.htmlFolder || componentId) : label.replace(/\s*\(.*\)/, '')}
+                    parentNodeId={nodeId ?? ''}
+                    isGlobalGenerating={isGlobalGenerating}
+                    renderMode={data.renderMode as 'react' | 'html' | 'jsx' | undefined}
+                    htmlFolder={data.htmlFolder}
+                    jsxFile={data.jsxFile}
+                  />
+                ) : null}
 
-                {/* Share public link */}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
                       onClick={handleShare}
-                      disabled={shareState === 'connecting'}
+                      disabled={!isEmbed && shareState === 'connecting'}
                       className={`w-8 h-8 flex items-center justify-center rounded-full bg-white border transition-colors disabled:opacity-50 ${
-                        shareState === 'copied'
+                        effectiveShareState === 'copied'
                           ? 'border-green-300 text-green-600'
-                          : shareState === 'error'
+                          : effectiveShareState === 'error'
                             ? 'border-red-300 text-red-500'
                             : 'border-stone-200 text-stone-400 hover:text-stone-700 hover:border-stone-300'
                       }`}
-                      aria-label="Copy public link"
+                      aria-label={isEmbed ? 'Copy page URL' : 'Copy public link'}
                     >
-                      {shareState === 'connecting' ? (
+                      {effectiveShareState === 'connecting' ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : shareState === 'copied' ? (
+                      ) : effectiveShareState === 'copied' ? (
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <polyline points="20 6 9 17 4 12" />
                         </svg>
@@ -462,10 +502,15 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                   </TooltipTrigger>
                   <TooltipContent side="right">
                     <p>
-                      {shareState === 'connecting' ? 'Starting tunnel…' :
-                       shareState === 'copied' ? 'Link copied!' :
-                       shareState === 'error' ? 'Tunnel failed' :
-                       'Copy public link'}
+                      {isEmbed
+                        ? (effectiveShareState === 'copied' ? 'URL copied!' : 'Copy page URL')
+                        : effectiveShareState === 'connecting'
+                          ? 'Starting tunnel…'
+                          : effectiveShareState === 'copied'
+                            ? 'Link copied!'
+                            : effectiveShareState === 'error'
+                              ? 'Tunnel failed'
+                              : 'Copy public link'}
                     </p>
                   </TooltipContent>
                 </Tooltip>

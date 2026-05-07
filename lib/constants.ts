@@ -633,19 +633,23 @@ export interface CursorChatSubmitPayload {
     imagePath?: string;
     imageUrl?: string;
     textContent?: string;
+    /** Pasted URL embed (reference metadata; componentName is also the URL) */
+    embedUrl?: string;
   }[];
   /** When true, edit the target file in-place instead of creating iterations */
   editMode?: boolean;
   /** Cursor chat behavior mode */
   chatMode?: 'explore' | 'edit' | 'raw';
   /** Render mode of the target node */
-  renderMode?: 'react' | 'html' | 'jsx';
+  renderMode?: 'react' | 'html' | 'jsx' | 'embed';
   /** HTML page folder for the target (when renderMode is 'html') */
   htmlPageSlug?: string;
   /** HTML iteration folder (when targeting an HTML iteration) */
   htmlIterationFolder?: string;
   /** On-canvas JSX filename in canvas-components/ (when renderMode is 'jsx') */
   jsxFile?: string;
+  /** Remote URL (when renderMode is 'embed') */
+  embedUrl?: string;
 }
 
 // ---------------------------------------------------------------------------

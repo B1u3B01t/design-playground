@@ -156,14 +156,14 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
   }, []);
 
   // Build skill items for InlineReference
-  const skillItems = useMemo(() =>
-    skills.map((skill) => ({
-      id: skill.id,
-      label: skill.label,
-      description: skill.description,
-      systemPrompt: skill.systemPrompt,
-    })),
-    [skills]
+  const skillItems = useMemo(
+    () =>
+      skills.map((skill) => ({
+        id: skill.id,
+        label: skill.label,
+        description: skill.description,
+      })),
+    [skills],
   );
 
   const skillsById = useMemo(() => {
@@ -246,7 +246,8 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
       } else if (segment.type === 'reference') {
         skillIds.push(segment.value);
         const skill = skillsById.get(segment.value);
-        if (skill?.systemPrompt) skillPrompts.push(skill.systemPrompt);
+        const p = skill?.skillPath?.trim();
+        if (p) skillPrompts.push(p);
       }
     }
 
@@ -281,6 +282,7 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
       htmlPageSlug: effectiveTarget?.htmlPageSlug,
       htmlIterationFolder: effectiveTarget?.htmlIterationFolder,
       jsxFile: effectiveTarget?.jsxFile,
+      embedUrl: effectiveTarget?.embedUrl,
       elementSelections: selectedElements && selectedElements.length > 0
         ? selectedElements.map((sel) => ({
             tagName: sel.context.tagName,
@@ -300,6 +302,7 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
             componentName: node.componentName,
             type: node.type,
             sourceFilename: node.sourceFilename,
+            ...(node.renderMode === 'embed' && node.embedUrl ? { embedUrl: node.embedUrl } : {}),
             ...(node.type === 'image'
               ? { imagePath: node.imagePath, imageUrl: node.imageUrl }
               : {}),

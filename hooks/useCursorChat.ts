@@ -20,10 +20,11 @@ export interface CursorChatTargetNode {
   componentName: string;
   type: 'component' | 'iteration' | 'image';
   sourceFilename?: string;
-  renderMode?: 'react' | 'html' | 'jsx';
+  renderMode?: 'react' | 'html' | 'jsx' | 'embed';
   htmlPageSlug?: string;
   htmlIterationFolder?: string;
   jsxFile?: string;
+  embedUrl?: string;
 }
 
 export interface CursorChatState {
@@ -191,18 +192,23 @@ export function useCursorChat(models: ModelOption[]) {
         if (node.type === 'component') {
           const isJsx = node.data.renderMode === 'jsx';
           const isHtml = node.data.renderMode === 'html';
+          const isEmbed = node.data.renderMode === 'embed';
+          const embedUrl = (node.data.embedUrl as string) || undefined;
           return {
             nodeId: node.id,
             componentId: (node.data.componentId as string) || '',
-            componentName: isJsx
+            componentName: isEmbed
+              ? embedUrl || (node.data.componentId as string) || ''
+              : isJsx
               ? (node.data.jsxFile as string)?.replace('.tsx', '') || (node.data.componentId as string) || ''
               : isHtml
               ? (node.data.htmlFolder as string) || (node.data.componentId as string) || ''
               : flatRegistry[(node.data.componentId as string)]?.label || (node.data.componentId as string) || '',
             type: 'component',
-            renderMode: isJsx ? 'jsx' : isHtml ? 'html' : 'react',
+            renderMode: isEmbed ? 'embed' : isJsx ? 'jsx' : isHtml ? 'html' : 'react',
             htmlPageSlug: isHtml ? (node.data.htmlFolder as string) : undefined,
             jsxFile: isJsx ? (node.data.jsxFile as string) : undefined,
+            embedUrl: isEmbed ? embedUrl : undefined,
           };
         } else {
           const isJsx = node.data.renderMode === 'jsx';

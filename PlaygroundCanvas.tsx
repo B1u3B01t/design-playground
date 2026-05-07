@@ -133,7 +133,7 @@ import { useNodeSelection } from './hooks/useNodeSelection';
 import { useInteractiveNodeStore } from './lib/interactive-node-store';
 import { useDynamicBackground } from './hooks/useDynamicBackground';
 import { toast } from 'sonner';
-import { wrapHtmlFragment } from './lib/html-utils';
+import { wrapHtmlFragment, parsePastedHttpUrl } from './lib/html-utils';
 import { looksLikeJsx, wrapJsxComponent } from './lib/jsx-utils';
 
 const nodeTypes = {
@@ -161,8 +161,8 @@ async function loadDefaultSkillPrompt(): Promise<string | null> {
     const parts: string[] = [];
     for (const id of DEFAULT_SKILL_IDS) {
       const skill = skills.find((s) => s.id === id);
-      const body = skill?.systemPrompt?.trim();
-      if (body) parts.push(body);
+      const sp = skill?.skillPath?.trim();
+      if (sp) parts.push(sp);
     }
     cachedDefaultSkillPrompt = parts.length ? parts.join('\n\n') : '';
     return cachedDefaultSkillPrompt;
@@ -1807,6 +1807,13 @@ export default function PlaygroundCanvas() {
     const isRawMode = chatMode === 'raw';
     const rawPrompt = payload.text.trim();
 
+    if (payload.renderMode === 'embed' && payload.targetNodeId) {
+      toast.error(
+        'URL embed frames cannot be the chat target. Place chat on a React, HTML, or JSX frame, or use the embed only as a reference (shift-select).',
+      );
+      return;
+    }
+
     if (isRawMode && !rawPrompt) return;
 
     // ── Edit Mode: modify file in-place, no iterations ──
@@ -2558,8 +2565,10 @@ export default function PlaygroundCanvas() {
       });
 
       const isHtml = componentId.startsWith(HTML_ID_PREFIX);
+      const isJsxFrame = componentId.startsWith(JSX_ID_PREFIX);
+      const parentNodeId = getNodeId();
       const newNode: Node = {
-        id: getNodeId(),
+        id: parentNodeId,
         type: 'component',
         position,
         data: {
@@ -2572,8 +2581,130 @@ export default function PlaygroundCanvas() {
       };
 
       setNodes((nds) => nds.concat(newNode));
+
+      // After dropping a frame, also bring any of its iterations that are not
+      // already on the canvas, attached to this newly placed parent.
+      if (isHtml || isJsxFrame) {
+        (async () => {
+          try {
+            const currentNodes = nodesRef.current;
+            const parentW = DEFAULT_COMPONENT_NODE_WIDTH;
+            const stepW = (isHtml ? DEFAULT_COMPONENT_NODE_WIDTH : DEFAULT_ITERATION_NODE_WIDTH) + ARRANGE_HORIZONTAL_GAP;
+            const baseX = position.x + parentW + ARRANGE_HORIZONTAL_GAP;
+            const newNodes: Node[] = [];
+            const newEdges: Edge[] = [];
+            const newKnownFilenames: string[] = [];
+
+            if (isHtml) {
+              const htmlFolder = componentId.slice(HTML_ID_PREFIX.length);
+              const res = await fetch('/playground/api/html-pages');
+              if (!res.ok) return;
+              const { pages } = await res.json() as { pages: { folder: string; iterations: { folder: string; number: number }[] }[] };
+              const page = pages.find(p => p.folder === htmlFolder);
+              if (!page || page.iterations.length === 0) return;
+
+              const existingKeys = new Set([
+                ...knownIterationsRef.current,
+                ...currentNodes
+                  .filter(n => n.type === 'iteration' && n.data.renderMode === 'html')
+                  .map(n => `${n.data.htmlFolder}/${n.data.htmlIterationFolder}` as string),
+              ]);
+
+              const missing = page.iterations
+                .filter(it => !existingKeys.has(`${htmlFolder}/${it.folder}`))
+                .sort((a, b) => a.number - b.number);
+
+              missing.forEach((iter, idx) => {
+                const nodeId = getNodeId();
+                newNodes.push({
+                  id: nodeId,
+                  type: 'iteration',
+                  position: { x: baseX + idx * stepW, y: position.y },
+                  data: {
+                    componentName: htmlFolder,
+                    iterationNumber: iter.number,
+                    filename: `${htmlFolder}/iteration-${iter.number}`,
+                    description: '',
+                    parentNodeId,
+                    renderMode: 'html',
+                    htmlFolder,
+                    htmlIterationFolder: iter.folder,
+                    onDelete: handleIterationDelete,
+                    onAdopt: handleIterationAdopt,
+                  },
+                });
+                newEdges.push({
+                  id: `edge_${parentNodeId}_${nodeId}`,
+                  source: parentNodeId,
+                  target: nodeId,
+                  type: 'smoothstep',
+                  animated: false,
+                  style: ITERATION_EDGE_STYLE,
+                });
+                newKnownFilenames.push(`${htmlFolder}/${iter.folder}`);
+              });
+            } else {
+              const baseFilename = `${componentId.slice(JSX_ID_PREFIX.length)}.tsx`;
+              const res = await fetch('/playground/api/oncanvas-components');
+              if (!res.ok) return;
+              const { components } = await res.json() as { components: JsxComponentInfo[] };
+              const comp = components.find(c => c.filename === baseFilename);
+              if (!comp || comp.iterations.length === 0) return;
+
+              const existingKeys = new Set([
+                ...knownIterationsRef.current,
+                ...currentNodes
+                  .filter(n => n.type === 'iteration' && n.data.renderMode === 'jsx' && n.data.jsxFile)
+                  .map(n => n.data.jsxFile as string),
+              ]);
+
+              const missing = comp.iterations
+                .filter(it => !existingKeys.has(it.filename))
+                .sort((a, b) => a.iterationNumber - b.iterationNumber);
+
+              missing.forEach((it, idx) => {
+                const nodeId = getNodeId();
+                newNodes.push({
+                  id: nodeId,
+                  type: 'iteration',
+                  position: { x: baseX + idx * stepW, y: position.y },
+                  data: {
+                    componentName: comp.label,
+                    iterationNumber: it.iterationNumber,
+                    filename: it.filename,
+                    description: '',
+                    parentNodeId,
+                    renderMode: 'jsx',
+                    jsxFile: it.filename,
+                    onDelete: handleIterationDelete,
+                    onAdopt: handleIterationAdopt,
+                  },
+                });
+                newEdges.push({
+                  id: `edge_${parentNodeId}_${nodeId}`,
+                  source: parentNodeId,
+                  target: nodeId,
+                  type: 'smoothstep',
+                  animated: false,
+                  style: ITERATION_EDGE_STYLE,
+                });
+                newKnownFilenames.push(it.filename);
+              });
+            }
+
+            if (newNodes.length > 0) {
+              setNodes(nds => [...nds, ...newNodes]);
+              setEdges(eds => [...eds, ...newEdges]);
+              knownIterationsRef.current = [...knownIterationsRef.current, ...newKnownFilenames];
+              setKnownIterations(prev => [...prev, ...newKnownFilenames]);
+            }
+          } catch (err) {
+            console.error('[Playground] Failed to load iterations for dropped frame:', err);
+          }
+        })();
+      }
     },
-    [screenToFlowPosition, setNodes, getNodeId]
+    [screenToFlowPosition, setNodes, setEdges, getNodeId, handleIterationDelete, handleIterationAdopt]
   );
 
   const handlePaneClick = useCallback(() => {
@@ -2864,6 +2995,32 @@ export default function PlaygroundCanvas() {
           console.error('[Playground] JSX paste failed:', err);
           toast.error('Failed to create frame from pasted JSX');
         }
+        return;
+      }
+
+      // --- Single-line URL paste → remote iframe embed (no file on disk) ---
+      const plainOneLine = rawPlain.replace(/\r\n/g, '\n').trim();
+      const pastedHttpUrl = plainOneLine && !plainOneLine.includes('\n') ? parsePastedHttpUrl(plainOneLine) : null;
+      if (pastedHttpUrl) {
+        e.preventDefault();
+        const wrapperBounds = wrapper.getBoundingClientRect();
+        const position = screenToFlowPosition({
+          x: wrapperBounds.left + wrapperBounds.width / 2,
+          y: wrapperBounds.top + wrapperBounds.height / 2,
+        });
+        const embedComponentId = `url-embed:${crypto.randomUUID()}`;
+        const newNode: Node = {
+          id: getNodeId(),
+          type: 'component',
+          position,
+          style: { width: DEFAULT_COMPONENT_NODE_WIDTH, height: DEFAULT_COMPONENT_NODE_HEIGHT },
+          data: {
+            componentId: embedComponentId,
+            renderMode: 'embed' as const,
+            embedUrl: pastedHttpUrl,
+          },
+        };
+        setNodes((nds) => nds.concat(newNode));
         return;
       }
 

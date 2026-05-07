@@ -124,6 +124,14 @@ export function getScreenshotFilename(
     // Iteration node: "PricingCard.iteration-3.tsx" -> "PricingCard.iteration-3.png"
     return sourceFilename.replace(/\.\w+$/, '.png');
   }
+  const trimmed = componentName.trim();
+  if (/^https?:\/\//i.test(trimmed)) {
+    let h = 0;
+    for (let i = 0; i < trimmed.length; i++) {
+      h = ((h << 5) - h + trimmed.charCodeAt(i)) | 0;
+    }
+    return `url-embed-${(h >>> 0).toString(16)}.png`;
+  }
   // Component node: "Pricing Card" -> "PricingCard.png"
   return `${componentName.replace(/\s+/g, '')}.png`;
 }

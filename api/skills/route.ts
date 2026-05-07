@@ -71,18 +71,22 @@ export async function GET() {
 
     const skills: PlaygroundSkill[] = [];
 
+    const cwd = process.cwd();
+
     for (const file of files) {
       const raw = await fs.readFile(file, 'utf8');
       const { name, description, body } = parseFrontmatter(raw);
 
       const id = name || path.basename(path.dirname(file));
       const label = toLabelFromId(id);
+      const skillPath = path.relative(cwd, file).split(path.sep).join('/');
 
       skills.push({
         id,
         label,
         description: description || '',
         systemPrompt: body.trim(),
+        skillPath,
       });
     }
 

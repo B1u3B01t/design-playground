@@ -158,8 +158,8 @@ export default function IterateDialog({
       const parts: string[] = [];
       for (const id of DEFAULT_SKILL_IDS) {
         const skill = skillMap.get(id);
-        const body = skill?.systemPrompt?.trim();
-        if (body) parts.push(body);
+        const sp = skill?.skillPath?.trim();
+        if (sp) parts.push(sp);
       }
       if (!parts.length) return undefined;
       return parts.join('\n\n');
@@ -183,9 +183,8 @@ export default function IterateDialog({
           }
         } else if (segment.type === 'reference') {
           const skill = skillsById.get(segment.value);
-          if (skill?.systemPrompt) {
-            skillSections.push(skill.systemPrompt);
-          }
+          const p = skill?.skillPath?.trim();
+          if (p) skillSections.push(p);
         }
       }
     }
@@ -837,7 +836,6 @@ export default function IterateDialog({
                     id: skill.id,
                     label: skill.label,
                     description: skill.description,
-                    systemPrompt: skill.systemPrompt,
                   }))}
                 >
                   <InlineReferenceGroup heading="Skills">

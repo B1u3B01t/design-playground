@@ -5,6 +5,8 @@ export interface PlaygroundSkill {
   label: string;
   /** One-line description shown in the picker */
   description: string;
-  /** Prompt text that will be prepended to iteration prompts when this skill is active */
+  /** Full SKILL.md body (excluding frontmatter). Present in the API for tooling; prompts use `skillPath` instead of inlining this. */
   systemPrompt: string;
+  /** Repo-relative path to SKILL.md (forward slashes), e.g. `src/app/playground/skills/foo/SKILL.md` */
+  skillPath: string;
 }
