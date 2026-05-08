@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { LayoutGrid, Eraser, RefreshCw, X, Settings, Keyboard, ChevronDown, Copy, Palette } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { getModelIconConfig } from './lib/model-icons';
+import { CANVAS_BACKGROUND_COLOR } from './lib/constants';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -318,7 +319,10 @@ export default function PlaygroundHeader({
   return (
     <TooltipProvider>
       <header
-        className="flex items-center justify-between px-4 h-12 bg-gradient-to-b from-stone-50 to-transparent flex-shrink-0"
+        className="flex items-center justify-between px-4 h-12 bg-gradient-to-b from-[CANVAS_BACKGROUND_COLOR] to-transparent flex-shrink-0"
+        style={{
+          backgroundColor: CANVAS_BACKGROUND_COLOR,
+        }}
       >
         {/* Left: route label + open-in menu */}
         <div className="flex items-center gap-2">

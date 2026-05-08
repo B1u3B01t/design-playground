@@ -1,4 +1,105 @@
 {
   "version": 1,
-  "entries": {}
+  "entries": {
+    "Cta.iteration-1.tsx": {
+      "parent": "cta",
+      "iteration": 1,
+      "description": "Split asymmetric layout — testimonial and quote anchored left with secondary background, bold headline and CTA buttons stacked right with strong visual hierarchy"
+    },
+    "Cta.iteration-2.tsx": {
+      "parent": "cta",
+      "iteration": 2,
+      "description": "Stacked center-aligned — testimonial and quote stacked vertically with headline below, full-width card with unified spacing and dual buttons side-by-side"
+    },
+    "Cta.iteration-3.tsx": {
+      "parent": "cta",
+      "iteration": 3,
+      "description": "Compact horizontal — quote in tight left sidebar, headline and stacked CTA buttons on right with tighter spacing for premium density"
+    },
+    "PlaygroundChatInput.iteration-1.tsx": {
+      "parent": "PlaygroundChatInput",
+      "iteration": 1,
+      "description": "Light card chat input faithful to playground reference — warm white card, Anthropic icon, textarea, and model/action toolbar"
+    },
+    "PlaygroundChatInput.iteration-2.tsx": {
+      "parent": "PlaygroundChatInput",
+      "iteration": 2,
+      "description": "Dark glass chat input — deep zinc card, glowing accent icon, soft border, monospace aesthetic"
+    },
+    "PlaygroundChatInput.iteration-3.tsx": {
+      "parent": "PlaygroundChatInput",
+      "iteration": 3,
+      "description": "Brutalist terminal-style chat input — sharp corners, monospace, high-contrast monochrome with green send"
+    },
+    "FriendlyPromptInput.iteration-1.tsx": {
+      "parent": "FriendlyPromptInput",
+      "iteration": 1,
+      "description": "Welcoming card with suggestion chips — large friendly greeting, clickable quick-action pills, and a simple input for non-technical users"
+    },
+    "FriendlyPromptInput.iteration-2.tsx": {
+      "parent": "FriendlyPromptInput",
+      "iteration": 2,
+      "description": "Search-bar style — centered Google-like input with example prompts below, ultra-familiar pattern for non-technical users"
+    },
+    "FriendlyPromptInput.iteration-3.tsx": {
+      "parent": "FriendlyPromptInput",
+      "iteration": 3,
+      "description": "Skill-card picker — visual grid of clickable design actions with optional custom input, making skills discoverable without typing slash commands"
+    },
+    "FloatingChat.iteration-1.tsx": {
+      "parent": "FloatingChat",
+      "iteration": 1,
+      "description": "Cursor-inspired floating chat panel — dark glass UI with smooth open/close animations, message thread, model selector, and intuitive floating UX"
+    },
+    "CursorChatRedesign.iteration-1.tsx": {
+      "parent": "CursorChatRedesign",
+      "iteration": 1,
+      "description": "Redesigned cursor chat with model avatar header, element chips, draft mode toggle, and Edit/Explore mode buttons matching the new design spec"
+    },
+    "CursorChatPanel.iteration-1.tsx": {
+      "parent": "CursorChatPanel",
+      "iteration": 1,
+      "description": "Cursor-style floating chat with model avatar bubble, element chips, Edit/Explore mode toggle, Riff mode, iteration count dragger, and keyboard hints — three states matching the design spec"
+    },
+    "ProCta.iteration-1.tsx": {
+      "parent": "pro-cta",
+      "iteration": 1,
+      "description": "Proof-First Stack — PRO ribbon header, testimonial anchored at top for social proof, benefit 2×2 grid with descriptions, prominent full-width CTA footer"
+    },
+    "ProCta.iteration-2.tsx": {
+      "parent": "pro-cta",
+      "iteration": 2,
+      "description": "Dark Split — inverted dark left panel with PRO badge, headline, and CTA; warm light right panel with testimonial and vertical benefit list; bold contrast forces left-to-right scan"
+    },
+    "ProCta.iteration-3.tsx": {
+      "parent": "pro-cta",
+      "iteration": 3,
+      "description": "Layered Tiers — three distinct horizontal bands: compact testimonial strip, headline + 4-item benefit grid, accent-tinted CTA band with tagline"
+    },
+    "TeamPage.iteration-2.tsx": {
+      "parent": "team-page",
+      "iteration": 2,
+      "description": "Featured editorial split — co-founders get a large two-column portrait feature with oversized names, contributors sit in a compact three-column strip below a labeled divider; asymmetric visual hierarchy distinguishes leadership from contributors"
+    },
+    "TeamPage.iteration-3.tsx": {
+      "parent": "team-page",
+      "iteration": 3,
+      "description": "Card grid layout — each member rendered as a warm portrait card in a responsive 2-column grid; centered avatar, name, role pill badge, full bio; visually distinct from list/row approaches"
+    },
+    "TeamPage.iteration-4.tsx": {
+      "parent": "team-page",
+      "iteration": 4,
+      "description": "Bold numbered roster — large muted index numbers anchor each row; wide two-column layout with avatar + name/role on the left and bio in a generous right column; monumental editorial spacing makes each member feel distinct and important"
+    },
+    "TeamPage.iteration-5.tsx": {
+      "parent": "team-page",
+      "iteration": 5,
+      "description": "Role-grouped sections — members are clustered under bold role headings (Founders / Editors / Podcast) with a divider label; within each group members appear in a clean 2-column grid of compact bio cards; hierarchical grouping replaces flat list ordering"
+    },
+    "TeamPage.iteration-6.tsx": {
+      "parent": "team-page",
+      "iteration": 6,
+      "description": "Dark inverted spotlight — deep charcoal background with warm cream text; each member lives in a full-width dark card with a large square avatar, oversized serif name, role in small-caps orange accent, and bio in light weight; inverts the default warm cream palette for a premium feel"
+    }
+  }
 }

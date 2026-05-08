@@ -2,6 +2,7 @@
 
 import { memo } from 'react';
 import { createPortal } from 'react-dom';
+import { Zap } from 'lucide-react';
 
 interface DragSelectionOverlayProps {
   /** Whether the overlay is visible */
@@ -35,6 +36,12 @@ function DragSelectionOverlay({
   const y = Math.min(originY, cursorY);
   const w = Math.abs(cursorX - originX);
   const h = Math.abs(cursorY - originY);
+  const cornerX = x + w;
+  const cornerY = y + h;
+  const tooltipSide: 'left' | 'right' =
+    typeof window !== 'undefined' && cornerX > window.innerWidth - 220
+      ? 'left'
+      : 'right';
 
   return createPortal(
     <div
@@ -58,6 +65,54 @@ function DragSelectionOverlay({
           transition: 'none',
         }}
       />
+      <div
+        style={{
+          position: 'absolute',
+          left: cornerX,
+          top: cornerY,
+          width: 32,
+          height: 32,
+          transform: 'translate(-50%, -50%)',
+        }}
+      >
+        <div
+          aria-hidden="true"
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#fff',
+            background: '#0B99FF',
+            boxShadow: '0 12px 30px rgba(11, 153, 255, 0.32)',
+          }}
+        >
+          <Zap size={16} fill="currentColor" strokeWidth={2.5} />
+        </div>
+        <div
+          style={{
+            position: 'absolute',
+            top: '50%',
+            ...(tooltipSide === 'left'
+              ? { right: '100%', marginRight: 12 }
+              : { left: '100%', marginLeft: 12 }),
+            transform: 'translateY(-50%)',
+            padding: '8px 12px',
+            borderRadius: 9999,
+            color: '#0B99FF',
+            background: '#fff',
+            boxShadow: '0 10px 30px rgba(15, 23, 42, 0.12)',
+            fontSize: 13,
+            fontWeight: 600,
+            lineHeight: 1,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          release to generate
+        </div>
+      </div>
     </div>,
     document.body,
   );

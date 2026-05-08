@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useEffect, useState, DragEvent } from 'react';
+import { useCallback, useRef, useEffect, useState, DragEvent, type CSSProperties } from 'react';
 import {
   ReactFlow,
   Controls,
@@ -97,6 +97,7 @@ import {
   POST_GENERATION_SCAN_DELAY,
   POST_GENERATION_ARRANGE_DELAY,
   SKELETON_ARRANGE_DELAY,
+  CANVAS_BACKGROUND_COLOR,
   BACKGROUND_COLOR,
   DND_DATA_KEY,
   HTML_ID_PREFIX,
@@ -269,7 +270,12 @@ interface GenerationInfo {
   jsxFile?: string;
 }
 
-export default function PlaygroundCanvas() {
+interface PlaygroundCanvasProps {
+  sidebarVisible: boolean;
+  onToggleSidebar: () => void;
+}
+
+export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: PlaygroundCanvasProps) {
   const dynamicBg = useDynamicBackground();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
@@ -312,6 +318,10 @@ export default function PlaygroundCanvas() {
   const [createPageError, setCreatePageError] = useState('');
   const [creatingPage, setCreatingPage] = useState(false);
   const newPageInputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Canvas tool mode: 'select' is default pointer, 'text' is click-to-place text
+  const [activeTool, setActiveTool] = useState<'select' | 'text'>('select');
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   // Delete cascade/reparent dialog
   const [deleteDialogNode, setDeleteDialogNode] = useState<Node | null>(null);
@@ -2707,10 +2717,23 @@ export default function PlaygroundCanvas() {
     [screenToFlowPosition, setNodes, setEdges, getNodeId, handleIterationDelete, handleIterationAdopt]
   );
 
-  const handlePaneClick = useCallback(() => {
+  const handlePaneClick = useCallback((event: React.MouseEvent) => {
     setContextMenu(null);
     useInteractiveNodeStore.getState().setInteractiveNodeId(null);
-  }, []);
+
+    if (activeTool === 'text') {
+      const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      const newNode = {
+        id: getNodeId(),
+        type: 'text' as const,
+        position,
+        style: { width: 250, height: 150 },
+        data: { text: '' },
+      };
+      setNodes((nds) => nds.concat(newNode));
+      setActiveTool('select');
+    }
+  }, [activeTool, screenToFlowPosition, getNodeId, setNodes]);
 
   // Right-click context menu on canvas pane
   const handlePaneContextMenu = useCallback((event: MouseEvent | React.MouseEvent) => {
@@ -2775,7 +2798,7 @@ export default function PlaygroundCanvas() {
     return () => window.removeEventListener('click', close);
   }, [contextMenu]);
 
-  // "T" shortcut — add text node at viewport center
+  // "T" shortcut — toggle text-placement tool mode
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!matchesAction(e, 'canvas.add-text')) return;
@@ -2787,25 +2810,11 @@ export default function PlaygroundCanvas() {
         if (active.closest('[role="dialog"]') || active.closest('[data-radix-popper-content-wrapper]')) return;
       }
       e.preventDefault();
-      const wrapper = reactFlowWrapper.current;
-      if (!wrapper) return;
-      const rect = wrapper.getBoundingClientRect();
-      const position = screenToFlowPosition({
-        x: rect.left + rect.width / 2,
-        y: rect.top + rect.height / 2,
-      });
-      const newNode = {
-        id: getNodeId(),
-        type: 'text' as const,
-        position,
-        style: { width: 250, height: 150 },
-        data: { text: '' },
-      };
-      setNodes((nds) => nds.concat(newNode));
+      setActiveTool((prev) => (prev === 'text' ? 'select' : 'text'));
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [screenToFlowPosition, setNodes, getNodeId]);
+  }, []);
 
   // Z-order shortcuts: Cmd/Ctrl + ] / [ (with Shift for front/back).
   useEffect(() => {
@@ -3855,9 +3864,90 @@ export default function PlaygroundCanvas() {
     setShowClearDialog(false);
   }, [setNodes, setEdges, setKnownIterations, setCollapsedNodeIds, stopPolling]);
 
+  // Image upload via toolbar button (reuses same logic as drag-drop)
+  const handleImageFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const imageFiles = Array.from(files).filter((f) => f.type.startsWith('image/'));
+    if (imageFiles.length === 0) return;
+
+    const wrapper = reactFlowWrapper.current;
+    if (!wrapper) return;
+    const rect = wrapper.getBoundingClientRect();
+    const position = screenToFlowPosition({
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    });
+
+    imageFiles.forEach((file, idx) => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = reader.result as string;
+        try {
+          const res = await fetch('/playground/api/images', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageBase64: base64, originalName: file.name }),
+          });
+          const data = await res.json();
+          if (data.success) {
+            const newNode: Node = {
+              id: getNodeId(),
+              type: 'image',
+              position: { x: position.x + idx * 320, y: position.y },
+              style: { width: 300, height: 250 },
+              data: {
+                imagePath: data.path,
+                imageUrl: data.url,
+                filename: data.filename,
+                originalName: file.name,
+              },
+            };
+            setNodes((nds) => nds.concat(newNode));
+          }
+        } catch (err) {
+          console.error('[Playground] Image upload failed:', err);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Reset input so the same file can be re-selected
+    e.target.value = '';
+  }, [screenToFlowPosition, getNodeId, setNodes]);
+
+  // Activate cursor chat (same as pressing C)
+  const handleActivateCursorChat = useCallback(() => {
+    setActiveTool('select');
+    window.dispatchEvent(new CustomEvent('playground:toolbar-activate-chat'));
+  }, []);
+
+  // Escape or V key resets to select mode
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (activeTool !== 'select' && (e.key === 'Escape' || e.key === 'v' || e.key === 'V')) {
+        const active = document.activeElement;
+        if (active) {
+          const tag = active.tagName.toLowerCase();
+          if (tag === 'input' || tag === 'textarea') return;
+          if ((active as HTMLElement).isContentEditable) return;
+          if (active.closest('[role="dialog"]') || active.closest('[data-radix-popper-content-wrapper]')) return;
+        }
+        setActiveTool('select');
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [activeTool]);
+
   return (
     <TooltipProvider>
-      <div ref={reactFlowWrapper} className="w-full h-full">
+      <div
+        ref={reactFlowWrapper}
+        className={`w-full h-full${activeTool === 'text' ? ' playground-text-tool' : ''}`}
+      >
+        {/* XY Flow reads pane fill from `--xy-background-color`; Tailwind bg-* often loses to `.react-flow` in the cascade. */}
         <ReactFlow
           nodes={visibleNodes}
           edges={[]}
@@ -3874,7 +3964,7 @@ export default function PlaygroundCanvas() {
           {...(initialState?.viewport
             ? { defaultViewport: initialState.viewport }
             : { fitView: true })}
-          className="bg-gray-50"
+          style={{ '--xy-background-color': CANVAS_BACKGROUND_COLOR } as CSSProperties}
           proOptions={{ hideAttribution: true }}
           minZoom={CANVAS_MIN_ZOOM}
           maxZoom={CANVAS_MAX_ZOOM}
@@ -3895,9 +3985,113 @@ export default function PlaygroundCanvas() {
           variant={BackgroundVariant.Dots}
           gap={dynamicBg.gap}
           size={dynamicBg.size}
+          bgColor={CANVAS_BACKGROUND_COLOR}
           color={BACKGROUND_COLOR}
         />
       </ReactFlow>
+
+      {/* Hidden file input for image upload */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={handleImageFileSelect}
+      />
+
+      {/* Floating vertical toolbar — left side */}
+      <div className="absolute left-3 top-1/2 -translate-y-2/3 z-20 flex flex-col items-center gap-2 bg-white rounded-2xl border border-stone-200 shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-2">
+        {/* Sidebar toggle (hexagon) */}
+        <button
+          onClick={onToggleSidebar}
+          className={`group flex items-center justify-center w-9 h-9 rounded-xl transition-colors ${
+            sidebarVisible ? 'bg-stone-100 text-stone-900' : 'text-stone-500 hover:text-stone-800 hover:bg-stone-50'
+          }`}
+          aria-label={sidebarVisible ? 'Hide sidebar' : 'Show sidebar'}
+          title="Toggle sidebar"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="lucide lucide-box-icon lucide-box"
+          >
+            <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+            <path d="m3.3 7 8.7 5 8.7-5" />
+            <path d="M12 22V12" />
+          </svg>
+        </button>
+
+        <div className="h-px w-5 bg-stone-200 my-0.5" />
+
+        {/* Select / Cursor (default) */}
+        <button
+          onClick={() => setActiveTool('select')}
+          className={`flex items-center justify-center w-9 h-9 rounded-xl transition-colors ${
+            activeTool === 'select' ? 'bg-stone-100 text-stone-900' : 'text-stone-500 hover:text-stone-800 hover:bg-stone-50'
+          }`}
+          aria-label="Select tool"
+          title="Select (V)"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 3l14 9-7 1-4 7z" />
+          </svg>
+        </button>
+
+        {/* Text tool */}
+        <button
+          onClick={() => setActiveTool((prev) => (prev === 'text' ? 'select' : 'text'))}
+          className={`flex items-center justify-center w-9 h-9 rounded-xl transition-colors ${
+            activeTool === 'text' ? 'bg-stone-100 text-stone-900' : 'text-stone-500 hover:text-stone-800 hover:bg-stone-50'
+          }`}
+          aria-label="Text tool"
+          title="Text (T)"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="4 7 4 4 20 4 20 7" />
+            <line x1="9" y1="20" x2="15" y2="20" />
+            <line x1="12" y1="4" x2="12" y2="20" />
+          </svg>
+        </button>
+
+        {/* Image upload */}
+        <button
+          onClick={() => imageInputRef.current?.click()}
+          className="flex items-center justify-center w-9 h-9 rounded-xl text-stone-500 hover:text-stone-800 hover:bg-stone-50 transition-colors"
+          aria-label="Upload image"
+          title="Image"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <polyline points="21 15 16 10 5 21" />
+          </svg>
+        </button>
+
+        {/* Cursor Chat — teardrop bubble shape, mirrors CursorChat avatar */}
+        <button
+          onClick={handleActivateCursorChat}
+          className="flex items-center justify-center w-9 h-9 rounded-xl text-stone-500 hover:text-stone-800 hover:bg-stone-50 transition-colors group/chat"          aria-label="Cursor Chat"
+          title="Cursor Chat (C)"
+        >
+          <span
+            className="flex items-center justify-center w-[22px] h-[22px] bg-stone-900 text-white transition-transform group-hover/chat:scale-105"
+            style={{ borderRadius: '50% 50% 50% 4px' }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </span>
+        </button>
+      </div>
 
       {/* Element selection highlights */}
       <ElementHighlight
@@ -3944,11 +4138,11 @@ export default function PlaygroundCanvas() {
       {/* Right-click context menu */}
       {contextMenu && (
         <div
-          className="fixed z-50 min-w-[180px] bg-white rounded-2xl border border-stone-200 shadow-lg py-1 animate-in fade-in-0 zoom-in-95 duration-100"
+          className="fixed z-50 min-w-[180px] bg-[#1C1C1E] rounded-2xl shadow-2xl py-2 animate-in fade-in-0 zoom-in-95 duration-100"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
-            className="flex items-center gap-2 w-full px-3 py-2 text-[13px] text-stone-700 hover:bg-stone-100 transition-colors text-left rounded-3xl"
+            className="flex items-center gap-2.5 w-full px-3 py-1.5 text-[13px] text-stone-200 hover:bg-white/10 transition-colors text-left"
             onClick={(e) => {
               e.stopPropagation();
               setCreateHtmlDialog({ screenX: contextMenu.x, screenY: contextMenu.y });
@@ -3957,14 +4151,14 @@ export default function PlaygroundCanvas() {
               setCreateHtmlError('');
             }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-orange-500">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500 shrink-0">
               <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
               <polyline points="13 2 13 9 20 9" />
             </svg>
-            create new frame
+            Start Riffing
           </button>
           <button
-            className="flex items-center gap-2 w-full px-3 py-2 text-[13px] text-stone-700 hover:bg-stone-100 transition-colors text-left rounded-3xl"
+            className="flex items-center gap-2.5 w-full px-3 py-1.5 text-[13px] text-stone-200 hover:bg-white/10 transition-colors text-left"
             onClick={(e) => {
               e.stopPropagation();
               setCreatePageDialog({ screenX: contextMenu.x, screenY: contextMenu.y });
@@ -3973,71 +4167,71 @@ export default function PlaygroundCanvas() {
               setCreatePageError('');
             }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500 shrink-0">
               <rect x="3" y="3" width="18" height="18" rx="2" />
               <path d="M3 9h18" />
               <path d="M9 21V9" />
             </svg>
-            create new page
+            Create a new Page
           </button>
           {(contextMenu.nodeId || nodes.some((n) => n.selected)) && (
             <>
-              <div className="my-1 mx-2 h-px bg-stone-200" />
+              <div className="my-1 mx-3 h-px bg-white/10" />
               <button
-                className="flex items-center gap-2 w-full px-3 py-2 text-[13px] text-stone-700 hover:bg-stone-100 transition-colors text-left rounded-3xl"
+                className="flex items-center gap-2.5 w-full px-3 py-1.5 text-[13px] text-stone-200 hover:bg-white/10 transition-colors text-left"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleZOrder('front');
                   setContextMenu(null);
                 }}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500 shrink-0">
                   <rect x="7" y="7" width="13" height="13" rx="2" />
                   <path d="M4 16V6a2 2 0 0 1 2-2h10" />
                 </svg>
-                bring to front
+                Bring to Front
               </button>
               <button
-                className="flex items-center gap-2 w-full px-3 py-2 text-[13px] text-stone-700 hover:bg-stone-100 transition-colors text-left rounded-3xl"
+                className="flex items-center gap-2.5 w-full px-3 py-1.5 text-[13px] text-stone-200 hover:bg-white/10 transition-colors text-left"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleZOrder('forward');
                   setContextMenu(null);
                 }}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500 shrink-0">
                   <rect x="9" y="9" width="11" height="11" rx="2" />
                   <path d="M4 14V6a2 2 0 0 1 2-2h8" />
                 </svg>
-                bring forward
+                Bring Forward
               </button>
               <button
-                className="flex items-center gap-2 w-full px-3 py-2 text-[13px] text-stone-700 hover:bg-stone-100 transition-colors text-left rounded-3xl"
+                className="flex items-center gap-2.5 w-full px-3 py-1.5 text-[13px] text-stone-200 hover:bg-white/10 transition-colors text-left"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleZOrder('backward');
                   setContextMenu(null);
                 }}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500 shrink-0">
                   <rect x="4" y="4" width="11" height="11" rx="2" />
                   <path d="M20 10v8a2 2 0 0 1-2 2h-8" />
                 </svg>
-                send backward
+                Send Backward
               </button>
               <button
-                className="flex items-center gap-2 w-full px-3 py-2 text-[13px] text-stone-700 hover:bg-stone-100 transition-colors text-left rounded-3xl"
+                className="flex items-center gap-2.5 w-full px-3 py-1.5 text-[13px] text-stone-200 hover:bg-white/10 transition-colors text-left"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleZOrder('back');
                   setContextMenu(null);
                 }}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500 shrink-0">
                   <rect x="4" y="4" width="13" height="13" rx="2" />
                   <path d="M20 8v10a2 2 0 0 1-2 2H8" />
                 </svg>
-                send to back
+                Send to Back
               </button>
             </>
           )}
@@ -4109,11 +4303,11 @@ export default function PlaygroundCanvas() {
             style={{ position: 'fixed', left: createHtmlDialog.screenX, top: createHtmlDialog.screenY }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-[13px] font-semibold text-stone-800 mb-3">New Frame</h3>
+            <h3 className="text-[13px] font-semibold text-stone-800 mb-3">Name your Riff</h3>
             <input
               ref={newHtmlInputRef}
               type="text"
-              placeholder="page-name"
+              placeholder="Enter the name"
               value={newHtmlPageName}
               onChange={(e) => { setNewHtmlPageName(e.target.value); setCreateHtmlError(''); }}
               onKeyDown={(e) => {

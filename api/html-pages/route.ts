@@ -250,9 +250,8 @@ export async function DELETE(req: Request) {
 
     const { pageFolder, iterationFolder } = body;
 
-    // Validate names to prevent directory traversal
-    const iterDir = path.resolve(PUBLIC_DIR, pageFolder, iterationFolder);
-    if (!iterDir.startsWith(PUBLIC_DIR + path.sep)) {
+    const pageDirResolved = path.resolve(PUBLIC_DIR, pageFolder);
+    if (!pageDirResolved.startsWith(PUBLIC_DIR + path.sep) && pageDirResolved !== PUBLIC_DIR) {
       return NextResponse.json(
         { success: false, error: 'Invalid path' },
         { status: 400 },
@@ -260,6 +259,17 @@ export async function DELETE(req: Request) {
     }
 
     if (iterationFolder) {
+      const iterDirResolved = path.resolve(pageDirResolved, iterationFolder);
+      if (
+        !iterDirResolved.startsWith(pageDirResolved + path.sep) &&
+        iterDirResolved !== pageDirResolved
+      ) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid path' },
+          { status: 400 },
+        );
+      }
+
       // Delete a single iteration
       const iterDir = path.join(PUBLIC_DIR, pageFolder, iterationFolder);
       if (fs.existsSync(iterDir)) {

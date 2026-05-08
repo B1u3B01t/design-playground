@@ -484,9 +484,10 @@ export default function PlaygroundClient() {
 
         {/* Body: sidebar + canvas */}
         <div className="flex flex-1 overflow-hidden relative">
-          {/* Sidebar — floating panel, not a layout column */}
+          {/* Sidebar — floating panel positioned to the right of the left
+              toolbar, with a small breathing gap between them. */}
           <div
-            className={`absolute top-3 left-3 bottom-3 z-10 transition-all duration-[250ms] ease-in-out ${
+            className={`absolute top-3 left-[60px] bottom-3 z-10 transition-all duration-[250ms] ease-in-out ${
               sidebarVisible ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 -translate-x-3 pointer-events-none'
             }`}
           >
@@ -497,25 +498,12 @@ export default function PlaygroundClient() {
             />
           </div>
 
-          {/* Sidebar reveal button — shown only when sidebar is hidden */}
-          <button
-            onClick={() => setSidebarVisible(true)}
-            aria-label="Show sidebar"
-            className={`group absolute top-3 left-3 z-10 flex items-center justify-center w-12 h-12 rounded-2xl bg-white border border-border text-stone-900 hover:bg-stone-50 transition-all duration-[250ms] ease-in-out ${
-              sidebarVisible ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
-            }`}
-          >
-            <svg
-              width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"
-              className="transition-transform duration-500 ease-in-out group-hover:rotate-90"
-            >
-              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-            </svg>
-          </button>
-
           {/* Canvas — always full size, sidebar overlays */}
           <div className="flex-1 relative">
-            <PlaygroundCanvas />
+            <PlaygroundCanvas
+              sidebarVisible={sidebarVisible}
+              onToggleSidebar={() => setSidebarVisible((v) => !v)}
+            />
           </div>
         </div>
       </div>

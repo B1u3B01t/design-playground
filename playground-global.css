@@ -53,9 +53,9 @@
     --shadow-2xl: 0 0px 0px 0px hsl(0 0% 0% / 0.00);
     --tracking-normal: 0em;
     --spacing: 0.2rem;
-    --font-sans: Intel One Mono, ui-monospace, monospace;
-    --font-serif: Intel One Mono, ui-monospace, monospace;
-    --font-mono: Intel One Mono, ui-monospace, monospace;
+    --font-sans: var(--font-geist-sans), ui-sans-serif, sans-serif;
+    --font-serif: var(--font-geist-sans), ui-sans-serif, sans-serif;
+    --font-mono: var(--font-geist-sans), ui-sans-serif, sans-serif;
   }
 
   .playground-main-view.dark {
@@ -143,13 +143,14 @@
     --color-accent-orange: var(--accent-orange);
   
     --font-sans: var(--font-geist-sans);
-    --font-mono: var(--font-geist-mono);
-    --font-serif: var(--font-serif);
+    --font-mono: var(--font-geist-sans);
+    --font-serif: var(--font-geist-sans);
 
     --radius-sm: calc(var(--radius) - 4px);
     --radius-md: calc(var(--radius) - 2px);
     --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) + 4px);
+    --radius-xl: calc(var(--radius) + 8px);
+    --radius-2xl: calc(var(--radius) + 16px);
   
     --shadow-2xs: var(--shadow-2xs);
     --shadow-xs: var(--shadow-xs);
@@ -181,6 +182,102 @@
   }
 }
 /* stylelint-enable at-rule-no-unknown, csstools/use-nesting */
+
+/* ---------------------------------------------------------------------------
+   Default cursor — Lucide `mouse-pointer-2`
+   ---------------------------------------------------------------------------
+   Replaces the system arrow on every playground page. Scoped via
+   playground-global.css (only imported by app/playground/layout.tsx) so it
+   does not leak to the rest of the app.
+
+   The data URI is hoisted onto :root as `--pg-default-cursor` so we can
+   reuse it on body AND on ReactFlow elements (which would otherwise win the
+   cascade with their own grab/grabbing/default cursor).
+
+   Cascade notes:
+   - Element-select mode (.element-select-mode *) still wins via `!important`.
+   - `button { cursor: pointer }` in @layer base still wins for buttons.
+   - Inline `style.cursor` on body/elements still wins for ad-hoc overrides
+     (cursor-chat peek, drag-to-iterate, iframe selection bridge, ...).
+   - Hotspot `4 4` aligns with the path tip (M4.037 4.688 ...); `default` is
+     the fallback if the data URI fails to parse. */
+:root {
+  --pg-default-cursor:
+    url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='black' stroke='white' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z'/></svg>")
+    4 4, default;
+}
+
+body {
+  cursor: var(--pg-default-cursor);
+}
+
+/* Cursor Chat peek mode hides the native pointer while the chat bubble tracks
+   the mouse, making the model pill itself feel like the active cursor. */
+body.cursor-chat-cursor-mode,
+body.cursor-chat-cursor-mode .playground-main-view,
+body.cursor-chat-cursor-mode .playground-main-view .react-flow__pane,
+body.cursor-chat-cursor-mode .playground-main-view .react-flow__pane.draggable,
+body.cursor-chat-cursor-mode .playground-main-view .react-flow__pane.dragging,
+body.cursor-chat-cursor-mode .playground-main-view .react-flow__pane.selection,
+body.cursor-chat-cursor-mode .playground-main-view .react-flow__node,
+body.cursor-chat-cursor-mode .playground-main-view .react-flow__node.selectable,
+body.cursor-chat-cursor-mode .playground-main-view .react-flow__node.draggable,
+body.cursor-chat-cursor-mode .playground-main-view .react-flow__node.draggable.dragging,
+body.cursor-chat-cursor-mode .playground-main-view .react-flow__nodesselection-rect {
+  cursor: none !important;
+}
+
+/* @xyflow/react/dist/style.css forces its own cursor on the canvas pane
+   and nodes, which would otherwise replace our SVG once the canvas mounts:
+     .react-flow__pane.draggable     -> grab        (panOnDrag)
+     .react-flow__pane.dragging      -> grabbing    (panning)
+     .react-flow__pane.selection     -> pointer     (selectionOnDrag) ← the
+                                                     "hand" PlaygroundCanvas
+                                                     actually shows because
+                                                     it sets `panOnDrag={false}
+                                                     selectionOnDrag`.
+     .react-flow__node.{selectable,draggable,...} -> pointer/grab/grabbing
+     .react-flow__nodesselection-rect             -> grab
+   We scope under `.playground-main-view` (the PlaygroundClient wrapper) to
+   bump specificity above xyflow's two-class rules regardless of CSS bundle
+   order. The interactive cursors that *aren't* the hand we're replacing
+   (.handle.connectionindicator -> crosshair, .edgeupdater -> move) are left
+   alone — those are intentional affordances. Inline `style.cursor` writes
+   from cursor-chat / drag-to-iterate / iframe-selection-bridge still win. */
+.playground-main-view .react-flow__pane,
+.playground-main-view .react-flow__pane.draggable,
+.playground-main-view .react-flow__pane.dragging,
+.playground-main-view .react-flow__pane.selection,
+.playground-main-view .react-flow__node,
+.playground-main-view .react-flow__node.selectable,
+.playground-main-view .react-flow__node.draggable,
+.playground-main-view .react-flow__node.draggable.dragging,
+.playground-main-view .react-flow__nodesselection-rect {
+  cursor: var(--pg-default-cursor);
+}
+
+/* Text tool (T / toolbar): I-beam on pane + nodes so it wins over xyflow defaults */
+.playground-main-view .playground-text-tool .react-flow__pane,
+.playground-main-view .playground-text-tool .react-flow__pane.draggable,
+.playground-main-view .playground-text-tool .react-flow__pane.dragging,
+.playground-main-view .playground-text-tool .react-flow__pane.selection,
+.playground-main-view .playground-text-tool .react-flow__node,
+.playground-main-view .playground-text-tool .react-flow__node.selectable,
+.playground-main-view .playground-text-tool .react-flow__node.draggable,
+.playground-main-view .playground-text-tool .react-flow__node.draggable.dragging,
+.playground-main-view .playground-text-tool .react-flow__nodesselection-rect {
+  cursor: text;
+}
+
+/* Once a node is double-clicked into "interactive" mode (Component/Iteration
+   nodes set `data-interactive="true"` on their frame wrapper), hand the
+   cursor back to the browser so the system arrow shows over content,
+   `<a>`/`<button>` keep their UA pointer, and `<input>` shows the text
+   caret — matching ordinary desktop interaction. */
+.playground-main-view [data-interactive="true"],
+.playground-main-view [data-interactive="true"] * {
+  cursor: auto;
+}
 
 /* ---------------------------------------------------------------------------
    Cursor Chat — Bubble + Flip Animation
