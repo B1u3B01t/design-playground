@@ -405,6 +405,9 @@ export const MINIMAP_MASK_COLOR = 'rgba(0, 0, 0, 0.08)';
 // ReactFlow Background
 // ---------------------------------------------------------------------------
 
+/** Solid pane fill behind nodes/dots (see `--xy-background-color` + Background `bgColor`) */
+export const CANVAS_BACKGROUND_COLOR = '#ebebeb';
+
 /** Gap between background dots (px) */
 export const BACKGROUND_GAP = 10;
 
@@ -412,7 +415,7 @@ export const BACKGROUND_GAP = 10;
 export const BACKGROUND_DOT_SIZE = 1;
 
 /** Color of background dots */
-export const BACKGROUND_COLOR = '#d1d5db';
+export const BACKGROUND_COLOR = '#efefef';
 
 /** Minimum computed gap in flow coordinates (at max zoom-in) */
 export const BACKGROUND_MIN_GAP = 10;

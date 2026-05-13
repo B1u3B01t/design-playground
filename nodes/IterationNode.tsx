@@ -3,7 +3,7 @@
 import { memo, useState, useCallback, Suspense, useMemo, useRef, useEffect, type ComponentType } from 'react';
 import { useReactFlow, NodeResizeControl } from '@xyflow/react';
 import { toPng } from 'html-to-image';
-import { Check, CheckCheck, Trash2, Loader2, ArrowUpRight, ChevronRight } from 'lucide-react';
+import { GitMerge, Trash2, Loader2, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import {
@@ -496,8 +496,29 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
 
       {/* ── Top bar — label always, controls only when selected ── */}
       <div className="flex items-center justify-between px-0.5 pb-1.5 cursor-grab">
-        {/* Left: collapse toggle + label */}
+        {/* Left: open-in-new-tab + collapse toggle + label */}
         <div className="flex items-center gap-1.5">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => {
+                  const url = isHtml
+                    ? `/${data.htmlFolder}/${data.htmlIterationFolder}/index.html`
+                    : `/playground/iterations/${data.filename.replace(/\.tsx$/, '')}`;
+                  window.open(url, '_blank', 'noopener,noreferrer');
+                }}
+                className="nodrag shrink-0 p-0 leading-none rounded-[5px] transition-colors"
+                style={{ color: selected ? '#0B99FF' : '#A8A29E' }}
+                aria-label="Open in new tab"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor" />
+                  <path d="M10 8 L16 12 L10 16 Z" fill="white" />
+                </svg>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent><p>Open in new tab</p></TooltipContent>
+          </Tooltip>
           {data.hasChildren && (
             <button
               onClick={() =>
@@ -512,7 +533,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
             </button>
           )}
           <NodeLabel className="text-stone-500 shrink-0">
-            <span className="text-[#0B99FF]">{iterationPageName}</span>
+            <span className={selected ? 'text-[#0B99FF]' : 'text-stone-400'}>{iterationPageName}</span>
             <span className="mx-1 text-stone-300">|</span>
             <span className="text-stone-500">#{data.iterationNumber}</span>
           </NodeLabel>
@@ -529,27 +550,9 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
           )}
         </div>
 
-        {/* Right: size controls + expand icon — invisible when not selected */}
+        {/* Right: size controls — invisible when not selected */}
         <div className={`flex items-center gap-1.5 transition-opacity nodrag ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-          <div className="w-px h-3 bg-stone-200 shrink-0" />
           <SizeButtons currentSize={size} onSizeChange={handleSizeChange} />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => {
-                  const url = isHtml
-                    ? `/${data.htmlFolder}/${data.htmlIterationFolder}/index.html`
-                    : `/playground/iterations/${data.filename.replace(/\.tsx$/, '')}`;
-                  window.open(url, '_blank', 'noopener,noreferrer');
-                }}
-                className="p-1 rounded text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
-                aria-label="Open in new tab"
-              >
-                <ArrowUpRight className="w-3.5 h-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent><p>Open in new tab</p></TooltipContent>
-          </Tooltip>
         </div>
       </div>
 
@@ -562,7 +565,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
           onDoubleClick={handleFrameDoubleClick}
           onMouseMove={hoverHint.onMouseMove}
           onMouseLeave={hoverHint.onMouseLeave}
-          className={`app-theme bg-background overflow-hidden rounded-xl ${isResizing ? '' : 'transition-all'} ${
+          className={`relative app-theme bg-background overflow-hidden rounded-xl ${isResizing ? '' : 'transition-all'} ${
             adoptionStatus === 'adopted' ? 'ring-2 ring-green-400'
               : selected ? `ring-2 ${isJsx ? 'ring-purple-400' : isHtml ? 'ring-orange-400' : 'ring-[#0B99FF]'}` : ''
           } ${isInteractive ? 'ring-offset-2' : ''} ${isFillMode ? 'w-full h-full' : ''}`}
@@ -687,6 +690,13 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
               )}
             </div>
           )}
+          {/* Click-blocker for non-iframe (JSX/React) render modes — gates
+              link/button activity on a double-click, mirroring the iframe
+              overlay above. Already redundant for iframe cases (which keep
+              their own scoped overlay) but harmless. Element-select mode
+              disables this via `[data-iframe-overlay] { pointer-events:
+              none !important }` in playground-global.css. */}
+          {!isInteractive && <div className="absolute inset-0" data-iframe-overlay />}
         </div>
 
         {hoverHint.tooltip}
@@ -727,10 +737,8 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
                 >
                   {adoptionStatus === 'adopting' ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : adoptionStatus === 'adopted' ? (
-                    <CheckCheck className="w-3.5 h-3.5" />
                   ) : (
-                    <Check className="w-3.5 h-3.5" />
+                    <GitMerge className="w-3.5 h-3.5" />
                   )}
                 </button>
               </TooltipTrigger>

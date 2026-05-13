@@ -1,57 +1,101 @@
+import {
+  BACKGROUND_COLOR,
+  BACKGROUND_GAP,
+  CANVAS_BACKGROUND_COLOR,
+} from './lib/constants';
+
+const DOT_PATTERN = {
+  backgroundColor: CANVAS_BACKGROUND_COLOR,
+  backgroundImage: `radial-gradient(circle, ${BACKGROUND_COLOR} 1px, transparent 1px)`,
+  backgroundSize: `${BACKGROUND_GAP}px ${BACKGROUND_GAP}px`,
+} as const;
+
 export default function PlaygroundLoading() {
   return (
-    <div className="fixed inset-0 flex bg-gray-50 z-50">
-      {/* Skeleton sidebar */}
-      <div className="w-56 h-full bg-white border-r border-gray-200 flex flex-col">
-        <div className="px-2.5 py-2 border-b border-gray-200">
-          <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
-          <div className="h-2.5 w-16 bg-gray-100 rounded animate-pulse mt-1" />
+    <div
+      className="playground-main-view fixed inset-0 z-50 flex flex-col overflow-hidden"
+      style={{
+        fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif',
+        background: '#f5f5f4',
+      }}
+    >
+      {/* Header — matches PlaygroundHeader strip */}
+      <header
+        className="flex h-12 flex-shrink-0 items-center justify-between px-4"
+        style={{ backgroundColor: CANVAS_BACKGROUND_COLOR }}
+      >
+        <div className="flex items-center gap-2">
+          <div className="h-3.5 w-[4.5rem] rounded bg-stone-300/70 animate-pulse" />
+          <div className="h-7 w-[10.5rem] max-w-[40vw] rounded-md bg-stone-200/80 animate-pulse" />
         </div>
-        <div className="px-2 py-1.5 border-b border-gray-200">
-          <div className="h-6 w-full bg-gray-100 rounded animate-pulse" />
-        </div>
-        <div className="flex-1 p-1.5 space-y-1">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-5 bg-gray-100 rounded animate-pulse" style={{ width: `${70 + Math.random() * 30}%` }} />
+        <div className="flex items-center gap-0.5">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-[34px] w-[34px] shrink-0 rounded-md bg-stone-200/60 animate-pulse"
+            />
           ))}
         </div>
-      </div>
+      </header>
 
-      {/* Skeleton canvas */}
-      <div className="flex-1 relative bg-gray-50">
-        {/* Dot pattern background */}
-        <div 
-          className="absolute inset-0" 
-          style={{
-            backgroundImage: 'radial-gradient(circle, #d1d5db 1px, transparent 1px)',
-            backgroundSize: '20px 20px',
-          }}
-        />
-        
-        {/* Loading indicator */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
-            <span className="text-sm text-gray-500 font-mono">Loading playground...</span>
+      <div className="relative flex flex-1 overflow-hidden">
+        {/* Canvas + dot grid */}
+        <div className="relative flex-1">
+          <div className="absolute inset-0" style={DOT_PATTERN} />
+
+          {/* Floating sidebar — same slot as PlaygroundClient (left-[60px], w-[208px]) */}
+          <div
+            className="absolute top-3 bottom-3 left-[60px] z-10 flex w-[208px] flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
+            aria-hidden
+          >
+            <div className="flex flex-shrink-0 items-center justify-between px-3 pt-3 pb-2">
+              <div className="h-3 w-16 rounded bg-stone-200/90 animate-pulse" />
+              <div className="flex gap-0.5">
+                <div className="h-6 w-6 rounded-lg bg-stone-100 animate-pulse" />
+                <div className="h-6 w-6 rounded-lg bg-stone-100 animate-pulse" />
+              </div>
+            </div>
+            <div className="flex-shrink-0 px-3 pb-3">
+              <div className="h-9 w-full rounded-xl bg-stone-100 animate-pulse" />
+            </div>
+            <div className="min-h-0 flex-1 space-y-1.5 px-2 py-0.5">
+              {[100, 92, 88, 76, 95].map((pct, i) => (
+                <div
+                  key={i}
+                  className="h-5 rounded-sm bg-stone-100 animate-pulse"
+                  style={{ width: `${pct}%` }}
+                />
+              ))}
+            </div>
+            <div className="flex-shrink-0 border-t border-stone-100 px-3 py-2">
+              <div className="mx-auto h-2.5 w-3/4 rounded bg-stone-100 animate-pulse" />
+            </div>
+          </div>
+
+          {/* Left rail — matches floating tool stack */}
+          <div
+            className="absolute top-1/2 left-0 z-20 flex flex-col -translate-y-2/3 items-center gap-2 rounded-r-2xl border border-stone-200 bg-white p-2 shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
+            aria-hidden
+          >
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <div
+                key={i}
+                className="h-9 w-9 rounded-xl bg-stone-100/90 animate-pulse"
+              />
+            ))}
+          </div>
+
+          {/* Center status */}
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+              <div
+                className="h-8 w-8 animate-spin rounded-full border-2 border-stone-300 border-t-stone-700"
+                aria-hidden
+              />
+              <span className="text-sm text-stone-500">Loading playground…</span>
+            </div>
           </div>
         </div>
-
-        {/* Skeleton controls (top-right) */}
-        <div className="absolute top-4 right-4 flex items-center gap-2">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="w-9 h-9 bg-white border border-gray-200 rounded-lg animate-pulse" />
-          ))}
-        </div>
-
-        {/* Skeleton zoom controls (bottom-left) */}
-        <div className="absolute bottom-4 left-4 flex flex-col gap-0.5">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="w-7 h-7 bg-white border border-gray-200 rounded animate-pulse" />
-          ))}
-        </div>
-
-        {/* Skeleton minimap (bottom-right) */}
-        <div className="absolute bottom-4 right-4 w-32 h-24 bg-white border border-gray-200 rounded-lg animate-pulse" />
       </div>
     </div>
   );

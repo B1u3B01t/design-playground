@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef, DragEvent, MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronRight, ChevronDown, ChevronLeft, Plus, Loader2, RefreshCw, Frame, FileCode, Component, Folder, Trash2 } from 'lucide-react';
+import { ChevronRight, ChevronDown, ChevronLeft, Plus, Loader2, RefreshCw, Frame, FileCode, Component, Trash2 } from 'lucide-react';
 import { registry, RegistryItem, RegistryLeafItem, isGroup, isLeaf } from './registry';
 import { DND_DATA_KEY, HTML_ID_PREFIX, FOCUS_NODE_EVENT, JSX_ID_PREFIX, DELETE_FRAME_EVENT } from './lib/constants';
-import type { HtmlPageInfo, JsxComponentInfo } from './lib/constants';
+import type { HtmlPageInfo, JsxComponentInfo, ComponentSize } from './lib/constants';
 import type { PendingChild } from './PlaygroundClient';
+import ComponentErrorBoundary from './nodes/ComponentErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -30,17 +31,103 @@ function buildChildrenMap(items: RegistryItem[]): Map<string, RegistryLeafItem[]
   return map;
 }
 
-/** Remove leaf items that have a parentId from group children (they render nested under their parent). */
-function stripChildLeaves(items: RegistryItem[]): RegistryItem[] {
-  return items
-    .map((item) => {
-      if (isGroup(item)) {
-        return { ...item, children: stripChildLeaves(item.children) };
-      }
-      if (isLeaf(item) && item.parentId) return null;
-      return item;
-    })
-    .filter((item): item is RegistryItem => item !== null);
+/** Flatten all leaves under a group (including nested children with parentId). */
+function flattenLeaves(items: RegistryItem[]): RegistryLeafItem[] {
+  const out: RegistryLeafItem[] = [];
+  for (const item of items) {
+    if (isLeaf(item)) out.push(item);
+    else if (isGroup(item)) out.push(...flattenLeaves(item.children));
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Component preview card — renders a live, scaled-down preview of the component
+// ---------------------------------------------------------------------------
+
+/** Pick a sensible viewport width for the preview based on the component's size hint. */
+function pickPreviewViewport(size: ComponentSize | undefined): { width: number; height: number } {
+  switch (size) {
+    case 'laptop': return { width: 1470, height: 832 };
+    case 'tablet': return { width: 768, height: 1024 };
+    case 'mobile': return { width: 393, height: 852 };
+    case 'default':
+    default:       return { width: 720, height: 480 };
+  }
+}
+
+interface ComponentPreviewCardProps {
+  item: RegistryLeafItem;
+  onPageContextMenu?: (e: MouseEvent, payload: PageContextPayload) => void;
+}
+
+function ComponentPreviewCard({ item, onPageContextMenu }: ComponentPreviewCardProps) {
+  const PreviewComponent = item.Component;
+  const props = (item.props ?? {}) as Record<string, unknown>;
+  const viewport = pickPreviewViewport(item.size);
+
+  // Measure the card's actual rendered width so we can compute an accurate
+  // scale factor — keeps previews sharp when the sidebar gets resized.
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0.12);
+
+  useEffect(() => {
+    const el = previewRef.current;
+    if (!el) return;
+    const update = () => {
+      const w = el.clientWidth;
+      if (w > 0) setScale(w / viewport.width);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [viewport.width]);
+
+  const handleDragStart = (e: DragEvent<HTMLDivElement>) => {
+    e.dataTransfer.setData(DND_DATA_KEY, item.id);
+    e.dataTransfer.setData('text/plain', '');
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const isPage = /^src\/app\/[^/]+\/page\.tsx$/.test(item.sourcePath);
+  const slug = isPage ? slugFromSourcePath(item.sourcePath) : null;
+
+  return (
+    <div
+      draggable
+      onDragStart={handleDragStart}
+      onDoubleClick={() => focusNodeOnCanvas(item.id)}
+      onContextMenu={isPage && slug && onPageContextMenu ? (e) => onPageContextMenu(e, { id: item.id, label: item.label, slug }) : undefined}
+      className="group cursor-grab active:cursor-grabbing select-none"
+      title={`Drag ${item.label} onto canvas`}
+    >
+      {/* Preview thumbnail — fixed height, component scaled to fit the width.
+          Tall components get cropped at the bottom (like a real thumbnail). */}
+      <div
+        ref={previewRef}
+        className="relative w-full h-[96px] overflow-hidden bg-stone-50 rounded-xl border border-stone-200/70 group-hover:border-stone-300 group-hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-all pointer-events-none"
+      >
+        <div
+          className="app-theme bg-background absolute top-0 left-0 origin-top-left"
+          style={{
+            width: viewport.width,
+            height: viewport.height,
+            transform: `scale(${scale})`,
+          }}
+        >
+          <ComponentErrorBoundary componentName={item.label}>
+            <PreviewComponent {...props} />
+          </ComponentErrorBoundary>
+        </div>
+      </div>
+
+      {/* Label — sits OUTSIDE the card, below it, as muted text */}
+      <div className="mt-1.5 px-0.5 text-[11px] font-medium text-stone-700 truncate">
+        {item.label}
+      </div>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -226,7 +313,12 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
   const [isRefreshingHtml, setIsRefreshingHtml] = useState(false);
 
   const childrenMap = useMemo(() => buildChildrenMap(registry), []);
-  const strippedRegistry = useMemo(() => stripChildLeaves(registry), []);
+
+  // Per-group expanded state for the grid view (defaults to expanded)
+  const [groupExpanded, setGroupExpanded] = useState<Record<string, boolean>>({});
+  const isGroupExpanded = (id: string) => groupExpanded[id] !== false;
+  const toggleGroup = (id: string) =>
+    setGroupExpanded((prev) => ({ ...prev, [id]: prev[id] === false ? true : false }));
 
   // Fetch HTML pages and JSX components on mount
   const fetchHtmlPages = useCallback(async () => {
@@ -323,21 +415,24 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  const filterItems = (items: RegistryItem[], query: string): RegistryItem[] => {
+  // For the grid view, filtering happens against the FLAT list of leaves
+  // under each group — so a search like "card" will surface SubscribeBanner's
+  // children too (not just top-level components).
+  const filterRegistryForGrid = (items: RegistryItem[], query: string): RegistryItem[] => {
     if (!query.trim()) return items;
     const lowerQuery = query.toLowerCase();
     return items
-      .map((item) => {
+      .map((item): RegistryItem | null => {
         if (isGroup(item)) {
-          const filteredChildren = filterItems(item.children, query);
-          if (filteredChildren.length > 0) return { ...item, children: filteredChildren };
-          if (item.label.toLowerCase().includes(lowerQuery)) return item;
-          return null;
+          const allLeaves = flattenLeaves(item.children);
+          const matchedLeaves = allLeaves.filter((l) => l.label.toLowerCase().includes(lowerQuery));
+          if (matchedLeaves.length === 0 && !item.label.toLowerCase().includes(lowerQuery)) return null;
+          // Re-expose matched leaves directly as the group's flat children so
+          // the grid renderer (which flattens again) shows exactly the matches.
+          return { ...item, children: matchedLeaves };
         }
         if (isLeaf(item)) {
-          // Match on the item itself
           if (item.label.toLowerCase().includes(lowerQuery)) return item;
-          // Match on any of its registry children
           const kids = childrenMap.get(item.id) || [];
           if (kids.some((k) => k.label.toLowerCase().includes(lowerQuery))) return item;
           return null;
@@ -347,7 +442,9 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
       .filter((item): item is RegistryItem => item !== null);
   };
 
-  const filteredRegistry = filterItems(strippedRegistry, search);
+  // Use the unstripped registry as the base — `flattenLeaves` already walks
+  // every leaf (parents and children) so we don't need to strip anything.
+  const filteredRegistry = filterRegistryForGrid(registry, search);
 
   // Merge HTML pages and JSX components into one sorted frames list
   const allFrames = [
@@ -367,7 +464,7 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
   const filteredHtmlPages = filteredFrames;
 
   return (
-    <aside className="w-[208px] h-full bg-white rounded-2xl border border-border flex flex-col overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+    <aside className="w-[280px] h-full bg-white rounded-2xl border border-border flex flex-col overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
       {/* Header */}
       <div className="flex items-center justify-between px-3 pt-3 pb-2 flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -454,17 +551,55 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
           </div>
         )}
 
-        {/* Component tree */}
+        {/* Component grid — flat 2-column layout of preview cards.
+            Top-level groups become collapsible section headers; leaves under
+            them (including nested children with parentId) are flattened into
+            a single grid per group. */}
         {filteredRegistry.length > 0 ? (
-          filteredRegistry.map((item) => (
-            <TreeNode
-              key={item.id}
-              item={item}
-              childrenMap={childrenMap}
-              pendingChildren={pendingChildren}
-              onPageContextMenu={handlePageContextMenu}
-            />
-          ))
+          filteredRegistry.map((item) => {
+            if (isGroup(item)) {
+              const leaves = flattenLeaves(item.children);
+              const expanded = isGroupExpanded(item.id);
+              return (
+                <div key={item.id} className="mb-2">
+                  <button
+                    onClick={() => toggleGroup(item.id)}
+                    className="flex items-center gap-1.5 w-full px-2 py-2 text-left text-[11px] font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-2xl transition-colors"
+                  >
+                    {expanded ? (
+                      <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                    ) : (
+                      <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                    )}
+                    <span className="uppercase tracking-[0.08em] text-[10px]">{item.label}</span>
+                    <span className="ml-auto text-[10px] text-stone-400">{leaves.length}</span>
+                  </button>
+                  {expanded && (
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-4 px-2 pt-2 pb-4">
+                      {leaves.map((leaf) => (
+                        <ComponentPreviewCard
+                          key={leaf.id}
+                          item={leaf}
+                          onPageContextMenu={handlePageContextMenu}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            // Stand-alone leaf at the top level — fall back to the original
+            // tree row so we never lose access to it.
+            return (
+              <TreeNode
+                key={item.id}
+                item={item}
+                childrenMap={childrenMap}
+                pendingChildren={pendingChildren}
+                onPageContextMenu={handlePageContextMenu}
+              />
+            );
+          })
         ) : filteredHtmlPages.length === 0 ? (
           <p className="text-xs text-stone-400 text-center py-3 select-none">No components found</p>
         ) : null}

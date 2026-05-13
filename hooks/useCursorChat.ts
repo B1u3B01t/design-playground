@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useReactFlow, useOnViewportChange } from '@xyflow/react';
-import type { Node } from '@xyflow/react';
 import { loadSelectedModel, saveSelectedModel } from '../nodes/shared/IterateDialogParts';
 import type { ModelOption } from '../nodes/shared/IterateDialogParts';
 import { flatRegistry } from '../registry';
 import { matchesAction } from '../lib/keybindings';
+
+const CURSOR_CHAT_CURSOR_CLASS = 'cursor-chat-cursor-mode';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,6 +55,16 @@ export function useCursorChat(models: ModelOption[]) {
 
   const { screenToFlowPosition, flowToScreenPosition, getNodes } = useReactFlow();
 
+  const enableChatCursor = useCallback(() => {
+    document.body.classList.add(CURSOR_CHAT_CURSOR_CLASS);
+    document.body.style.cursor = 'none';
+  }, []);
+
+  const disableChatCursor = useCallback(() => {
+    document.body.classList.remove(CURSOR_CHAT_CURSOR_CLASS);
+    document.body.style.cursor = '';
+  }, []);
+
   // Keep mode ref in sync
   useEffect(() => {
     modeRef.current = mode;
@@ -65,8 +76,8 @@ export function useCursorChat(models: ModelOption[]) {
       if (modeRef.current !== 'peek') return;
       const el = containerRef.current;
       if (el) {
-        const x = mousePosRef.current.x + 16;
-        const y = mousePosRef.current.y + 16;
+        const x = mousePosRef.current.x;
+        const y = mousePosRef.current.y;
         // Clamp to viewport
         const vw = window.innerWidth;
         const vh = window.innerHeight;
@@ -109,18 +120,18 @@ export function useCursorChat(models: ModelOption[]) {
     }
 
     setMode('peek');
-    document.body.style.cursor = 'crosshair';
+    enableChatCursor();
     startTracking();
-  }, [startTracking]);
+  }, [enableChatCursor, startTracking]);
 
   // Deactivate fully
   const deactivate = useCallback(() => {
     setMode('inactive');
     setTargetNode(null);
     setFlowPosition(null);
-    document.body.style.cursor = '';
+    disableChatCursor();
     stopTracking();
-  }, [stopTracking]);
+  }, [disableChatCursor, stopTracking]);
 
   // Place at current position (peek -> placed)
   const place = useCallback((clickX: number, clickY: number, hitNode: CursorChatTargetNode | null) => {
@@ -128,23 +139,27 @@ export function useCursorChat(models: ModelOption[]) {
     setFlowPosition(fp);
     setTargetNode(hitNode);
     setMode('placed');
-    document.body.style.cursor = '';
+    disableChatCursor();
     stopTracking();
 
     // Set the container to the click position
     if (containerRef.current) {
       containerRef.current.style.transform = `translate3d(${clickX + 16}px, ${clickY + 16}px, 0)`;
     }
-  }, [screenToFlowPosition, stopTracking]);
+  }, [disableChatCursor, screenToFlowPosition, stopTracking]);
+
+  // Snapshot of the latest known cursor position (used by callers to place the
+  // chat box at the bubble's current spot, e.g. when typing in peek mode).
+  const getMousePos = useCallback(() => ({ ...mousePosRef.current }), []);
 
   // Unplace (placed -> peek)
   const unplace = useCallback(() => {
     setMode('peek');
     setTargetNode(null);
     setFlowPosition(null);
-    document.body.style.cursor = 'crosshair';
+    enableChatCursor();
     startTracking();
-  }, [startTracking]);
+  }, [enableChatCursor, startTracking]);
 
   // Flip animation state
   const [isSwitching, setIsSwitching] = useState(false);
@@ -272,14 +287,25 @@ export function useCursorChat(models: ModelOption[]) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activate]);
 
+  // Toolbar button activation event
+  useEffect(() => {
+    const handler = () => {
+      if (modeRef.current === 'inactive') {
+        activate();
+      }
+    };
+    window.addEventListener('playground:toolbar-activate-chat', handler);
+    return () => window.removeEventListener('playground:toolbar-activate-chat', handler);
+  }, [activate]);
+
   // Clean up on unmount
   useEffect(() => {
     return () => {
-      document.body.style.cursor = '';
+      disableChatCursor();
       stopTracking();
       if (switchTimeoutRef.current) clearTimeout(switchTimeoutRef.current);
     };
-  }, [stopTracking]);
+  }, [disableChatCursor, stopTracking]);
 
   return {
     mode,
@@ -297,5 +323,6 @@ export function useCursorChat(models: ModelOption[]) {
     setModel,
     isSwitching,
     nextModel,
+    getMousePos,
   };
 }

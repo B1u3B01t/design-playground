@@ -2,7 +2,7 @@
 
 import { memo, useState, useCallback, useRef, useEffect, type ComponentType } from 'react';
 import { useNodeId, useReactFlow, NodeResizeControl } from '@xyflow/react';
-import { ArrowUpRight, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { resolveRegistryItem } from '../registry';
 import IterateDialog from './shared/IterateDialog';
@@ -304,38 +304,45 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
 
       {/* ── Top bar — always visible label, controls only when selected ── */}
       <div className="flex items-center justify-between px-0.5 pb-1.5 cursor-grab">
-        {/* Left: label (always) */}
+        {/* Left: open-in-new-tab + label (always visible) */}
         <div className="flex items-center gap-1.5">
+          {!isJsx && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => {
+                    const url = isEmbed
+                      ? data.embedUrl
+                      : isHtml
+                        ? `/${data.htmlFolder}/index.html`
+                        : `/playground/iterations/${componentId}`;
+                    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                  }}
+                  className="nodrag shrink-0 p-0 leading-none rounded-[5px] transition-colors"
+                  style={{
+                    color: selected
+                      ? (isHtml ? '#F97316' : isEmbed ? '#0D9488' : '#0B99FF')
+                      : '#A8A29E',
+                  }}
+                  aria-label="Open in new tab"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                    <rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor" />
+                    <path d="M10 8 L16 12 L10 16 Z" fill="white" />
+                  </svg>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent><p>Open in new tab</p></TooltipContent>
+            </Tooltip>
+          )}
           <NodeLabel color={isHtml ? '#F97316' : isJsx ? '#7C3AED' : isEmbed ? '#0D9488' : '#0B99FF'}>
             {label}
           </NodeLabel>
         </div>
 
-        {/* Right: size controls + expand icon — invisible when not selected */}
+        {/* Right: size controls — invisible when not selected */}
         <div className={`flex items-center gap-1.5 transition-opacity nodrag ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-          <div className="w-px h-3 bg-stone-200 shrink-0" />
           <SizeButtons currentSize={size} onSizeChange={handleSizeChange} />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => {
-                  const url = isEmbed
-                    ? data.embedUrl
-                    : isHtml
-                      ? `/${data.htmlFolder}/index.html`
-                      : isJsx
-                        ? undefined
-                        : `/playground/iterations/${componentId}`;
-                  if (url) window.open(url, '_blank', 'noopener,noreferrer');
-                }}
-                className="p-1 rounded text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
-                aria-label="Open in new tab"
-              >
-                <ArrowUpRight className="w-3.5 h-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent><p>Open in new tab</p></TooltipContent>
-          </Tooltip>
         </div>
       </div>
 
@@ -348,7 +355,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
           onDoubleClick={handleFrameDoubleClick}
           onMouseMove={hoverHint.onMouseMove}
           onMouseLeave={hoverHint.onMouseLeave}
-          className={`app-theme bg-background overflow-hidden rounded-xl ${isResizing ? '' : 'transition-all'} ${
+          className={`relative app-theme bg-background overflow-hidden rounded-xl ${isResizing ? '' : 'transition-all'} ${
             selected
               ? `ring-2 ${isHtml ? 'ring-orange-400' : isJsx ? 'ring-purple-400' : isEmbed ? 'ring-teal-400' : 'ring-[#0B99FF]'}`
               : ''
@@ -454,6 +461,13 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
               ) : null}
             </div>
           )}
+          {/* Click-blocker for non-iframe (JSX/React) render modes — gates
+              link/button activity on a double-click, mirroring the iframe
+              overlay above. Already redundant for iframe/embed cases (which
+              keep their own scoped overlay) but harmless. Element-select
+              mode disables this via `[data-iframe-overlay] { pointer-events:
+              none !important }` in playground-global.css. */}
+          {!isInteractive && <div className="absolute inset-0" data-iframe-overlay />}
         </div>
 
         {hoverHint.tooltip}

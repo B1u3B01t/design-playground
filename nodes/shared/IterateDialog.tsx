@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Check, Copy, Loader2, Zap } from 'lucide-react';
+import { Check, Loader2, Zap } from 'lucide-react';
 import { useReactFlow } from '@xyflow/react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../ui/tooltip';
 import { generateIterationPrompt, generateIterationFromIterationPrompt } from '../../registry';
@@ -19,6 +19,7 @@ import {
   type Segment,
 } from '../../ui/inline-reference';
 import type { PlaygroundSkill } from '../../skills';
+import { getSkillBubbleStyle } from '../../lib/skill-icons';
 import { matchesAction } from '../../lib/keybindings';
 import { getProviderFields } from '../../lib/generation-body';
 import {
@@ -28,7 +29,6 @@ import {
   ITERATION_PROMPT_COPIED_EVENT,
   COPIED_FEEDBACK_DURATION,
   ITERATION_COUNT_OPTIONS,
-  DRAG_ITERATE_EVENT,
   DRAG_GHOST_GAP,
   DRAG_OVERLAY_PADDING_X,
   DRAG_OVERLAY_PADDING_Y,
@@ -37,22 +37,188 @@ import {
   DEFAULT_ITERATION_NODE_WIDTH,
   DEFAULT_ITERATION_NODE_HEIGHT,
   DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
+  type ModelOption,
   type GenerationStartPayload,
   type GenerationCompletePayload,
   type GenerationErrorPayload,
-  type DragIteratePayload,
 } from '../../lib/constants';
 import {
-  ModelDropdown,
   useAvailableModels,
   loadSelectedModel,
   saveSelectedModel,
 } from './IterateDialogParts';
-import { useDragToIterate, clampGrid, type DragDelta, type CursorScreenPos } from '../../hooks/useDragToIterate';
+import { useDragToIterate, clampGrid, type DragDelta, type CursorScreenPos, type DragIterateGrid } from '../../hooks/useDragToIterate';
 import DragSelectionOverlay from './DragSelectionOverlay';
+import { getModelIconConfig } from '../../lib/model-icons';
 
 // Ghost node ID prefix to identify and clean up drag-ghost nodes
 const GHOST_NODE_PREFIX = 'drag-ghost-';
+
+type PendingDragGrid = {
+  count: number;
+  rows: number;
+  cols: number;
+};
+
+function VariationStackIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 20 20" aria-hidden>
+      <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" d="M15.6 3.396H4.25c-.314 0-.568.283-.568.633v12.665c0 .35.254.633.568.633H15.6c.314 0 .568-.284.568-.633V4.029c0-.35-.254-.633-.567-.633ZM6.8 10.361h6.25M9.925 7.236v6.25" />
+      <path stroke="currentColor" strokeLinecap="round" d="M17.747 5.02v10.682M19.312 6.019v8.685" />
+    </svg>
+  );
+}
+
+function ArrowUpIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
+      <path d="M9 14V4M9 4L4 9M9 4L14 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ModelPillDropdown({
+  model,
+  onChange,
+  models,
+  isLoading,
+}: {
+  model: string;
+  onChange: (model: string) => void;
+  models: ModelOption[];
+  isLoading?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const currentLabel = models.find(m => m.value === model)?.label || model || 'Default';
+  const currentConfig = getModelIconConfig(model || currentLabel);
+
+  return (
+    <div ref={dropdownRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="inline-flex h-9 max-w-[220px] items-center gap-2 rounded-full bg-stone-100/80 pl-2 pr-3 text-[15px] font-medium text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-800"
+        aria-label="Select model"
+      >
+        <span
+          className="size-6 flex-shrink-0 rounded-full bg-center bg-no-repeat"
+          style={{
+            backgroundColor: currentConfig.bg,
+            backgroundImage: `url(${currentConfig.src})`,
+            backgroundSize: '72%',
+          }}
+        />
+        <span className="truncate">
+          {isLoading ? 'Loading...' : currentLabel}
+        </span>
+      </button>
+
+      {open && (
+        <div className="absolute bottom-full left-0 z-50 mb-2 max-h-64 w-64 overflow-y-auto rounded-2xl border border-stone-200 bg-white p-1.5 shadow-[0_18px_50px_-22px_rgba(0,0,0,0.35)]">
+          {models.map((option) => {
+            const config = getModelIconConfig(option.value);
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-left text-[13px] font-medium text-stone-700 transition-colors hover:bg-stone-100 ${
+                  model === option.value ? 'bg-stone-50' : ''
+                }`}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <span
+                    className="size-6 flex-shrink-0 rounded-full bg-center bg-no-repeat"
+                    style={{
+                      backgroundColor: config.bg,
+                      backgroundImage: `url(${config.src})`,
+                      backgroundSize: '72%',
+                    }}
+                  />
+                  <span className="truncate">{option.label}</span>
+                </span>
+                {model === option.value && <Check className="size-3.5 flex-shrink-0 text-stone-500" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VariationCountDropdown({
+  count,
+  onChange,
+}: {
+  count: number;
+  onChange: (count: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={dropdownRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="inline-flex h-9 items-center gap-1.5 rounded-full border border-stone-200/70 bg-stone-50/90 px-2.5 text-[14px] font-semibold text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-700"
+        aria-label="Select variation count"
+      >
+        <VariationStackIcon />
+        <span>{count}x</span>
+      </button>
+
+      {open && (
+        <div className="absolute bottom-full right-0 z-50 mb-2 w-24 rounded-2xl border border-stone-200 bg-white p-1.5 shadow-[0_18px_50px_-22px_rgba(0,0,0,0.35)]">
+          {(ITERATION_COUNT_OPTIONS as readonly number[]).map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => {
+                onChange(option);
+                setOpen(false);
+              }}
+              className={`flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-[13px] font-medium text-stone-700 transition-colors hover:bg-stone-100 ${
+                count === option ? 'bg-stone-50' : ''
+              }`}
+            >
+              <span>{option}x</span>
+              {count === option && <Check className="size-3.5 text-stone-500" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // IterateDialog — inline popover panel
@@ -84,8 +250,9 @@ export default function IterateDialog({
   const isHtmlMode = renderMode === 'html';
   const isJsxMode = renderMode === 'jsx';
   const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [, setCopied] = useState(false);
   const [iterationCount, setIterationCount] = useState(4);
+  const [pendingDragGrid, setPendingDragGrid] = useState<PendingDragGrid | null>(null);
   const [depth] = useState<'shell' | '1-level' | 'all'>('shell');
   const [selectedModel, setSelectedModel] = useState(() => loadSelectedModel());
   const [segments, setSegments] = useState<Segment[]>([]);
@@ -97,6 +264,7 @@ export default function IterateDialog({
 
   const isFromIteration = !!sourceFilename;
   const panelRef = useRef<HTMLDivElement>(null);
+  const previousIterationCountBeforeDragRef = useRef(iterationCount);
 
   const { models, isLoading: isLoadingModels } = useAvailableModels();
   const { getNode, setNodes, flowToScreenPosition, screenToFlowPosition } = useReactFlow();
@@ -105,6 +273,75 @@ export default function IterateDialog({
     setSelectedModel(model);
     saveSelectedModel(model);
   }, []);
+
+  // Track the last ghost grid to avoid re-rendering when only cursor moves (drag preview)
+  const lastGhostGridRef = useRef<{ rows: number; cols: number } | null>(null);
+
+  const removeGhostNodes = useCallback(() => {
+    lastGhostGridRef.current = null;
+    setNodes(nds => nds.filter(n => !n.id.startsWith(GHOST_NODE_PREFIX)));
+  }, [setNodes]);
+
+  const getParentCellSize = useCallback(() => {
+    const parentNode = getNode(parentNodeId);
+    if (!parentNode) return null;
+    const cellW =
+      parentNode.measured?.width ??
+      (parentNode.type === 'component'
+        ? DEFAULT_COMPONENT_NODE_WIDTH
+        : DEFAULT_ITERATION_NODE_WIDTH);
+    const cellH =
+      parentNode.measured?.height ??
+      (parentNode.type === 'component'
+        ? DEFAULT_COMPONENT_NODE_HEIGHT
+        : DEFAULT_ITERATION_NODE_HEIGHT);
+    return { cellW, cellH, parentNode };
+  }, [getNode, parentNodeId]);
+
+  const placeGhostForGrid = useCallback(
+    (grid: Pick<DragIterateGrid, 'rows' | 'cols'>, cellW: number, cellH: number) => {
+      const info = getParentCellSize();
+      if (!info) return;
+      const flowZero = screenToFlowPosition({ x: 0, y: 0 });
+      const flowPad = screenToFlowPosition({ x: DRAG_OVERLAY_PADDING_X, y: DRAG_OVERLAY_PADDING_Y });
+      const padX = flowPad.x - flowZero.x;
+      const padY = flowPad.y - flowZero.y;
+      lastGhostGridRef.current = { rows: grid.rows, cols: grid.cols };
+      const ghostNode = {
+        id: `${GHOST_NODE_PREFIX}bounding`,
+        type: 'drag-ghost' as const,
+        position: {
+          x: info.parentNode.position.x - padX,
+          y: info.parentNode.position.y - padY,
+        },
+        data: {
+          cols: grid.cols,
+          rows: grid.rows,
+          cellWidth: cellW,
+          cellHeight: cellH,
+          padX,
+          padY,
+        },
+        draggable: false,
+        selectable: false,
+        connectable: false,
+      };
+      setNodes(nds => [
+        ...nds.filter(n => !n.id.startsWith(GHOST_NODE_PREFIX)),
+        ghostNode,
+      ]);
+    },
+    [getParentCellSize, screenToFlowPosition, setNodes],
+  );
+
+  const closePanel = useCallback(() => {
+    removeGhostNodes();
+    if (pendingDragGrid) {
+      setIterationCount(previousIterationCountBeforeDragRef.current);
+    }
+    setOpen(false);
+    setPendingDragGrid(null);
+  }, [pendingDragGrid, removeGhostNodes]);
 
   // When the provider changes, auto-select the first enabled model if the
   // current selection isn't valid for the new provider.
@@ -446,12 +683,13 @@ export default function IterateDialog({
           iterationCount,
           model: selectedModel || undefined,
           provider: providerFields.provider as GenerationStartPayload['provider'],
+          ...(pendingDragGrid ? { gridLayout: { rows: pendingDragGrid.rows, cols: pendingDragGrid.cols } } : {}),
           ...(isJsxMode ? { renderMode: 'jsx' as const, jsxFile } : isHtmlMode ? { renderMode: 'html' as const, htmlFolder } : {}),
         },
       }),
     );
 
-    setOpen(false);
+    closePanel();
 
     try {
       const response = await fetch('/playground/api/generate', {
@@ -502,33 +740,8 @@ export default function IterateDialog({
   const canRun = !isGlobalGenerating && parentNodeId && (!isFromIteration || (startNumber !== null && !isFetchingMax));
 
   // ---------------------------------------------------------------------------
-  // Drag-to-iterate: ghost node management
+  // Drag-to-iterate: ghost node management (continued)
   // ---------------------------------------------------------------------------
-
-  // Track the last ghost grid to avoid re-rendering when only cursor moves
-  const lastGhostGridRef = useRef<{ rows: number; cols: number } | null>(null);
-
-  const removeGhostNodes = useCallback(() => {
-    lastGhostGridRef.current = null;
-    setNodes(nds => nds.filter(n => !n.id.startsWith(GHOST_NODE_PREFIX)));
-  }, [setNodes]);
-
-  // Get the parent node's cell dimensions in flow-space
-  const getParentCellSize = useCallback(() => {
-    const parentNode = getNode(parentNodeId);
-    if (!parentNode) return null;
-    const cellW =
-      parentNode.measured?.width ??
-      (parentNode.type === 'component'
-        ? DEFAULT_COMPONENT_NODE_WIDTH
-        : DEFAULT_ITERATION_NODE_WIDTH);
-    const cellH =
-      parentNode.measured?.height ??
-      (parentNode.type === 'component'
-        ? DEFAULT_COMPONENT_NODE_HEIGHT
-        : DEFAULT_ITERATION_NODE_HEIGHT);
-    return { cellW, cellH, parentNode };
-  }, [getNode, parentNodeId]);
 
   // Compute grid dimensions based on the overlay extent: from the parent
   // node's top-left corner to the current cursor position, both converted
@@ -595,74 +808,29 @@ export default function IterateDialog({
       if (prev && prev.rows === grid.rows && prev.cols === grid.cols) {
         return;
       }
-      lastGhostGridRef.current = { rows: grid.rows, cols: grid.cols };
 
-      const info = getParentCellSize();
-      if (!info) return;
-
-      // Convert screen-pixel padding to flow-space so the ghost border
-      // aligns with the selection overlay's padded origin.
-      const flowZero = screenToFlowPosition({ x: 0, y: 0 });
-      const flowPad = screenToFlowPosition({ x: DRAG_OVERLAY_PADDING_X, y: DRAG_OVERLAY_PADDING_Y });
-      const padX = flowPad.x - flowZero.x;
-      const padY = flowPad.y - flowZero.y;
-
-      // Single bounding-box ghost node — shifted by padding so its border
-      // starts at the same point as the selection overlay.
-      const ghostNode = {
-        id: `${GHOST_NODE_PREFIX}bounding`,
-        type: 'drag-ghost' as const,
-        position: {
-          x: info.parentNode.position.x - padX,
-          y: info.parentNode.position.y - padY,
-        },
-        data: {
-          cols: grid.cols,
-          rows: grid.rows,
-          cellWidth: cellW,
-          cellHeight: cellH,
-          padX,
-          padY,
-        },
-        draggable: false,
-        selectable: false,
-        connectable: false,
-      };
-
-      setNodes(nds => [
-        ...nds.filter(n => !n.id.startsWith(GHOST_NODE_PREFIX)),
-        ghostNode,
-      ]);
+      placeGhostForGrid(grid, cellW, cellH);
     },
-    [computeGridFromScreenDelta, getParentCellSize, setNodes, removeGhostNodes, screenToFlowPosition],
+    [computeGridFromScreenDelta, placeGhostForGrid, removeGhostNodes],
   );
 
   const handleDragEnd = useCallback(
     (delta: DragDelta, dragStart: CursorScreenPos) => {
-      removeGhostNodes();
-
       const result = computeGridFromScreenDelta(delta, dragStart);
       if (!result || result.grid.count === 0) return;
 
-      const { grid } = result;
-      const model = loadSelectedModel();
-      window.dispatchEvent(
-        new CustomEvent<DragIteratePayload>(DRAG_ITERATE_EVENT, {
-          detail: {
-            componentId,
-            componentName,
-            parentNodeId,
-            iterationCount: grid.count,
-            rows: grid.rows,
-            cols: grid.cols,
-            model: model || undefined,
-            sourceFilename: sourceFilename || undefined,
-            ...(isJsxMode ? { renderMode: 'jsx' as const, jsxFile } : isHtmlMode ? { renderMode: 'html' as const, htmlFolder } : {}),
-          },
-        }),
-      );
+      const { grid, cellW, cellH } = result;
+      previousIterationCountBeforeDragRef.current = iterationCount;
+      setIterationCount(grid.count);
+      setPendingDragGrid({ count: grid.count, rows: grid.rows, cols: grid.cols });
+      placeGhostForGrid(grid, cellW, cellH);
+      setOpen(true);
     },
-    [componentId, componentName, parentNodeId, sourceFilename, removeGhostNodes, computeGridFromScreenDelta],
+    [
+      computeGridFromScreenDelta,
+      placeGhostForGrid,
+      iterationCount,
+    ],
   );
 
   const handleZapClick = useCallback(
@@ -670,11 +838,15 @@ export default function IterateDialog({
       if (isGlobalGenerating) return;
       if (!isFromIteration && shiftKey) {
         handleDefaultCopy();
+      } else if (open) {
+        closePanel();
       } else {
-        setOpen(o => !o);
+        removeGhostNodes();
+        setPendingDragGrid(null);
+        setOpen(true);
       }
     },
-    [isGlobalGenerating, isFromIteration, handleDefaultCopy],
+    [isGlobalGenerating, isFromIteration, handleDefaultCopy, open, closePanel, removeGhostNodes],
   );
 
   const { isDragging, cursorScreen, dragStartScreen, handlers } = useDragToIterate({
@@ -711,7 +883,7 @@ export default function IterateDialog({
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape') closePanel();
       if (matchesAction(e, 'iterate.copy-prompt')) {
         e.preventDefault();
         handleCopyPrompt(generatedPrompt);
@@ -721,10 +893,10 @@ export default function IterateDialog({
         handleRunWithCursor();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, generatedPrompt, canRun]);
+  }, [open, generatedPrompt, canRun, closePanel]);
 
   // Click-outside to close
   useEffect(() => {
@@ -738,7 +910,7 @@ export default function IterateDialog({
       }
 
       if (panelRef.current && !panelRef.current.contains(target as Node)) {
-        setOpen(false);
+        closePanel();
       }
     };
     // Small delay so the trigger click doesn't immediately close it
@@ -747,7 +919,7 @@ export default function IterateDialog({
       clearTimeout(t);
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [open]);
+  }, [open, closePanel]);
 
   // ── Trigger button ──
   const triggerButton = (
@@ -756,22 +928,22 @@ export default function IterateDialog({
         <button
           onPointerDown={handlers.onPointerDown}
           disabled={isGlobalGenerating}
-          className={`w-8 h-8 flex items-center justify-center text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed ${open ? 'rounded-l-full rounded-r-[8px]' : 'rounded-full'}`}
+          className={`w-8 h-8 flex items-center justify-center text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed ${isDragging ? 'opacity-0' : ''} ${open ? 'rounded-l-full rounded-r-[8px]' : 'rounded-full'}`}
           style={{ background: '#0B99FF', touchAction: 'none' }}
           aria-label="Iterate"
         >
           <Zap className="w-4 h-4 fill-white" />
         </button>
       </TooltipTrigger>
-      <TooltipContent side="right">
-        <p>
-          {isGlobalGenerating
-            ? 'Another generation is in progress'
-            : isDragging
-              ? 'Release to generate'
+      {!isDragging && (
+        <TooltipContent side="right">
+          <p>
+            {isGlobalGenerating
+              ? 'Another generation is in progress'
               : 'Click to configure, drag to iterate'}
-        </p>
-      </TooltipContent>
+          </p>
+        </TooltipContent>
+      )}
     </Tooltip>
   );
 
@@ -797,20 +969,13 @@ export default function IterateDialog({
             style={{ fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif' }}
           >
             <div
-              className="w-80 rounded-2xl p-5 flex flex-col gap-4 bg-white"
+              className="w-[410px] rounded-[30px] border border-stone-200/80 bg-[#fbfbfb] p-5 shadow-[0_24px_70px_-35px_rgba(0,0,0,0.4)]"
             >
-              {/* Title */}
-              <p className="text-sm font-medium text-stone-600">
-                {isFromIteration
-                  ? `Iterate from #${sourceFilename!.match(/iteration-(\d+)/)?.[1]}`
-                  : 'Describe variations'}
-              </p>
-
               {/* Source info — iteration-from-iteration */}
               {isFromIteration && isFetchingMax && (
-                <div className="flex items-center gap-1 text-[10px] text-stone-400">
+                <div className="mb-3 flex items-center gap-1 text-[11px] font-medium text-stone-400">
                   <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                  <span>Finding next number…</span>
+                  <span>Finding next variation number...</span>
                 </div>
               )}
 
@@ -818,16 +983,15 @@ export default function IterateDialog({
               <InlineReference
                 value={segments}
                 onValueChange={setSegments}
-                className="w-full"
+                className="w-full cursor-chat-inline-input"
               >
                 <InlineReferenceInput
                   autoFocus
-                  placeholder={
-                    isFromIteration
-                      ? 'Describe how you want to iterate, then type / to add a skill…'
-                      : 'Describe what to explore, then type / to add a skill…'
-                  }
-                  className="min-h-[96px] text-sm bg-white rounded-xl border border-stone-200 outline-none text-stone-800 placeholder:text-stone-400"
+                  placeholder={pendingDragGrid ? 'Add context for these variations' : 'Explore variations'}
+                  className="min-h-[54px] rounded-none border-none bg-transparent px-2 py-2 text-[16px] font-normal leading-[1.18] text-stone-800 shadow-none outline-none ring-0 focus-visible:border-none focus-visible:ring-0"
+                  style={{
+                    caretColor: 'rgb(87, 83, 78)',
+                  }}
                 />
 
                 <InlineReferenceContent
@@ -837,12 +1001,18 @@ export default function IterateDialog({
                     label: skill.label,
                     description: skill.description,
                   }))}
+                  className="rounded-xl border border-stone-200 shadow-lg"
                 >
                   <InlineReferenceGroup heading="Skills">
-                    <InlineReferenceList>
+                    <InlineReferenceList className="max-h-[256px]">
                       {(item) => (
-                        <InlineReferenceItem key={item.id} value={item}>
-                          <span className="text-xs font-medium">
+                        <InlineReferenceItem
+                          key={item.id}
+                          value={item}
+                          className="gap-2.5 rounded-lg px-2 py-1.5 data-[selected=true]:bg-stone-100 data-[selected=true]:text-stone-900"
+                        >
+                          <span style={getSkillBubbleStyle(item.id, 24)} />
+                          <span className="text-[13px] font-medium text-stone-800 truncate">
                             {item.label}
                           </span>
                         </InlineReferenceItem>
@@ -857,63 +1027,43 @@ export default function IterateDialog({
                 </InlineReferenceContent>
               </InlineReference>
 
-              {/* Controls */}
-              <div className="flex flex-col gap-2.5">
-                {/* Model + count row */}
-                <div className="flex items-center justify-between">
-                  <ModelDropdown
+              {/* Controls + circular CTA */}
+              <div className="mt-5 flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <ModelPillDropdown
                     model={selectedModel}
                     onChange={handleModelChange}
                     models={models}
                     isLoading={isLoadingModels}
                   />
-
-                  {/* Count pills: 1 2 3 4 */}
-                  <div className="flex items-center gap-1 bg-stone-50 rounded-full px-2 py-1 border border-stone-100">
-                    {(ITERATION_COUNT_OPTIONS as readonly number[]).map((n) => (
-                      <button
-                        key={n}
-                        onClick={() => setIterationCount(n)}
-                        className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium transition-colors ${iterationCount === n
-                          ? 'bg-stone-800 text-white'
-                          : 'text-stone-500 hover:text-stone-800'
-                          }`}
-                      >
-                        {n}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer buttons */}
-              <div className="flex items-center gap-2.5 pt-1">
-                {/* Copy */}
-                <button
-                  onClick={() => handleCopyPrompt(generatedPrompt)}
-                  disabled={!generatedPrompt}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium text-stone-500 bg-stone-100 hover:bg-stone-200 transition-colors disabled:opacity-50"
-                >
-                  {copied ? (
-                    <>
-                      <Check className="w-3.5 h-3.5" />
-                      <span>Copied!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>Copy</span>
-                    </>
+                  {!pendingDragGrid && (
+                    <VariationCountDropdown
+                      count={iterationCount}
+                      onChange={(count) => {
+                        previousIterationCountBeforeDragRef.current = count;
+                        setIterationCount(count);
+                      }}
+                    />
                   )}
-                </button>
+                </div>
 
-                {/* Create variations */}
                 <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={handleRunWithCursor}
                   disabled={!canRun}
-                  className="flex-[2] py-2.5 rounded-xl text-sm font-semibold text-white bg-stone-900 hover:bg-stone-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className={`flex size-14 flex-shrink-0 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed ${
+                    canRun
+                      ? 'bg-stone-800 text-white hover:bg-stone-700'
+                      : 'bg-stone-200 text-stone-400'
+                  }`}
+                  aria-label="Create variations"
                 >
-                  {isGlobalGenerating ? 'Generating…' : 'Create variations'}
+                  {isGlobalGenerating ? (
+                    <Loader2 className="size-5 animate-spin" />
+                  ) : (
+                    <ArrowUpIcon />
+                  )}
                 </button>
               </div>
             </div>
