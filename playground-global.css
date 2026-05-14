@@ -1,3 +1,11 @@
+/*
+ * Design playground stylesheet. Imported only from `app/playground/layout.tsx`.
+ *
+ * Includes Tailwind + tokens + base rules needed for the playground UI and
+ * embedded previews. Host apps may still load their own `globals.css`; this
+ * file is written so drop-in installs can depend on it alone when hosts omit
+ * conflicting global `@theme` (see design-playground docs).
+ */
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 @import "tw-animate-css";
@@ -59,18 +67,15 @@
   }
 
   /*
-   * Host app preview theme.
-   *
-   * Components dropped onto the canvas are wrapped in `.app-theme` so they can
-   * render with the aiverse site tokens. Keep those tokens here instead of
-   * depending on src/app/globals.css; values intentionally mirror the current
-   * host theme so existing playground previews do not visually change.
+   * Product preview theme for canvas nodes. Components are wrapped in
+   * `.app-theme` so they render with aiverse tokens. Values are inlined here
+   * so hosts are not required to load `src/app/globals.css`.
    */
   body:has(.playground-main-view),
   body:has(.playground-iteration-view),
   :is(.playground-main-view, .playground-iteration-view) .app-theme {
     --font-sans: var(--font-geist-sans);
-    --font-serif: var(--font-serif);
+    --font-serif: var(--font-geist-sans), ui-serif, Georgia, serif;
     --font-mono: var(--font-geist-mono);
     --radius: 0.5rem;
     --background: hsl(24, 100%, 98%);
@@ -203,8 +208,8 @@
     --color-grey: var(--grey);
   
     --font-sans: var(--font-geist-sans);
-    --font-mono: var(--font-geist-sans);
-    --font-serif: var(--font-geist-sans);
+    --font-mono: var(--font-geist-mono);
+    --font-serif: var(--font-geist-sans), ui-serif, Georgia, serif;
 
     --radius-sm: calc(var(--radius) - 4px);
     --radius-md: calc(var(--radius) - 2px);
@@ -312,7 +317,7 @@
 }
 /* stylelint-enable at-rule-no-unknown, csstools/use-nesting */
 
-/* Host preview utilities copied from src/app/globals.css and scoped to playground. */
+/* Utility patterns also used inside embedded previews (scoped to playground). */
 :is(.playground-main-view, .playground-iteration-view) .hide-scrollbar {
   scrollbar-width: none;
 }
