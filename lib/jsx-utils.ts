@@ -29,7 +29,7 @@ export function looksLikeJsx(text: string): boolean {
  */
 export function wrapJsxComponent(source: string, componentName: string): string {
   // Strip browser clipboard markers
-  let cleaned = source
+  const cleaned = source
     .replace(/<!--StartFragment-->/gi, '')
     .replace(/<!--EndFragment-->/gi, '')
     .trim();

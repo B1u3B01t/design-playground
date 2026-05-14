@@ -36,7 +36,7 @@ function ScreenFrame({ children, size }: { children: React.ReactNode; size?: Com
   const full = isFullPage(size);
 
   return (
-    <div className="fixed inset-0 bg-gray-100 p-4">
+    <div className="playground-iteration-view fixed inset-0 bg-gray-100 p-4">
       <div className="app-theme w-full h-full overflow-auto rounded-2xl border border-gray-300 bg-background shadow-sm">
         <div className={full ? 'min-h-full' : 'grid min-h-full place-items-center p-[5%]'}>
           {children}

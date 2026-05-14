@@ -24,7 +24,7 @@ export function parsePastedHttpUrl(plain: string): string | null {
  */
 export function wrapHtmlFragment(html: string): string {
   // Strip browser clipboard markers
-  let cleaned = html
+  const cleaned = html
     .replace(/<!--StartFragment-->/gi, '')
     .replace(/<!--EndFragment-->/gi, '')
     .trim();

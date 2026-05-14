@@ -58,6 +58,63 @@
     --font-mono: var(--font-geist-sans), ui-sans-serif, sans-serif;
   }
 
+  /*
+   * Host app preview theme.
+   *
+   * Components dropped onto the canvas are wrapped in `.app-theme` so they can
+   * render with the aiverse site tokens. Keep those tokens here instead of
+   * depending on src/app/globals.css; values intentionally mirror the current
+   * host theme so existing playground previews do not visually change.
+   */
+  body:has(.playground-main-view),
+  body:has(.playground-iteration-view),
+  :is(.playground-main-view, .playground-iteration-view) .app-theme {
+    --font-sans: var(--font-geist-sans);
+    --font-serif: var(--font-serif);
+    --font-mono: var(--font-geist-mono);
+    --radius: 0.5rem;
+    --background: hsl(24, 100%, 98%);
+    --foreground: hsl(0 0% 0%);
+    --card: #F2EBE5;
+    --card-foreground: hsl(0 0% 0%);
+    --popover: hsl(36 50% 98%);
+    --popover-foreground: hsl(0 0% 0%);
+    --primary: hsl(0 0% 8%);
+    --primary-foreground: hsl(0 0% 100%);
+    --secondary: hsl(32 43% 91%);
+    --secondary-foreground: hsl(0 0% 0%);
+    --muted: hsl(32 43% 91%);
+    --muted-foreground: hsl(22 15% 46%);
+    --accent: hsl(30 40% 88%);
+    --accent-foreground: hsl(0 0% 0%);
+    --destructive: hsl(0 84.2% 60.2%);
+    --border: hsl(30 25% 85%);
+    --input: hsl(30 25% 85%);
+    --ring: hsl(0 0% 0%);
+    --chart-1: hsl(232 48% 54%);
+    --chart-2: hsl(197 36% 60%);
+    --chart-3: hsl(225 18% 50%);
+    --chart-4: hsl(88 53% 75%);
+    --chart-5: hsl(77 54% 70%);
+    --sidebar: hsl(0 0% 98%);
+    --sidebar-foreground: hsl(0 0% 8%);
+    --sidebar-primary: hsl(0 0% 8%);
+    --sidebar-primary-foreground: hsl(0 0% 100%);
+    --sidebar-accent: hsl(30 40% 88%);
+    --sidebar-accent-foreground: hsl(0 0% 8%);
+    --sidebar-border: hsl(30 25% 85%);
+    --sidebar-ring: hsl(0 0% 0%);
+    --search-bg: hsl(30 40% 88%);
+    --text-brown: hsl(22 15% 46%);
+    --text-brown-dark: hsl(24 16% 41%);
+    --text-brown-light: hsl(30 12% 62%);
+    --text-brown-lighter: hsl(30 12% 72%);
+    --text-brown-darker: hsl(26 19% 32%);
+    --card-brown-darker: #85786D;
+    --accent-orange: #CB5F1C;
+    --grey: #7f7f7f;
+  }
+
   .playground-main-view.dark {
     --background: #1a1a1a;
     --foreground: #fafafa;
@@ -139,8 +196,11 @@
     --color-text-brown: var(--text-brown);
     --color-text-brown-dark: var(--text-brown-dark);
     --color-text-brown-light: var(--text-brown-light);
+    --color-text-brown-lighter: var(--text-brown-lighter);
     --color-text-brown-darker: var(--text-brown-darker);
+    --color-card-brown-darker: var(--card-brown-darker);
     --color-accent-orange: var(--accent-orange);
+    --color-grey: var(--grey);
   
     --font-sans: var(--font-geist-sans);
     --font-mono: var(--font-geist-sans);
@@ -167,21 +227,230 @@
   * {
     @apply border-border outline-ring/50;
   }
-  body {
+  body:has(.playground-main-view),
+  body:has(.playground-iteration-view) {
     @apply bg-background text-foreground;
+    scrollbar-gutter: stable;
   }
-  button {
+  .playground-main-view button {
     @apply cursor-pointer font-medium rounded-lg text-sm text-stone-500;
     @apply hover:text-stone-800 hover:bg-stone-100 rounded-lg;
+  }
+  :is(.playground-main-view, .playground-iteration-view) .font-louize { font-family: var(--font-louize), "Louize", serif; letter-spacing: -0.025em; }
+  :is(.playground-main-view, .playground-iteration-view) .font-pixelify { font-family: var(--font-pixelify), monospace; }
+  :is(.playground-main-view, .playground-iteration-view) .font-bricolage { font-family: var(--font-bricolage), sans-serif; }
+  :is(.playground-main-view, .playground-iteration-view) .theme-products-dark {
+    --background: hsl(0 0% 0%);
+    --foreground: hsl(0 0% 100%);
+    --card: hsl(0 0% 12%);
+    --card-foreground: hsl(0 0% 100%);
+    --popover: hsl(0 0% 10%);
+    --popover-foreground: hsl(0 0% 100%);
+    --primary: hsl(0 0% 100%);
+    --primary-foreground: hsl(0 0% 0%);
+    --secondary: hsl(0 0% 14%);
+    --secondary-foreground: hsl(0 0% 100%);
+    --muted: hsl(0 0% 16%);
+    --muted-foreground: hsl(0 0% 70%);
+    --accent: hsl(0 0% 18%);
+    --accent-foreground: hsl(0 0% 100%);
+    --border: hsl(0 0% 18%);
+    --input: hsl(0 0% 18%);
+    --ring: hsl(0 0% 100%);
   }
 }
 
 @layer components {
-  .prose blockquote {
+  :is(.playground-main-view, .playground-iteration-view) .prose blockquote {
     @apply border-l-4 border-muted pl-4 italic text-muted-foreground;
+  }
+
+  :is(.playground-main-view, .playground-iteration-view) .prose img {
+    border-radius: 1rem;
+  }
+
+  :is(.playground-main-view, .playground-iteration-view) .community-blog-content blockquote {
+    background-color: #F3EBE5 !important;
+    border-left: 6px solid #916757 !important;
+    border-radius: 8px 8px 8px 8px;
+    padding: 1rem 1rem 1rem 1rem;
+    margin: 1.5rem 0;
+    color: #333333;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  }
+
+  :is(.playground-main-view, .playground-iteration-view) .community-blog-content blockquote p {
+    margin: 0;
+    font-style: italic;
+    color: #333333;
+    line-height: 2.2;
+  }
+
+  :is(.playground-main-view, .playground-iteration-view) .community-blog-content blockquote p + p {
+    margin-top: 1rem;
+  }
+
+  :is(.playground-main-view, .playground-iteration-view) .embed-contained iframe,
+  :is(.playground-main-view, .playground-iteration-view) .embed-fullwidth iframe {
+    overflow: hidden;
+    border-radius: 1rem;
+    border: 1px solid var(--border);
+  }
+
+  :is(.playground-main-view, .playground-iteration-view) .embed-fullwidth {
+    width: 100%;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  @media (min-width: 900px) {
+    :is(.playground-main-view, .playground-iteration-view) .embed-fullwidth {
+      padding-left: 10%;
+      padding-right: 10%;
+    }
   }
 }
 /* stylelint-enable at-rule-no-unknown, csstools/use-nesting */
+
+/* Host preview utilities copied from src/app/globals.css and scoped to playground. */
+:is(.playground-main-view, .playground-iteration-view) .hide-scrollbar {
+  scrollbar-width: none;
+}
+:is(.playground-main-view, .playground-iteration-view) .hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-brown-darker) transparent;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: var(--text-brown-darker);
+  border-radius: 3px;
+  border: none;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-brown-dark);
+}
+
+:is(.playground-main-view, .playground-iteration-view) .custom-scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .interactive-element:focus {
+  outline: none !important;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .interactive-element:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .interactive-element:active:focus {
+  outline: none !important;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .interactive-element:focus:not(:focus-visible) {
+  outline: none !important;
+}
+
+:is(.playground-main-view, .playground-iteration-view) button:focus,
+:is(.playground-main-view, .playground-iteration-view) [role="button"]:focus,
+:is(.playground-main-view, .playground-iteration-view) .clickable:focus {
+  outline: none !important;
+}
+
+:is(.playground-main-view, .playground-iteration-view) button:focus-visible,
+:is(.playground-main-view, .playground-iteration-view) [role="button"]:focus-visible,
+:is(.playground-main-view, .playground-iteration-view) .clickable:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+:is(.playground-main-view, .playground-iteration-view) button:active:focus,
+:is(.playground-main-view, .playground-iteration-view) [role="button"]:active:focus,
+:is(.playground-main-view, .playground-iteration-view) .clickable:active:focus {
+  outline: none !important;
+}
+
+:is(.playground-main-view, .playground-iteration-view) motion.div:focus,
+:is(.playground-main-view, .playground-iteration-view) motion.div:active:focus,
+:is(.playground-main-view, .playground-iteration-view) motion.div:focus-visible {
+  outline: none !important;
+}
+
+:is(.playground-main-view, .playground-iteration-view) motion.div:focus:not(:focus-visible),
+:is(.playground-main-view, .playground-iteration-view) [data-framer-motion]:focus,
+:is(.playground-main-view, .playground-iteration-view) [data-framer-motion]:active:focus,
+:is(.playground-main-view, .playground-iteration-view) [data-framer-motion]:focus-visible,
+:is(.playground-main-view, .playground-iteration-view) [data-framer-motion]:focus:not(:focus-visible) {
+  outline: none !important;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .interactive-element:hover {
+  transition: none !important;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .interactive-element * {
+  transition: none !important;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .interactive-element:hover * {
+  transition-delay: 0s !important;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .interactive-element {
+  transition: color 0.1s ease-out, background-color 0.1s ease-out !important;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .interactive-element.transition-all,
+:is(.playground-main-view, .playground-iteration-view) .interactive-element.transition-all:hover {
+  transition: all 0.2s ease-out !important;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .insight-editor-content {
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .insight-editor-content:focus {
+  outline: none;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .insight-editor-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--color-muted-foreground);
+  opacity: 0.5;
+  pointer-events: none;
+  height: 0;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .insight-editor-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 1rem;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .insight-editor-content img.ProseMirror-selectednode {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+  border-radius: 1rem;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .canvas-embed-node.ProseMirror-selectednode {
+  outline: none;
+}
 
 /* ---------------------------------------------------------------------------
    Default cursor — Lucide `mouse-pointer-2`
@@ -207,7 +476,8 @@
     4 4, default;
 }
 
-body {
+body:has(.playground-main-view),
+body:has(.playground-iteration-view) {
   cursor: var(--pg-default-cursor);
 }
 
@@ -494,4 +764,3 @@ body.cursor-chat-cursor-mode .playground-main-view .react-flow__nodesselection-r
 .element-select-mode [data-iframe-overlay] {
   pointer-events: none !important;
 }
-
