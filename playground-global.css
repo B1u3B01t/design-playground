@@ -1,14 +1,9 @@
 /*
- * Design playground stylesheet. Imported only from `app/playground/layout.tsx`.
- *
- * Includes Tailwind + tokens + base rules needed for the playground UI and
- * embedded previews. Host apps may still load their own `globals.css`; this
- * file is written so drop-in installs can depend on it alone when hosts omit
- * conflicting global `@theme` (see design-playground docs).
+ * Playground stylesheet — vanilla CSS only (no Tailwind @import / @theme here).
+ * The host `globals.css` compiles Tailwind utilities for the whole app; a second
+ * playground import caused @theme merge conflicts. Token-backed shadcn class
+ * names under playground routes are scoped in `playground-utility-bridge.css`.
  */
-@import "tailwindcss";
-@plugin "@tailwindcss/typography";
-@import "tw-animate-css";
 /* stylelint-disable at-rule-no-unknown, csstools/use-nesting */
 
 .playground-main-view {
@@ -164,155 +159,108 @@
     --shadow-2xl: 0 0px 0px 0px hsl(0 0% 0% / 0.00);
   }
 
-  @theme inline {
-    --color-background: var(--background);
-    --color-foreground: var(--foreground);
-    --color-card: var(--card);
-    --color-card-foreground: var(--card-foreground);
-    --color-popover: var(--popover);
-    --color-popover-foreground: var(--popover-foreground);
-    --color-primary: var(--primary);
-    --color-primary-foreground: var(--primary-foreground);
-    --color-secondary: var(--secondary);
-    --color-secondary-foreground: var(--secondary-foreground);
-    --color-muted: var(--muted);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-accent: var(--accent);
-    --color-accent-foreground: var(--accent-foreground);
-    --color-destructive: var(--destructive);
-    --color-destructive-foreground: var(--destructive-foreground);
-    --color-border: var(--border);
-    --color-input: var(--input);
-    --color-ring: var(--ring);
-    --color-chart-1: var(--chart-1);
-    --color-chart-2: var(--chart-2);
-    --color-chart-3: var(--chart-3);
-    --color-chart-4: var(--chart-4);
-    --color-chart-5: var(--chart-5);
-    --color-sidebar: var(--sidebar);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar-primary: var(--sidebar-primary);
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-    --color-sidebar-border: var(--sidebar-border);
-    --color-sidebar-ring: var(--sidebar-ring);
-    --color-search-bg: var(--search-bg);
-    --color-text-brown: var(--text-brown);
-    --color-text-brown-dark: var(--text-brown-dark);
-    --color-text-brown-light: var(--text-brown-light);
-    --color-text-brown-lighter: var(--text-brown-lighter);
-    --color-text-brown-darker: var(--text-brown-darker);
-    --color-card-brown-darker: var(--card-brown-darker);
-    --color-accent-orange: var(--accent-orange);
-    --color-grey: var(--grey);
-  
-    --font-sans: var(--font-geist-sans);
-    --font-mono: var(--font-geist-mono);
-    --font-serif: var(--font-geist-sans), ui-serif, Georgia, serif;
-
-    --radius-sm: calc(var(--radius) - 4px);
-    --radius-md: calc(var(--radius) - 2px);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) + 8px);
-    --radius-2xl: calc(var(--radius) + 16px);
-  
-    --shadow-2xs: var(--shadow-2xs);
-    --shadow-xs: var(--shadow-xs);
-    --shadow-sm: var(--shadow-sm);
-    --shadow: var(--shadow);
-    --shadow-md: var(--shadow-md);
-    --shadow-lg: var(--shadow-lg);
-    --shadow-xl: var(--shadow-xl);
-    --shadow-2xl: var(--shadow-2xl);
-  }
-
-
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-  body:has(.playground-main-view),
-  body:has(.playground-iteration-view) {
-    @apply bg-background text-foreground;
-    scrollbar-gutter: stable;
-  }
-  .playground-main-view button {
-    @apply cursor-pointer font-medium rounded-lg text-sm text-stone-500;
-    @apply hover:text-stone-800 hover:bg-stone-100 rounded-lg;
-  }
-  :is(.playground-main-view, .playground-iteration-view) .font-louize { font-family: var(--font-louize), "Louize", serif; letter-spacing: -0.025em; }
-  :is(.playground-main-view, .playground-iteration-view) .font-pixelify { font-family: var(--font-pixelify), monospace; }
-  :is(.playground-main-view, .playground-iteration-view) .font-bricolage { font-family: var(--font-bricolage), sans-serif; }
-  :is(.playground-main-view, .playground-iteration-view) .theme-products-dark {
-    --background: hsl(0 0% 0%);
-    --foreground: hsl(0 0% 100%);
-    --card: hsl(0 0% 12%);
-    --card-foreground: hsl(0 0% 100%);
-    --popover: hsl(0 0% 10%);
-    --popover-foreground: hsl(0 0% 100%);
-    --primary: hsl(0 0% 100%);
-    --primary-foreground: hsl(0 0% 0%);
-    --secondary: hsl(0 0% 14%);
-    --secondary-foreground: hsl(0 0% 100%);
-    --muted: hsl(0 0% 16%);
-    --muted-foreground: hsl(0 0% 70%);
-    --accent: hsl(0 0% 18%);
-    --accent-foreground: hsl(0 0% 100%);
-    --border: hsl(0 0% 18%);
-    --input: hsl(0 0% 18%);
-    --ring: hsl(0 0% 100%);
-  }
+:is(.playground-main-view, .playground-iteration-view) *,
+:is(.playground-main-view, .playground-iteration-view) ::before,
+:is(.playground-main-view, .playground-iteration-view) ::after {
+  border-color: var(--border);
+  outline-color: color-mix(in oklch, var(--ring) 50%, transparent);
 }
 
-@layer components {
-  :is(.playground-main-view, .playground-iteration-view) .prose blockquote {
-    @apply border-l-4 border-muted pl-4 italic text-muted-foreground;
-  }
+body:has(.playground-main-view),
+body:has(.playground-iteration-view) {
+  background-color: hsl(24, 100%, 98%);
+  color: hsl(0 0% 0%);
+  scrollbar-gutter: stable;
+}
 
-  :is(.playground-main-view, .playground-iteration-view) .prose img {
-    border-radius: 1rem;
-  }
+.playground-main-view button {
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  border-radius: 0.5rem;
+  color: #78716c;
+}
 
-  :is(.playground-main-view, .playground-iteration-view) .community-blog-content blockquote {
-    background-color: #F3EBE5 !important;
-    border-left: 6px solid #916757 !important;
-    border-radius: 8px 8px 8px 8px;
-    padding: 1rem 1rem 1rem 1rem;
-    margin: 1.5rem 0;
-    color: #333333;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  }
+.playground-main-view button:hover {
+  color: #292524;
+  background-color: #f5f5f4;
+}
 
-  :is(.playground-main-view, .playground-iteration-view) .community-blog-content blockquote p {
-    margin: 0;
-    font-style: italic;
-    color: #333333;
-    line-height: 2.2;
-  }
+:is(.playground-main-view, .playground-iteration-view) .font-louize { font-family: var(--font-louize), "Louize", serif; letter-spacing: -0.025em; }
+:is(.playground-main-view, .playground-iteration-view) .font-pixelify { font-family: var(--font-pixelify), monospace; }
+:is(.playground-main-view, .playground-iteration-view) .font-bricolage { font-family: var(--font-bricolage), sans-serif; }
+:is(.playground-main-view, .playground-iteration-view) .theme-products-dark {
+  --background: hsl(0 0% 0%);
+  --foreground: hsl(0 0% 100%);
+  --card: hsl(0 0% 12%);
+  --card-foreground: hsl(0 0% 100%);
+  --popover: hsl(0 0% 10%);
+  --popover-foreground: hsl(0 0% 100%);
+  --primary: hsl(0 0% 100%);
+  --primary-foreground: hsl(0 0% 0%);
+  --secondary: hsl(0 0% 14%);
+  --secondary-foreground: hsl(0 0% 100%);
+  --muted: hsl(0 0% 16%);
+  --muted-foreground: hsl(0 0% 70%);
+  --accent: hsl(0 0% 18%);
+  --accent-foreground: hsl(0 0% 100%);
+  --border: hsl(0 0% 18%);
+  --input: hsl(0 0% 18%);
+  --ring: hsl(0 0% 100%);
+}
 
-  :is(.playground-main-view, .playground-iteration-view) .community-blog-content blockquote p + p {
-    margin-top: 1rem;
-  }
+:where(.playground-main-view, .playground-iteration-view) .prose blockquote {
+  border-left-width: 4px;
+  border-style: solid;
+  border-color: var(--muted);
+  padding-left: 1rem;
+  font-style: italic;
+  color: var(--muted-foreground);
+}
 
-  :is(.playground-main-view, .playground-iteration-view) .embed-contained iframe,
-  :is(.playground-main-view, .playground-iteration-view) .embed-fullwidth iframe {
-    overflow: hidden;
-    border-radius: 1rem;
-    border: 1px solid var(--border);
-  }
+:is(.playground-main-view, .playground-iteration-view) .prose img {
+  border-radius: 1rem;
+}
 
+:is(.playground-main-view, .playground-iteration-view) .community-blog-content blockquote {
+  background-color: #F3EBE5 !important;
+  border-left: 6px solid #916757 !important;
+  border-radius: 8px 8px 8px 8px;
+  padding: 1rem 1rem 1rem 1rem;
+  margin: 1.5rem 0;
+  color: #333333;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+:is(.playground-main-view, .playground-iteration-view) .community-blog-content blockquote p {
+  margin: 0;
+  font-style: italic;
+  color: #333333;
+  line-height: 2.2;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .community-blog-content blockquote p + p {
+  margin-top: 1rem;
+}
+
+:is(.playground-main-view, .playground-iteration-view) .embed-contained iframe,
+:is(.playground-main-view, .playground-iteration-view) .embed-fullwidth iframe {
+  overflow: hidden;
+  border-radius: 1rem;
+  border: 1px solid var(--border);
+}
+
+:is(.playground-main-view, .playground-iteration-view) .embed-fullwidth {
+  width: 100%;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+@media (min-width: 900px) {
   :is(.playground-main-view, .playground-iteration-view) .embed-fullwidth {
-    width: 100%;
-    padding-left: 0;
-    padding-right: 0;
-  }
-
-  @media (min-width: 900px) {
-    :is(.playground-main-view, .playground-iteration-view) .embed-fullwidth {
-      padding-left: 10%;
-      padding-right: 10%;
-    }
+    padding-left: 10%;
+    padding-right: 10%;
   }
 }
 /* stylelint-enable at-rule-no-unknown, csstools/use-nesting */
@@ -435,7 +383,7 @@
 :is(.playground-main-view, .playground-iteration-view) .insight-editor-content p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;
-  color: var(--color-muted-foreground);
+  color: var(--muted-foreground);
   opacity: 0.5;
   pointer-events: none;
   height: 0;
@@ -473,12 +421,12 @@
    - `button { cursor: pointer }` in @layer base still wins for buttons.
    - Inline `style.cursor` on body/elements still wins for ad-hoc overrides
      (cursor-chat peek, drag-to-iterate, iframe selection bridge, ...).
-   - Hotspot `4 4` aligns with the path tip (M4.037 4.688 ...); `default` is
+   - Hotspot `3 3` aligns with the path tip near (3.27, 4.42); `default` is
      the fallback if the data URI fails to parse. */
 :root {
   --pg-default-cursor:
-    url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='black' stroke='white' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z'/></svg>")
-    4 4, default;
+    url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='black' stroke='white' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M17.2607 12.4008C19.3774 11.2626 20.4357 10.6935 20.7035 10.0084C20.9359 9.41393 20.8705 8.74423 20.5276 8.20587C20.1324 7.58551 18.984 7.23176 16.6872 6.52425L8.00612 3.85014C6.06819 3.25318 5.09923 2.95471 4.45846 3.19669C3.90068 3.40733 3.46597 3.85584 3.27285 4.41993C3.051 5.06794 3.3796 6.02711 4.03681 7.94545L6.94793 16.4429C7.75632 18.8025 8.16052 19.9824 8.80519 20.3574C9.36428 20.6826 10.0461 20.7174 10.6354 20.4507C11.3149 20.1432 11.837 19.0106 12.8813 16.7454L13.6528 15.0719C13.819 14.7113 13.9021 14.531 14.0159 14.3736C14.1168 14.2338 14.2354 14.1078 14.3686 13.9984C14.5188 13.8752 14.6936 13.7812 15.0433 13.5932L17.2607 12.4008Z'/></svg>")
+    3 3, default;
 }
 
 body:has(.playground-main-view),

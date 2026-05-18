@@ -1,15 +1,24 @@
 'use client';
 
-import { memo } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { NodeResizeControl, useReactFlow } from '@xyflow/react';
 import { RESIZE_MIN_WIDTH, RESIZE_MIN_HEIGHT } from '../lib/constants';
 
 export interface TextNodeData {
   text: string;
+  autofocus?: boolean;
 }
 
 function TextNodeInner({ id, data, selected }: { id: string; data: TextNodeData; selected?: boolean }) {
   const { updateNodeData } = useReactFlow();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (data.autofocus && textareaRef.current) {
+      textareaRef.current.focus();
+      updateNodeData(id, { autofocus: false });
+    }
+  }, [data.autofocus, id, updateNodeData]);
 
   return (
     <div
@@ -47,6 +56,7 @@ function TextNodeInner({ id, data, selected }: { id: string; data: TextNodeData;
       </NodeResizeControl>
 
       <textarea
+        ref={textareaRef}
         data-screenshot-target
         className="nodrag nowheel nopan w-full h-full p-3 bg-transparent outline-none resize-none text-stone-800 text-sm leading-relaxed placeholder:text-stone-400 rounded-xl transition-all"
         style={{

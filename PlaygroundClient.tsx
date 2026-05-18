@@ -72,6 +72,8 @@ export default function PlaygroundClient() {
         if (data.status === 'not_scanned') {
           const scanToastId = toast.loading('Scanning your project for components…', {
             duration: Infinity,
+            closeButton: true,
+            dismissible: true,
           });
 
           try {
@@ -113,6 +115,8 @@ export default function PlaygroundClient() {
           // A scan was already running (e.g. from a previous session) — join it with a toast
           const scanToastId = toast.loading('Scanning your project for components…', {
             duration: Infinity,
+            closeButton: true,
+            dismissible: true,
           });
 
           const poll = async () => {
@@ -322,7 +326,7 @@ export default function PlaygroundClient() {
         const entry = entries[currentIndex];
         toast.loading(
           `Setting up "${entry.name}"… (${currentIndex + 1}/${entries.length})`,
-          { id: 'add-all-progress', duration: Infinity },
+          { id: 'add-all-progress', duration: Infinity, closeButton: true, dismissible: true },
         );
 
         let success = false;
@@ -421,6 +425,8 @@ export default function PlaygroundClient() {
 
     const toastId = toast.loading(`Setting up "${entry.name}"…`, {
       duration: Infinity,
+      closeButton: true,
+      dismissible: true,
     });
 
     try {
@@ -483,11 +489,10 @@ export default function PlaygroundClient() {
         <PlaygroundHeader sidebarVisible={sidebarVisible} onToggleSidebar={() => setSidebarVisible(!sidebarVisible)} />
 
         {/* Body: sidebar + canvas */}
+        {/* Rail: inset 1.5rem (= left-6), toolbar outer width ~54px, 1.5rem gap */}
         <div className="flex flex-1 overflow-hidden relative">
-          {/* Sidebar — floating panel positioned to the right of the left
-              toolbar, with a small breathing gap between them. */}
           <div
-            className={`absolute top-3 left-[60px] bottom-3 z-10 transition-all duration-[250ms] ease-in-out ${
+            className={`absolute left-[calc(1.5rem+54px+1.5rem)] top-6 bottom-6 z-10 transition-all duration-[250ms] ease-in-out ${
               sidebarVisible ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 -translate-x-3 pointer-events-none'
             }`}
           >

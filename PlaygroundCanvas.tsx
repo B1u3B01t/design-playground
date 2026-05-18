@@ -2728,9 +2728,10 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
         type: 'text' as const,
         position,
         style: { width: 250, height: 150 },
-        data: { text: '' },
+        selected: true,
+        data: { text: '', autofocus: true },
       };
-      setNodes((nds) => nds.concat(newNode));
+      setNodes((nds) => nds.map((n) => ({ ...n, selected: false })).concat(newNode));
       setActiveTool('select');
     }
   }, [activeTool, screenToFlowPosition, getNodeId, setNodes]);
@@ -4000,8 +4001,8 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
         onChange={handleImageFileSelect}
       />
 
-      {/* Floating vertical toolbar — left side */}
-      <div className="absolute left-3 top-1/2 -translate-y-2/3 z-20 flex flex-col items-center gap-2 bg-white rounded-2xl border border-stone-200 shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-2">
+      {/* Match PlaygroundClient: left-6 (1.5rem); vertically centered */}
+      <div className="absolute left-6 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-2 bg-white rounded-2xl border border-stone-200 shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-2">
         {/* Sidebar toggle (hexagon) */}
         <button
           onClick={onToggleSidebar}
