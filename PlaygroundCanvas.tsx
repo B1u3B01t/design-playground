@@ -102,6 +102,7 @@ import {
   DND_DATA_KEY,
   HTML_ID_PREFIX,
   JSX_ID_PREFIX,
+  DESIGN_SYSTEM_SHOWCASE_ID,
   JSX_COMPONENT_ADDED_EVENT,
   EDIT_COMPLETE_EVENT,
   CANVAS_MAX_ZOOM,
@@ -2576,6 +2577,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
 
       const isHtml = componentId.startsWith(HTML_ID_PREFIX);
       const isJsxFrame = componentId.startsWith(JSX_ID_PREFIX);
+      const isDesignSystem = componentId === DESIGN_SYSTEM_SHOWCASE_ID;
       const parentNodeId = getNodeId();
       const newNode: Node = {
         id: parentNodeId,
@@ -2586,6 +2588,9 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
           ...(isHtml ? {
             renderMode: 'html' as const,
             htmlFolder: componentId.slice(HTML_ID_PREFIX.length),
+          } : {}),
+          ...(isDesignSystem ? {
+            renderMode: 'design-system' as const,
           } : {}),
         },
       };

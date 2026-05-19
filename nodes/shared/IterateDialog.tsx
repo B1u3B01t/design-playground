@@ -932,7 +932,7 @@ export default function IterateDialog({
           style={{ background: '#0B99FF', touchAction: 'none' }}
           aria-label="Iterate"
         >
-          <Zap className="w-4 h-4 fill-white" />
+          <Zap className="w-4 h-4 fill-white" strokeWidth={0} />
         </button>
       </TooltipTrigger>
       {!isDragging && (
