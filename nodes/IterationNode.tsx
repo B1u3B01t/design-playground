@@ -188,7 +188,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
     ? `/${data.htmlFolder}/${data.htmlIterationFolder}/index.html`
     : data.filename.replace(/\.tsx$/, ''),
     [data.filename, isHtml, data.htmlFolder, data.htmlIterationFolder]);
-  const { share: handleShare, state: shareState } = useTunnelShare(iterationSlug);
+  const { share: handleShare, state: shareState, disabledTooltip: shareDisabledTooltip } = useTunnelShare(iterationSlug);
 
   const { resolvedProps, isLoadingProps, propsError } = useAsyncProps((isHtml || isJsx) ? '' : registryId);
   const registryItem = useMemo(() => (isHtml || isJsx) ? null : resolveRegistryItem(registryId), [registryId, isHtml, isJsx]);
@@ -822,7 +822,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
               <TooltipTrigger asChild>
                 <button
                   onClick={handleShare}
-                  disabled={shareState === 'connecting'}
+                  disabled={shareState === 'connecting' || shareState === 'disabled'}
                   className={`w-8 h-8 flex items-center justify-center rounded-full bg-white border transition-colors disabled:opacity-50 ${
                     shareState === 'copied'
                       ? 'border-green-300 text-green-600'
@@ -848,7 +848,8 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
               </TooltipTrigger>
               <TooltipContent side="right">
                 <p>
-                  {shareState === 'connecting' ? 'Starting tunnel…' :
+                  {shareState === 'disabled' ? shareDisabledTooltip :
+                   shareState === 'connecting' ? 'Starting tunnel…' :
                    shareState === 'copied' ? 'Link copied!' :
                    shareState === 'error' ? 'Tunnel failed' :
                    'Copy public link'}

@@ -158,7 +158,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   const sharePath = isHtml
     ? `/${data.htmlFolder || componentId}/index.html`
     : componentId;
-  const { share: handleTunnelShare, state: shareState } = useTunnelShare(sharePath);
+  const { share: handleTunnelShare, state: shareState, disabledTooltip: shareDisabledTooltip } = useTunnelShare(sharePath);
 
   const [embedLinkCopied, setEmbedLinkCopied] = useState(false);
   const handleShare = useCallback(async () => {
@@ -518,7 +518,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                   <TooltipTrigger asChild>
                     <button
                       onClick={handleShare}
-                      disabled={!isEmbed && shareState === 'connecting'}
+                      disabled={!isEmbed && (shareState === 'connecting' || shareState === 'disabled')}
                       className={`w-8 h-8 flex items-center justify-center rounded-full bg-white border transition-colors disabled:opacity-50 ${
                         effectiveShareState === 'copied'
                           ? 'border-green-300 text-green-600'
@@ -546,13 +546,15 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                     <p>
                       {isEmbed
                         ? (effectiveShareState === 'copied' ? 'URL copied!' : 'Copy page URL')
-                        : effectiveShareState === 'connecting'
-                          ? 'Starting tunnel…'
-                          : effectiveShareState === 'copied'
-                            ? 'Link copied!'
-                            : effectiveShareState === 'error'
-                              ? 'Tunnel failed'
-                              : 'Copy public link'}
+                        : shareState === 'disabled'
+                          ? shareDisabledTooltip
+                          : effectiveShareState === 'connecting'
+                            ? 'Starting tunnel…'
+                            : effectiveShareState === 'copied'
+                              ? 'Link copied!'
+                              : effectiveShareState === 'error'
+                                ? 'Tunnel failed'
+                                : 'Copy public link'}
                     </p>
                   </TooltipContent>
                 </Tooltip>
