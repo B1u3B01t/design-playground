@@ -9,4 +9,6 @@ export interface PlaygroundSkill {
   systemPrompt: string;
   /** Repo-relative path to SKILL.md (forward slashes), e.g. `src/app/playground/skills/foo/SKILL.md` */
   skillPath: string;
+  /** Where the skill came from: `builtin` ships with Playground, `user` was added via the `skills` CLI. */
+  source?: 'builtin' | 'user';
 }

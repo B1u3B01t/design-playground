@@ -7,9 +7,14 @@ import PlaygroundSidebar from './PlaygroundSidebar';
 import PlaygroundCanvas from './PlaygroundCanvas';
 import PlaygroundHeader from './PlaygroundHeader';
 import DiscoveryModal, { type DiscoveryEntry } from './DiscoveryModal';
+import SkillsCatalogModal from './SkillsCatalogModal';
 import { getProviderFields } from './lib/generation-body';
 import { matchesAction } from './lib/keybindings';
-import { ADD_ALL_QUEUE_STORAGE_KEY } from './lib/constants';
+import {
+  ADD_ALL_QUEUE_STORAGE_KEY,
+  OPEN_SKILLS_CATALOG_EVENT,
+  SKILLS_CHANGED_EVENT,
+} from './lib/constants';
 import { preloadAllComponents } from './registry';
 
 export interface PendingChild {
@@ -22,6 +27,7 @@ export interface PendingChild {
 export default function PlaygroundClient() {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
+  const [skillsCatalogOpen, setSkillsCatalogOpen] = useState(false);
   const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
   const [pendingChildren, setPendingChildren] = useState<Map<string, PendingChild[]>>(new Map());
   const hasScanTriggered = useRef(false);
@@ -57,6 +63,13 @@ export default function PlaygroundClient() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  // Listen for requests to open the Skills catalog
+  useEffect(() => {
+    const handler = () => setSkillsCatalogOpen(true);
+    window.addEventListener(OPEN_SKILLS_CATALOG_EVENT, handler);
+    return () => window.removeEventListener(OPEN_SKILLS_CATALOG_EVENT, handler);
   }, []);
 
   // Auto-scan on first visit
@@ -520,6 +533,15 @@ export default function PlaygroundClient() {
         addingIds={addingIds}
         onAdd={handleAddComponent}
         onAddAll={handleAddAll}
+      />
+
+      {/* Skills catalog modal */}
+      <SkillsCatalogModal
+        open={skillsCatalogOpen}
+        onOpenChange={setSkillsCatalogOpen}
+        onSkillsChanged={() => {
+          window.dispatchEvent(new CustomEvent(SKILLS_CHANGED_EVENT));
+        }}
       />
 
     </ReactFlowProvider>

@@ -4,10 +4,16 @@ import { NextResponse } from 'next/server';
 import type { PlaygroundSkill } from '../../skills';
 import { resolvePlaygroundDir } from '../../lib/resolve-playground-dir';
 
-const SKILLS_DIR = path.join(resolvePlaygroundDir(), 'skills');
+const BUILTIN_SKILLS_DIR = path.join(resolvePlaygroundDir(), 'skills');
+const USER_SKILLS_DIR = path.join(process.cwd(), '.claude', 'skills');
 
 async function findSkillFiles(dir: string, acc: string[] = []): Promise<string[]> {
-  const entries = await fs.readdir(dir, { withFileTypes: true });
+  let entries;
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return acc;
+  }
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
@@ -28,7 +34,6 @@ function parseFrontmatter(content: string): { name?: string; description?: strin
   let i = 1;
   const frontmatterLines: string[] = [];
 
-  // Collect until next '---'
   for (; i < lines.length; i++) {
     if (lines[i].trim() === '---') {
       i++;
@@ -64,39 +69,59 @@ function toLabelFromId(id: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+export type SkillSource = 'builtin' | 'user';
+
+export interface ExtendedPlaygroundSkill extends PlaygroundSkill {
+  source: SkillSource;
+}
+
+async function loadSkillsFromDir(
+  root: string,
+  source: SkillSource,
+): Promise<ExtendedPlaygroundSkill[]> {
+  const files = await findSkillFiles(root);
+  const cwd = process.cwd();
+  const skills: ExtendedPlaygroundSkill[] = [];
+
+  for (const file of files) {
+    const raw = await fs.readFile(file, 'utf8');
+    const { name, description, body } = parseFrontmatter(raw);
+    const id = name || path.basename(path.dirname(file));
+    const label = toLabelFromId(id);
+    const skillPath = path.relative(cwd, file).split(path.sep).join('/');
+    skills.push({
+      id,
+      label,
+      description: description || '',
+      systemPrompt: body.trim(),
+      skillPath,
+      source,
+    });
+  }
+
+  return skills;
+}
+
 export async function GET() {
   try {
-    const skillsRoot = SKILLS_DIR;
-    const files = await findSkillFiles(skillsRoot);
+    const [builtin, user] = await Promise.all([
+      loadSkillsFromDir(BUILTIN_SKILLS_DIR, 'builtin'),
+      loadSkillsFromDir(USER_SKILLS_DIR, 'user'),
+    ]);
 
-    const skills: PlaygroundSkill[] = [];
-
-    const cwd = process.cwd();
-
-    for (const file of files) {
-      const raw = await fs.readFile(file, 'utf8');
-      const { name, description, body } = parseFrontmatter(raw);
-
-      const id = name || path.basename(path.dirname(file));
-      const label = toLabelFromId(id);
-      const skillPath = path.relative(cwd, file).split(path.sep).join('/');
-
-      skills.push({
-        id,
-        label,
-        description: description || '',
-        systemPrompt: body.trim(),
-        skillPath,
-      });
+    const seen = new Set<string>();
+    const merged: ExtendedPlaygroundSkill[] = [];
+    for (const skill of [...user, ...builtin]) {
+      if (seen.has(skill.id)) continue;
+      seen.add(skill.id);
+      merged.push(skill);
     }
 
-    // Sort for stable ordering by label
-    skills.sort((a, b) => a.label.localeCompare(b.label));
+    merged.sort((a, b) => a.label.localeCompare(b.label));
 
-    return NextResponse.json({ skills });
+    return NextResponse.json({ skills: merged });
   } catch (error) {
     console.error('[Playground] Failed to load skills:', error);
     return NextResponse.json({ skills: [] }, { status: 500 });
   }
 }
-

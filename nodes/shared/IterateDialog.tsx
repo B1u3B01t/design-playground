@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Check, Loader2, Zap } from 'lucide-react';
+import { Check, Loader2, Plus, Zap } from 'lucide-react';
 import { useReactFlow } from '@xyflow/react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../ui/tooltip';
 import { generateIterationPrompt, generateIterationFromIterationPrompt } from '../../registry';
@@ -29,6 +29,8 @@ import {
   ITERATION_PROMPT_COPIED_EVENT,
   COPIED_FEEDBACK_DURATION,
   ITERATION_COUNT_OPTIONS,
+  OPEN_SKILLS_CATALOG_EVENT,
+  SKILLS_CHANGED_EVENT,
   DRAG_GHOST_GAP,
   DRAG_OVERLAY_PADDING_X,
   DRAG_OVERLAY_PADDING_Y,
@@ -351,34 +353,35 @@ export default function IterateDialog({
     }
   }, [models, selectedModel, handleModelChange]);
 
-  // Load available skills when the dialog opens (once)
+  // Load available skills when the dialog opens (once) and whenever skills change
+  const refetchSkills = useCallback(async () => {
+    setIsLoadingSkills(true);
+    try {
+      const response = await fetch('/playground/api/skills');
+      if (!response.ok) return;
+      const data = (await response.json()) as { skills?: PlaygroundSkill[] };
+      if (Array.isArray(data.skills)) {
+        setSkills(data.skills);
+      }
+    } catch {
+      // ignore – inline reference will just have no skill items
+    } finally {
+      setIsLoadingSkills(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!open || skills.length > 0) return;
+    refetchSkills();
+  }, [open, skills.length, refetchSkills]);
 
-    let cancelled = false;
-    const fetchSkills = async () => {
-      setIsLoadingSkills(true);
-      try {
-        const response = await fetch('/playground/api/skills');
-        if (!response.ok) return;
-        const data = (await response.json()) as { skills?: PlaygroundSkill[] };
-        if (!cancelled && Array.isArray(data.skills)) {
-          setSkills(data.skills);
-        }
-      } catch {
-        // ignore – inline reference will just have no skill items
-      } finally {
-        if (!cancelled) {
-          setIsLoadingSkills(false);
-        }
-      }
+  useEffect(() => {
+    const handler = () => {
+      refetchSkills();
     };
-
-    fetchSkills();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, skills.length]);
+    window.addEventListener(SKILLS_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(SKILLS_CHANGED_EVENT, handler);
+  }, [refetchSkills]);
 
   const skillsById = useMemo(() => {
     const map = new Map<string, PlaygroundSkill>();
@@ -1023,6 +1026,17 @@ export default function IterateDialog({
                         ? 'Loading skills…'
                         : 'No skills available.'}
                     </InlineReferenceEmpty>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        window.dispatchEvent(new CustomEvent(OPEN_SKILLS_CATALOG_EVENT));
+                      }}
+                      className="mt-1 flex w-full items-center gap-2 rounded-lg border-t border-stone-100 px-2 py-2 text-[12px] font-medium text-stone-500 hover:bg-stone-50 hover:text-stone-800 transition-colors"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add a skill…
+                    </button>
                   </InlineReferenceGroup>
                 </InlineReferenceContent>
               </InlineReference>

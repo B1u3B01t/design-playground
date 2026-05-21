@@ -52,6 +52,12 @@ export const FIT_COMPONENT_NODES_EVENT = 'playground:fit-component-nodes';
 /** Fired to trigger auto-arrange of canvas nodes */
 export const PLAYGROUND_AUTO_ARRANGE_EVENT = 'PLAYGROUND_AUTO_ARRANGE';
 
+/** Fired to open the Skills catalog modal */
+export const OPEN_SKILLS_CATALOG_EVENT = 'playground:open-skills-catalog';
+
+/** Fired after a skill is added or removed so listeners can refresh */
+export const SKILLS_CHANGED_EVENT = 'playground:skills-changed';
+
 /** Fired when an iteration node's collapse/expand state is toggled */
 export const ITERATION_COLLAPSE_TOGGLE_EVENT = 'playground:iteration-collapse-toggle';
 

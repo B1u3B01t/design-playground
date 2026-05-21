@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
-import { LayoutGrid, Eraser, RefreshCw, X, SlidersVertical, Keyboard, ChevronDown, Copy } from 'lucide-react';
+import { LayoutGrid, Eraser, RefreshCw, X, SlidersVertical, Keyboard, ChevronDown, Copy, Sparkles } from 'lucide-react';
 import { useDevModeStore } from './lib/dev-mode-store';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { getModelIconConfig } from './lib/model-icons';
@@ -20,6 +20,7 @@ import githubDesktopIcon from './assets/github-desktop-icon.png';
 import antigravityIcon from './assets/antigravity-icon.png';
 import {
   PLAYGROUND_AUTO_ARRANGE_EVENT,
+  OPEN_SKILLS_CATALOG_EVENT,
   ITERATION_FETCH_EVENT,
   PLAYGROUND_CLEAR_EVENT,
   GENERATION_START_EVENT,
@@ -402,6 +403,21 @@ export default function PlaygroundHeader({
 
         {/* Right: action icons + presence bubbles */}
         <div className="flex items-center gap-0.5">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent(OPEN_SKILLS_CATALOG_EVENT))}
+                className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
+                aria-label="Skills"
+              >
+                <Sparkles className="w-[18px] h-[18px]" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Skills</p>
+            </TooltipContent>
+          </Tooltip>
+
           <Tooltip>
             <TooltipTrigger asChild>
               <button
