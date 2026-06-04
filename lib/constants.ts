@@ -99,6 +99,9 @@ export const GENERATION_INFO_STORAGE_KEY = 'playground-generation-info';
 /** Key for persisting the add-all queue in sessionStorage */
 export const ADD_ALL_QUEUE_STORAGE_KEY = 'playground-add-all-queue';
 
+/** Key for persisting dev mode toggle */
+export const DEV_MODE_STORAGE_KEY = 'playground-dev-mode';
+
 // ---------------------------------------------------------------------------
 // Timing Constants
 // ---------------------------------------------------------------------------

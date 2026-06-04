@@ -399,7 +399,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
   }, []);
 
   const onNodeDragStop = useCallback(
-    (event: MouseEvent, node: Node) => {
+    (event: React.MouseEvent, node: Node) => {
       if (node.type !== 'pdf') return;
 
       const el = document.elementFromPoint(event.clientX, event.clientY);
@@ -412,11 +412,11 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
       const targetNode = getNode(targetId);
       if (!targetNode || targetNode.type !== 'pdf') return;
 
-      const targetData = targetNode.data as PdfNodeData;
+      const targetData = targetNode.data as unknown as PdfNodeData;
       if (typeof targetData.extractedPage === 'number') return;
 
       const insertIndex = computePageInsertIndex(dropTarget, event.clientY);
-      const sourceData = node.data as PdfNodeData;
+      const sourceData = node.data as unknown as PdfNodeData;
       const targetTotal = getPdfTotalPages(targetData);
       const sourceTotal = getPdfTotalPages(sourceData);
 
@@ -465,7 +465,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
   const onNodeDragStart = useCallback(
     (_event: React.MouseEvent, node: Node) => {
       if (node.type !== 'pdf') return;
-      const sourceData = node.data as PdfNodeData;
+      const sourceData = node.data as unknown as PdfNodeData;
       if (typeof sourceData.extractedPage !== 'number') return;
       const payload = {
         sourceNodeId: node.id,
@@ -648,7 +648,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
         setNodes((nds) =>
           nds.map((n) => {
             if (n.id !== sel.nodeId || n.type !== 'pdf') return n;
-            const pdfData = n.data as PdfNodeData;
+            const pdfData = n.data as unknown as PdfNodeData;
             const drawings = { ...(pdfData.drawings ?? {}) };
             const pageStrokes = drawings[sel.pageKey] ?? [];
             drawings[sel.pageKey] = pageStrokes.filter((s) => s.id !== sel.strokeId);

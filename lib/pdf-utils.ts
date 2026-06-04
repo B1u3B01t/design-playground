@@ -4,11 +4,11 @@ const PDF_WORKER_SRC = '/pdf.worker.min.mjs';
 /** Minimum supersampling factor for canvas render (on top of devicePixelRatio). */
 export const PDF_RENDER_SUPERSAMPLE = 3;
 
-let pdfjsPromise: Promise<typeof import('pdfjs-dist/build/pdf.mjs')> | null = null;
+let pdfjsPromise: Promise<typeof import('pdfjs-dist')> | null = null;
 
 export async function loadPdfJs() {
   if (!pdfjsPromise) {
-    pdfjsPromise = import('pdfjs-dist/build/pdf.mjs').then((pdfjs) => {
+    pdfjsPromise = import('pdfjs-dist').then((pdfjs) => {
       pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_SRC;
       return pdfjs;
     });

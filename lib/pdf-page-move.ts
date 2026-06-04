@@ -19,7 +19,7 @@ export function applyReorderPdfPage(
 ): Node[] {
   const node = nodes.find((n) => n.id === nodeId);
   if (node?.type !== 'pdf') return nodes;
-  const data = node.data as PdfNodeData;
+  const data = node.data as unknown as PdfNodeData;
   const pages = getDisplayPages(data, totalPages);
   const newOrder = insertPageAtIndex(pages, pageNum, insertIndex);
   return nodes.map((n) =>
@@ -46,8 +46,8 @@ export function applyMovePdfPage(
   const targetNode = nodes.find((n) => n.id === targetNodeId);
   if (sourceNode?.type !== 'pdf' || targetNode?.type !== 'pdf') return { nodes };
 
-  const sourceData = sourceNode.data as PdfNodeData;
-  const targetData = targetNode.data as PdfNodeData;
+  const sourceData = sourceNode.data as unknown as PdfNodeData;
+  const targetData = targetNode.data as unknown as PdfNodeData;
   if (typeof targetData.extractedPage === 'number') return { nodes };
   if (sourceData.pdfUrl !== targetData.pdfUrl) return { nodes };
 
@@ -101,8 +101,8 @@ export function applyMergePdfNodes(
   const targetNode = nodes.find((n) => n.id === targetNodeId);
   if (sourceNode?.type !== 'pdf' || targetNode?.type !== 'pdf') return { nodes };
 
-  const sourceData = sourceNode.data as PdfNodeData;
-  const targetData = targetNode.data as PdfNodeData;
+  const sourceData = sourceNode.data as unknown as PdfNodeData;
+  const targetData = targetNode.data as unknown as PdfNodeData;
   if (typeof targetData.extractedPage === 'number') return { nodes };
   if (sourceData.pdfUrl !== targetData.pdfUrl) return { nodes };
 

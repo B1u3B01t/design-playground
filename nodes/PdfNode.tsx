@@ -23,7 +23,7 @@ import {
 import { usePlaygroundPdfDragStore } from '../lib/playground-pdf-drag-store';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 
-export interface PdfNodeData {
+export interface PdfNodeData extends Record<string, unknown> {
   pdfPath: string;
   pdfUrl: string;
   filename: string;
@@ -122,7 +122,6 @@ function PdfPageView({
         const task = page.render({
           canvasContext: ctx,
           viewport,
-          canvas,
           transform,
         });
         renderTask = task;
