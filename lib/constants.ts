@@ -90,18 +90,6 @@ export const ENABLED_MODELS_STORAGE_KEY = 'playground-model-settings';
 /** Key for persisting user keybinding overrides */
 export const KEYBINDINGS_STORAGE_KEY = 'playground-keybindings';
 
-/** Key for persisting the dev-mode toggle (gates Refresh/Clear in the header) */
-export const DEV_MODE_STORAGE_KEY = 'playground-dev-mode';
-
-/** Sidebar drag id for the generated design-system showcase */
-export const DESIGN_SYSTEM_SHOWCASE_ID = 'design-system:showcase';
-
-/** API URL serving raw HTML for the generated design-system showcase */
-export const DESIGN_SYSTEM_SHOWCASE_RAW_URL = '/playground/api/design/preview-showcase?raw=1';
-
-/** Fires after a successful design-system showcase generation */
-export const DESIGN_SYSTEM_GENERATED_EVENT = 'playground:design-system-generated';
-
 /** Key for persisting presence bubbles across page reloads */
 export const PRESENCE_BUBBLES_STORAGE_KEY = 'playground-presence-bubbles';
 
