@@ -3,9 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useReactFlow, useOnViewportChange } from '@xyflow/react';
 import { loadSelectedModel, saveSelectedModel } from '../nodes/shared/IterateDialogParts';
-import { resolveAgentModel } from '../lib/resolve-agent-model';
-import { useModelSettingsStore } from '../lib/model-settings-store';
-import type { ProviderId } from '../lib/providers/types';
 import type { ModelOption } from '../nodes/shared/IterateDialogParts';
 import { flatRegistry } from '../registry';
 import { matchesAction } from '../lib/keybindings';
@@ -45,10 +42,7 @@ export interface CursorChatState {
 
 export function useCursorChat(models: ModelOption[]) {
   const [mode, setMode] = useState<CursorChatMode>('inactive');
-  const [model, setModel] = useState(() => {
-    const provider = useModelSettingsStore.getState().activeProvider as ProviderId;
-    return resolveAgentModel(provider, loadSelectedModel()) ?? 'auto';
-  });
+  const [model, setModel] = useState(() => loadSelectedModel() || 'auto');
   const [targetNode, setTargetNode] = useState<CursorChatTargetNode | null>(null);
   const [flowPosition, setFlowPosition] = useState<{ x: number; y: number } | null>(null);
 

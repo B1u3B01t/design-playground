@@ -11,12 +11,7 @@ import {
   CANVAS_ITERATION_FILENAME_PATTERN,
 } from '../../lib/constants';
 import type { ProviderId } from '../../lib/providers';
-import {
-  spawnAgent,
-  getProviderNotFoundMessage,
-  getProviderDisplayName,
-  resolveAgentModel,
-} from '../../lib/providers';
+import { spawnAgent, getProviderNotFoundMessage, getProviderDisplayName } from '../../lib/providers';
 import { readDesignMd, buildSystemPromptAddon } from '../../lib/design-md-helpers';
 
 /**
@@ -430,37 +425,6 @@ function appendAssistantTextFromJsonlLines(
   return { textChanged: changed, sessionId: discoveredSessionId };
 }
 
-/** Pull a user-facing error from Claude stream-json stdout when stderr is empty. */
-function extractStreamJsonError(lines: string[]): string | null {
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const trimmed = lines[i]?.trim();
-    if (!trimmed?.startsWith('{')) continue;
-    try {
-      const obj = JSON.parse(trimmed) as {
-        type?: string;
-        is_error?: boolean;
-        result?: string;
-        error?: string;
-        message?: { content?: Array<{ type?: string; text?: string }> };
-      };
-      if (obj.type === 'result' && obj.is_error && typeof obj.result === 'string') {
-        return obj.result.trim() || null;
-      }
-      if (obj.type === 'assistant' && obj.error && Array.isArray(obj.message?.content)) {
-        const text = obj.message.content
-          .filter((c) => c.type === 'text' && typeof c.text === 'string')
-          .map((c) => c.text)
-          .join('')
-          .trim();
-        if (text) return text;
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-  return null;
-}
-
 // ---------------------------------------------------------------------------
 // API handlers
 // ---------------------------------------------------------------------------
@@ -498,8 +462,7 @@ export async function POST(req: Request) {
     }
 
     let { prompt } = body;
-    const providerId: ProviderId = body.provider ?? 'cursor';
-    const model = resolveAgentModel(providerId, body.model);
+    const { model } = body;
 
     // If the user has enabled "Use tokens in generation" in the Design System
     // modal, prepend the parsed DESIGN.md as a system-prompt addon. The toggle
@@ -512,6 +475,7 @@ export async function POST(req: Request) {
         prompt = buildSystemPromptAddon(md) + '\n' + prompt;
       }
     }
+    const providerId: ProviderId = body.provider ?? 'cursor';
     const streamJsonForPreview =
       providerId === 'claude-code' && body.claudeDetailedStdout !== false;
     /** Same string the client sends (e.g. `html:checkout`) — must match presence bubbles / SSE consumers. */
@@ -575,7 +539,6 @@ export async function POST(req: Request) {
         startGenerationTimer();
 
         let stderr = '';
-        const stdoutLinesForErrors: string[] = [];
 
         const assistantPreview = { value: '' };
         let claudeSessionId: string | null = null;
@@ -607,9 +570,6 @@ export async function POST(req: Request) {
           stdoutLineBuf += chunk;
           const parts = stdoutLineBuf.split('\n');
           stdoutLineBuf = parts.pop() ?? '';
-          for (const part of parts) {
-            if (part.trim()) stdoutLinesForErrors.push(part);
-          }
           const parsed = appendAssistantTextFromJsonlLines(parts, assistantPreview);
           if (!claudeSessionId && parsed.sessionId) {
             claudeSessionId = parsed.sessionId;
@@ -635,7 +595,6 @@ export async function POST(req: Request) {
         currentProcess.on('close', (code) => {
           clearGenerationTimer();
           if (streamJsonForPreview && stdoutLineBuf.trim().length > 0) {
-            stdoutLinesForErrors.push(stdoutLineBuf);
             const parsed = appendAssistantTextFromJsonlLines([stdoutLineBuf], assistantPreview);
             if (!claudeSessionId && parsed.sessionId) {
               claudeSessionId = parsed.sessionId;
@@ -668,19 +627,10 @@ export async function POST(req: Request) {
               message: 'Generation completed successfully',
             }));
           } else {
-            const streamError = streamJsonForPreview
-              ? extractStreamJsonError(stdoutLinesForErrors)
-              : null;
-            const previewError = assistantPreview.value.trim();
-            const errorMessage =
-              stderr.trim() ||
-              streamError ||
-              previewError ||
-              `${providerName} agent exited with code ${code}`;
             resolve(NextResponse.json(
               {
                 success: false,
-                error: errorMessage,
+                error: stderr || `${providerName} agent exited with code ${code}`,
                 generationId,
                 claudeSessionId,
               },

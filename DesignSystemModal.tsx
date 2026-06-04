@@ -41,7 +41,6 @@ import {
   tonalScale,
   readableTextColor,
   pickSurfaceColor,
-  hashFrontMatter,
   type ParsedDesignSystem,
 } from './lib/parse-design-md';
 
@@ -1460,8 +1459,6 @@ function PreviewSection({
           </div>
         </div>
       </div>
-
-      <PhilosophyShowcase content={content} />
     </div>
   );
 }
@@ -1604,153 +1601,3 @@ function CircleIcon({
 void resolveToken;
 export type { ParsedDesignSystem as _ParsedDesignSystem };
 
-function PhilosophyShowcase({ content }: { content: string }) {
-  const [html, setHtml] = useState<string | null>(null);
-  const [storedHash, setStoredHash] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
-  const [log, setLog] = useState('');
-  const abortRef = useRef<AbortController | null>(null);
-  const currentHash = hashFrontMatter(content);
-  const activeProvider = useModelSettingsStore((s) => s.activeProvider);
-  const enabledModels = useModelSettingsStore(
-    (s) => s.providerState[s.activeProvider]?.enabledModels ?? [],
-  );
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/playground/api/design/preview-showcase', { cache: 'no-store' });
-      const data = (await res.json()) as { exists: boolean; html: string | null; hash: string | null };
-      if (data.exists && data.html) {
-        setHtml(data.html);
-        setStoredHash(data.hash);
-      } else {
-        setHtml(null);
-        setStoredHash(null);
-      }
-    } catch {
-      setHtml(null);
-      setStoredHash(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  const generate = useCallback(async () => {
-    setGenerating(true);
-    setLog('');
-    const abort = new AbortController();
-    abortRef.current = abort;
-    try {
-      const res = await fetch('/playground/api/design/generate-preview-showcase', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: activeProvider,
-          model: enabledModels[0],
-        }),
-        signal: abort.signal,
-      });
-      if (!res.body) {
-        setLog('No response from server.');
-        return;
-      }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        setLog((prev) => prev + decoder.decode(value, { stream: true }));
-      }
-      toast.success('Showcase regenerated');
-      await refresh();
-    } catch (error) {
-      if ((error as Error).name !== 'AbortError') {
-        toast.error('Showcase generation failed');
-        setLog((prev) => prev + `\n[error] ${(error as Error).message}`);
-      }
-    } finally {
-      setGenerating(false);
-      abortRef.current = null;
-    }
-  }, [refresh, activeProvider, enabledModels]);
-
-  const stale = html !== null && storedHash !== null && storedHash !== currentHash;
-
-  return (
-    <div className="mt-10 pt-7 border-t border-stone-200/70">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-baseline gap-2">
-          <span className="text-[10.5px] font-semibold tracking-[0.14em] uppercase text-stone-500">
-            Philosophy in action
-          </span>
-          <span className="text-[11px] text-stone-400">
-            AI-rendered showcase that uses your tokens.
-          </span>
-        </div>
-        {html !== null && (
-          <button
-            onClick={generate}
-            disabled={generating}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-stone-700 bg-white border border-stone-200 hover:bg-stone-100 rounded-lg transition-colors disabled:opacity-50"
-            title="Regenerate showcase"
-          >
-            {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
-            Regenerate
-          </button>
-        )}
-      </div>
-
-      {loading && (
-        <div className="text-stone-400 text-sm flex items-center gap-2 py-6">
-          <Loader2 className="w-4 h-4 animate-spin" /> Loading showcase…
-        </div>
-      )}
-
-      {!loading && html === null && !generating && (
-        <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50/60 px-6 py-10 flex flex-col items-center text-center gap-3">
-          <Sparkles className="w-5 h-5 text-stone-500" />
-          <div className="max-w-md text-[13px] text-stone-600 leading-relaxed">
-            Generate a one-page showcase that turns your design philosophy into stacked vignettes — hero, nav, cards, buttons, form, badges, pricing — all using your live tokens.
-          </div>
-          <button
-            onClick={generate}
-            className="inline-flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-stone-900 hover:bg-black rounded-lg transition-colors"
-          >
-            <Sparkles className="w-4 h-4" />
-            Generate showcase
-          </button>
-        </div>
-      )}
-
-      {generating && (
-        <div className="rounded-2xl border border-stone-200 bg-stone-950 text-stone-100 font-mono text-[11.5px] leading-relaxed px-4 py-3 max-h-72 overflow-auto whitespace-pre-wrap">
-          {log || 'Starting…'}
-        </div>
-      )}
-
-      {!loading && html !== null && !generating && (
-        <>
-          {stale && (
-            <div className="mb-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-[12px] text-amber-900">
-              <AlertCircle className="w-3.5 h-3.5" />
-              Tokens have changed since this showcase was generated — Regenerate to refresh.
-            </div>
-          )}
-          <iframe
-            srcDoc={html}
-            sandbox="allow-same-origin"
-            title="Design philosophy showcase"
-            className="w-full rounded-2xl border border-stone-200 bg-white"
-            style={{ height: 1200 }}
-          />
-        </>
-      )}
-    </div>
-  );
-}

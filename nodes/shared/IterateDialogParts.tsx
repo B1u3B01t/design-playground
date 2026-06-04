@@ -13,8 +13,6 @@ import {
 } from '../../lib/constants';
 import { useModelSettingsStore } from '../../lib/model-settings-store';
 import { getProvider } from '../../lib/providers/registry';
-import { resolveAgentModel } from '../../lib/resolve-agent-model';
-import type { ProviderId } from '../../lib/providers/types';
 
 // Re-export ModelOption for consumers
 export type { ModelOption } from '../../lib/constants';
@@ -51,7 +49,7 @@ export function loadSelectedModel(): string {
       }
     }
 
-    return resolveAgentModel(activeProvider as ProviderId, model) ?? model;
+    return model;
   } catch {
     return '';
   }
