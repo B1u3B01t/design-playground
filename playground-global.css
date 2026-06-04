@@ -717,3 +717,23 @@ body.cursor-chat-cursor-mode .playground-main-view .react-flow__nodesselection-r
 .element-select-mode [data-iframe-overlay] {
   pointer-events: none !important;
 }
+
+/* PDF page canvas — high-res backing store, CSS-downscaled for sharp display */
+.pdf-page-canvas {
+  image-rendering: auto;
+}
+
+.pdf-page-insertion-line {
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #6366f1 12%, #6366f1 88%, transparent);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.35), 0 1px 6px rgba(99, 102, 241, 0.45);
+}
+
+.playground-draw-tool .react-flow__pane {
+  cursor: crosshair;
+}
+
+.playground-draw-tool .react-flow__node {
+  cursor: default;
+}

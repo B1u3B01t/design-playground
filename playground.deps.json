@@ -16,6 +16,7 @@
     "@tailwindcss/typography": "latest",
     "tw-animate-css": "latest",
     "html-to-image": "latest",
+    "pdfjs-dist": "5.4.296",
     "zustand": "latest"
   },
   "requires": [
