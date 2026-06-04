@@ -2,16 +2,12 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef, DragEvent, MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronRight, ChevronDown, ChevronLeft, Plus, Palette, Loader2, RefreshCw, RotateCcw, Frame, FileCode, Component, Trash2 } from 'lucide-react';
+import { ChevronRight, ChevronDown, ChevronLeft, Plus, Loader2, RefreshCw, Frame, FileCode, Component, Trash2 } from 'lucide-react';
 import { registry, RegistryItem, RegistryLeafItem, isGroup, isLeaf } from './registry';
-import { DND_DATA_KEY, HTML_ID_PREFIX, FOCUS_NODE_EVENT, JSX_ID_PREFIX, DELETE_FRAME_EVENT, DESIGN_SYSTEM_SHOWCASE_ID, DESIGN_SYSTEM_GENERATED_EVENT } from './lib/constants';
+import { DND_DATA_KEY, HTML_ID_PREFIX, FOCUS_NODE_EVENT, JSX_ID_PREFIX, DELETE_FRAME_EVENT } from './lib/constants';
 import type { HtmlPageInfo, JsxComponentInfo, ComponentSize } from './lib/constants';
 import type { PendingChild } from './PlaygroundClient';
 import ComponentErrorBoundary from './nodes/ComponentErrorBoundary';
-import DesignSystemModal from './DesignSystemModal';
-import { useModelSettingsStore } from './lib/model-settings-store';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
-import { toast } from 'sonner';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -129,67 +125,6 @@ function ComponentPreviewCard({ item, onPageContextMenu }: ComponentPreviewCardP
       {/* Label — sits OUTSIDE the card, below it, as muted text */}
       <div className="mt-1.5 px-0.5 text-[11px] font-medium text-stone-700 truncate">
         {item.label}
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Design system preview card — draggable thumbnail of the generated showcase
-// ---------------------------------------------------------------------------
-
-function DesignSystemPreviewCard({ html }: { html: string }) {
-  const previewRef = useRef<HTMLDivElement>(null);
-  // The showcase is generated at full desktop width; scale to fit the card.
-  const VIEWPORT_WIDTH = 1280;
-  const VIEWPORT_HEIGHT = 1600;
-  const [scale, setScale] = useState(0.18);
-
-  useEffect(() => {
-    const el = previewRef.current;
-    if (!el) return;
-    const update = () => {
-      const w = el.clientWidth;
-      if (w > 0) setScale(w / VIEWPORT_WIDTH);
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  const handleDragStart = (e: DragEvent<HTMLDivElement>) => {
-    e.dataTransfer.setData(DND_DATA_KEY, DESIGN_SYSTEM_SHOWCASE_ID);
-    e.dataTransfer.setData('text/plain', '');
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  return (
-    <div
-      draggable
-      onDragStart={handleDragStart}
-      className="group cursor-grab active:cursor-grabbing select-none"
-      title="Drag onto canvas"
-    >
-      <div
-        ref={previewRef}
-        className="relative w-full h-[140px] overflow-hidden bg-stone-50 rounded-xl border border-stone-200/70 group-hover:border-stone-300 group-hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-all pointer-events-none"
-      >
-        <div
-          className="absolute top-0 left-0 origin-top-left"
-          style={{
-            width: VIEWPORT_WIDTH,
-            height: VIEWPORT_HEIGHT,
-            transform: `scale(${scale})`,
-          }}
-        >
-          <iframe
-            srcDoc={html}
-            sandbox="allow-same-origin"
-            title="Design system preview"
-            className="w-full h-full border-0 pointer-events-none"
-          />
-        </div>
       </div>
     </div>
   );
@@ -376,14 +311,6 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
   const [jsxComponents, setJsxComponents] = useState<JsxComponentInfo[]>([]);
   const [htmlExpanded, setHtmlExpanded] = useState(true);
   const [isRefreshingHtml, setIsRefreshingHtml] = useState(false);
-  const [designOpen, setDesignOpen] = useState(false);
-  const [designSystemHtml, setDesignSystemHtml] = useState<string | null>(null);
-  const [designSystemExpanded, setDesignSystemExpanded] = useState(true);
-  const [isGeneratingDesignSystem, setIsGeneratingDesignSystem] = useState(false);
-  const activeProvider = useModelSettingsStore((s) => s.activeProvider);
-  const enabledModels = useModelSettingsStore(
-    (s) => s.providerState[s.activeProvider]?.enabledModels ?? [],
-  );
 
   const childrenMap = useMemo(() => buildChildrenMap(registry), []);
 
@@ -414,53 +341,6 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
   }, []);
 
   useEffect(() => { fetchHtmlPages(); }, [fetchHtmlPages]);
-
-  const fetchDesignSystem = useCallback(async () => {
-    try {
-      const res = await fetch('/playground/api/design/preview-showcase', { cache: 'no-store' });
-      if (!res.ok) return;
-      const data = await res.json() as { exists: boolean; html: string | null };
-      setDesignSystemHtml(data.exists && data.html ? data.html : null);
-    } catch { /* ignore */ }
-  }, []);
-
-  useEffect(() => { fetchDesignSystem(); }, [fetchDesignSystem]);
-
-  useEffect(() => {
-    const handler = () => { fetchDesignSystem(); };
-    window.addEventListener(DESIGN_SYSTEM_GENERATED_EVENT, handler);
-    return () => window.removeEventListener(DESIGN_SYSTEM_GENERATED_EVENT, handler);
-  }, [fetchDesignSystem]);
-
-  const regenerateDesignSystem = useCallback(async () => {
-    if (isGeneratingDesignSystem) return;
-    setIsGeneratingDesignSystem(true);
-    try {
-      const res = await fetch('/playground/api/design/generate-preview-showcase', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: activeProvider,
-          model: enabledModels[0],
-        }),
-      });
-      if (res.body) {
-        const reader = res.body.getReader();
-        // Drain the stream — the server returns when generation is done.
-        while (true) {
-          const { done } = await reader.read();
-          if (done) break;
-        }
-      }
-      await fetchDesignSystem();
-      window.dispatchEvent(new CustomEvent(DESIGN_SYSTEM_GENERATED_EVENT));
-      toast.success('Design system regenerated');
-    } catch (error) {
-      toast.error(`Regeneration failed: ${(error as Error).message}`);
-    } finally {
-      setIsGeneratingDesignSystem(false);
-    }
-  }, [isGeneratingDesignSystem, activeProvider, enabledModels, fetchDesignSystem]);
 
   // Context menu state
   type ContextMenuFrame =
@@ -597,13 +477,6 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
         </div>
         <div className="flex items-center gap-0.5">
           <button
-            onClick={() => setDesignOpen(true)}
-            className="flex items-center justify-center w-[24px] h-[24px] rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
-            aria-label="Design system"
-          >
-            <Palette className="w-[14px] h-[14px]" />
-          </button>
-          <button
             onClick={onOpenDiscovery}
             className="flex items-center justify-center w-[24px] h-[24px] rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
             aria-label="Add components"
@@ -633,51 +506,6 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
 
       {/* Scrollable area for both HTML pages and component tree */}
       <div className="flex-1 overflow-y-auto px-1.5 min-h-0 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-stone-300 [&::-webkit-scrollbar-thumb]:rounded">
-        {/* Design system section — generated showcase, draggable to canvas */}
-        {designSystemHtml && (!search.trim() || 'design system'.includes(search.toLowerCase())) && (
-          <div className="mb-2">
-            <div className="flex items-center justify-between">
-              <button
-                onClick={() => setDesignSystemExpanded(!designSystemExpanded)}
-                className="flex items-center gap-1.5 px-2 py-2 text-left text-[11px] font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-2xl transition-colors flex-1"
-              >
-                {designSystemExpanded ? (
-                  <ChevronDown className="w-3.5 h-3.5 shrink-0" />
-                ) : (
-                  <ChevronRight className="w-3.5 h-3.5 shrink-0" />
-                )}
-                <span className="uppercase tracking-[0.08em] text-[10px]">Design system</span>
-              </button>
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={regenerateDesignSystem}
-                      disabled={isGeneratingDesignSystem}
-                      className="p-1 rounded text-stone-400 hover:text-stone-600 transition-colors disabled:opacity-50"
-                      aria-label="Regenerate"
-                    >
-                      {isGeneratingDesignSystem ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : (
-                        <RotateCcw className="w-3 h-3" />
-                      )}
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    <p>Regenerate</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            {designSystemExpanded && (
-              <div className="grid grid-cols-1 gap-y-4 px-2 pt-2 pb-4">
-                <DesignSystemPreviewCard html={designSystemHtml} />
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Frames section — HTML pages and on-canvas JSX components */}
         {filteredFrames.length > 0 && (
           <div className="mb-1">
@@ -801,8 +629,6 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
         </div>,
         document.body,
       )}
-
-      <DesignSystemModal open={designOpen} onOpenChange={setDesignOpen} />
     </aside>
   );
 }

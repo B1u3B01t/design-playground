@@ -14,6 +14,7 @@ import {
   Node,
   Edge,
   SelectionMode,
+  type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { TooltipProvider } from './ui/tooltip';
@@ -28,12 +29,28 @@ import {
   AlertDialogTitle,
 } from './ui/alert-dialog';
 import { getProviderFields } from './lib/generation-body';
+import { resolveAgentModel } from './lib/resolve-agent-model';
+import type { ProviderId } from './lib/providers/types';
+import PlaygroundCanvasDrawLayer from './PlaygroundCanvasDrawLayer';
+import { usePlaygroundDrawStore } from './lib/playground-draw-store';
+import { createNewStroke, type DrawPenKind, type DrawStroke } from './lib/draw-types';
+import { Highlighter, Pencil } from 'lucide-react';
 
 import ComponentNode from './nodes/ComponentNode';
 import IterationNode from './nodes/IterationNode';
 import SkeletonIterationNode from './nodes/SkeletonIterationNode';
 import DragGhostNode from './nodes/DragGhostNode';
 import ImageNode from './nodes/ImageNode';
+import PdfNode, { type PdfNodeData } from './nodes/PdfNode';
+import { hitTestStrokes } from './lib/draw-hit-test';
+import { computePageInsertIndex } from './lib/pdf-page-order';
+import {
+  applyMergePdfNodes,
+  applyMovePdfPage,
+  applyReorderPdfPage,
+} from './lib/pdf-page-move';
+import { usePdfPageGlobalDrag } from './hooks/usePdfPageGlobalDrag';
+import { usePlaygroundPdfDragStore } from './lib/playground-pdf-drag-store';
 import TextNode from './nodes/TextNode';
 import { matchesAction } from './lib/keybindings';
 import {
@@ -102,7 +119,6 @@ import {
   DND_DATA_KEY,
   HTML_ID_PREFIX,
   JSX_ID_PREFIX,
-  DESIGN_SYSTEM_SHOWCASE_ID,
   JSX_COMPONENT_ADDED_EVENT,
   EDIT_COMPLETE_EVENT,
   CANVAS_MAX_ZOOM,
@@ -144,6 +160,7 @@ const nodeTypes = {
   skeleton: SkeletonIterationNode,
   'drag-ghost': DragGhostNode,
   image: ImageNode,
+  pdf: PdfNode,
   text: TextNode,
 };
 
@@ -193,6 +210,8 @@ interface CanvasState {
   generationInfo?: GenerationInfo | null;
   /** Persisted viewport (pan/zoom) */
   viewport?: { x: number; y: number; zoom: number };
+  /** Freehand strokes in flow coordinates on the canvas */
+  canvasDrawings?: DrawStroke[];
 }
 
 function loadCanvasState(): CanvasState | null {
@@ -230,6 +249,7 @@ function saveCanvasState(
   collapsedNodeIds: string[],
   generationInfo?: GenerationInfo | null,
   viewport?: { x: number; y: number; zoom: number },
+  canvasDrawings?: DrawStroke[],
 ) {
   if (typeof window === 'undefined') return;
   try {
@@ -238,6 +258,7 @@ function saveCanvasState(
       // Only persist generationInfo when skeletons are present
       generationInfo: nodes.some(n => n.type === 'skeleton') ? generationInfo : null,
       viewport,
+      canvasDrawings,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (e) {
@@ -320,9 +341,19 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
   const [creatingPage, setCreatingPage] = useState(false);
   const newPageInputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Canvas tool mode: 'select' is default pointer, 'text' is click-to-place text
-  const [activeTool, setActiveTool] = useState<'select' | 'text'>('select');
+  // Canvas tool mode: 'select' is default pointer, 'text' is click-to-place text, 'draw' is freehand ink
+  const [activeTool, setActiveTool] = useState<'select' | 'text' | 'draw'>('select');
+  const [canvasDrawings, setCanvasDrawings] = useState<DrawStroke[]>(
+    initialState?.canvasDrawings ?? [],
+  );
+  const canvasDrawingsRef = useRef<DrawStroke[]>(initialState?.canvasDrawings ?? []);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const setDrawToolActive = usePlaygroundDrawStore((s) => s.setDrawToolActive);
+  const setStrokeSelectEnabled = usePlaygroundDrawStore((s) => s.setStrokeSelectEnabled);
+  const setStrokeSelection = usePlaygroundDrawStore((s) => s.setStrokeSelection);
+  const drawPenKind = usePlaygroundDrawStore((s) => s.drawPenKind);
+  const setDrawPenKind = usePlaygroundDrawStore((s) => s.setDrawPenKind);
+  const strokeSelection = usePlaygroundDrawStore((s) => s.strokeSelection);
 
   // Delete cascade/reparent dialog
   const [deleteDialogNode, setDeleteDialogNode] = useState<Node | null>(null);
@@ -355,7 +386,112 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialState?.nodes || []);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialState?.edges || []);
-  const { screenToFlowPosition, fitView, setCenter, getViewport } = useReactFlow();
+  const { screenToFlowPosition, fitView, setCenter, getViewport, getNode } = useReactFlow();
+
+  const getPdfTotalPages = useCallback((pdfData: PdfNodeData): number => {
+    if (pdfData.totalPages) return pdfData.totalPages;
+    const nums = [
+      ...(pdfData.pageOrder ?? []),
+      ...(pdfData.hiddenPages ?? []),
+      ...(typeof pdfData.extractedPage === 'number' ? [pdfData.extractedPage] : []),
+    ];
+    return Math.max(1, ...nums, 1);
+  }, []);
+
+  const onNodeDragStop = useCallback(
+    (event: MouseEvent, node: Node) => {
+      if (node.type !== 'pdf') return;
+
+      const el = document.elementFromPoint(event.clientX, event.clientY);
+      const dropTarget = el?.closest('[data-pdf-drop-target]') as HTMLElement | null;
+      if (!dropTarget) return;
+
+      const targetId = dropTarget.getAttribute('data-pdf-node-id');
+      if (!targetId) return;
+
+      const targetNode = getNode(targetId);
+      if (!targetNode || targetNode.type !== 'pdf') return;
+
+      const targetData = targetNode.data as PdfNodeData;
+      if (typeof targetData.extractedPage === 'number') return;
+
+      const insertIndex = computePageInsertIndex(dropTarget, event.clientY);
+      const sourceData = node.data as PdfNodeData;
+      const targetTotal = getPdfTotalPages(targetData);
+      const sourceTotal = getPdfTotalPages(sourceData);
+
+      if (typeof sourceData.extractedPage === 'number') {
+        const storePayload = usePlaygroundPdfDragStore.getState().payload;
+        if (!storePayload) return;
+      }
+
+      setNodes((nds) => {
+        if (typeof sourceData.extractedPage === 'number') {
+          if (node.id === targetId) {
+            return applyReorderPdfPage(
+              nds,
+              targetId,
+              sourceData.extractedPage,
+              insertIndex,
+              targetTotal,
+            );
+          }
+          return applyMovePdfPage(
+            nds,
+            node.id,
+            targetId,
+            sourceData.extractedPage,
+            insertIndex,
+            targetTotal,
+          ).nodes;
+        }
+        if (node.id === targetId) return nds;
+        return applyMergePdfNodes(
+          nds,
+          node.id,
+          targetId,
+          insertIndex,
+          sourceTotal,
+          targetTotal,
+        ).nodes;
+      });
+      usePlaygroundPdfDragStore.getState().clear();
+    },
+    [getNode, getPdfTotalPages, setNodes],
+  );
+
+  usePdfPageGlobalDrag(setNodes, getNode);
+
+  const onNodeDragStart = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      if (node.type !== 'pdf') return;
+      const sourceData = node.data as PdfNodeData;
+      if (typeof sourceData.extractedPage !== 'number') return;
+      const payload = {
+        sourceNodeId: node.id,
+        pageNum: sourceData.extractedPage,
+        pdfPath: sourceData.pdfPath,
+        pdfUrl: sourceData.pdfUrl,
+        filename: sourceData.filename,
+        originalName: sourceData.originalName,
+      };
+      usePlaygroundPdfDragStore.getState().setPayload(payload);
+    },
+    [],
+  );
+
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      if (usePlaygroundDrawStore.getState().strokeSelection) {
+        const withoutRemove = changes.filter((c) => c.type !== 'remove');
+        if (withoutRemove.length === 0) return;
+        onNodesChange(withoutRemove);
+        return;
+      }
+      onNodesChange(changes);
+    },
+    [onNodesChange],
+  );
 
   // Running timer during generation + safety timeout for orphaned skeletons
   useEffect(() => {
@@ -478,19 +614,176 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
     knownIterationsRef.current = knownIterations;
   }, [knownIterations]);
 
+  useEffect(() => {
+    canvasDrawingsRef.current = canvasDrawings;
+  }, [canvasDrawings]);
+
+  useEffect(() => {
+    setDrawToolActive(activeTool === 'draw');
+    setStrokeSelectEnabled(activeTool === 'select');
+    if (activeTool === 'draw') setStrokeSelection(null);
+  }, [activeTool, setDrawToolActive, setStrokeSelectEnabled, setStrokeSelection]);
+
+  const CANVAS_DRAW_EXTENT = 8000;
+
+  // Delete selected pen stroke with Backspace / Delete
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const active = document.activeElement;
+      if (active) {
+        const tag = active.tagName.toLowerCase();
+        if (tag === 'input' || tag === 'textarea') return;
+        if ((active as HTMLElement).isContentEditable) return;
+        if (active.closest('[role="dialog"]') || active.closest('[data-radix-popper-content-wrapper]')) return;
+      }
+      const sel = usePlaygroundDrawStore.getState().strokeSelection;
+      if (!sel) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      if (sel.scope === 'canvas') {
+        setCanvasDrawings((prev) => prev.filter((s) => s.id !== sel.strokeId));
+      } else {
+        setNodes((nds) =>
+          nds.map((n) => {
+            if (n.id !== sel.nodeId || n.type !== 'pdf') return n;
+            const pdfData = n.data as PdfNodeData;
+            const drawings = { ...(pdfData.drawings ?? {}) };
+            const pageStrokes = drawings[sel.pageKey] ?? [];
+            drawings[sel.pageKey] = pageStrokes.filter((s) => s.id !== sel.strokeId);
+            return { ...n, data: { ...pdfData, drawings } };
+          }),
+        );
+      }
+      setStrokeSelection(null);
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [setNodes, setStrokeSelection]);
+
+  // Select canvas ink strokes in select mode (complements path hit targets)
+  useEffect(() => {
+    if (activeTool !== 'select') return;
+    const wrapper = reactFlowWrapper.current;
+    if (!wrapper) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0 || canvasDrawingsRef.current.length === 0) return;
+      if (e.target instanceof Element && e.target.closest('[data-canvas-draw-stroke]')) return;
+      if (e.target instanceof Element && e.target.closest('[data-pdf-draw-layer]')) return;
+      if (e.target instanceof Element && e.target.closest('.react-flow__node')) return;
+      const pane = wrapper.querySelector('.react-flow__pane');
+      if (!pane?.contains(e.target as globalThis.Node)) return;
+
+      const pt = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      const { zoom } = getViewport();
+      const hit = hitTestStrokes(
+        canvasDrawingsRef.current,
+        pt.x,
+        pt.y,
+        CANVAS_DRAW_EXTENT,
+        CANVAS_DRAW_EXTENT,
+        false,
+        12 / zoom,
+      );
+      if (hit) {
+        e.stopPropagation();
+        setStrokeSelection({ scope: 'canvas', strokeId: hit });
+      }
+    };
+
+    wrapper.addEventListener('pointerdown', onPointerDown, true);
+    return () => wrapper.removeEventListener('pointerdown', onPointerDown, true);
+  }, [activeTool, screenToFlowPosition, getViewport, setStrokeSelection]);
+
   // Save to localStorage whenever nodes or edges change
   useEffect(() => {
-    saveCanvasState(nodes, edges, nodeIdCounterRef.current, knownIterations, Array.from(collapsedNodeIds), generationInfoRef.current, getViewport());
-  }, [nodes, edges, knownIterations, collapsedNodeIds, getViewport]);
+    saveCanvasState(
+      nodes,
+      edges,
+      nodeIdCounterRef.current,
+      knownIterations,
+      Array.from(collapsedNodeIds),
+      generationInfoRef.current,
+      getViewport(),
+      canvasDrawingsRef.current,
+    );
+  }, [nodes, edges, knownIterations, collapsedNodeIds, canvasDrawings, getViewport]);
 
   // Save viewport on page unload (captures pan/zoom changes that don't trigger node updates)
   useEffect(() => {
     const handler = () => {
-      saveCanvasState(nodesRef.current, edges, nodeIdCounterRef.current, knownIterationsRef.current, Array.from(collapsedNodeIdsRef.current), generationInfoRef.current, getViewport());
+      saveCanvasState(
+        nodesRef.current,
+        edges,
+        nodeIdCounterRef.current,
+        knownIterationsRef.current,
+        Array.from(collapsedNodeIdsRef.current),
+        generationInfoRef.current,
+        getViewport(),
+        canvasDrawingsRef.current,
+      );
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [edges, getViewport]);
+
+  // Freehand drawing on empty canvas (PDF pages use DrawSurface inside the node)
+  useEffect(() => {
+    if (activeTool !== 'draw') return;
+
+    const wrapper = reactFlowWrapper.current;
+    if (!wrapper) return;
+
+    let currentStroke: DrawStroke | null = null;
+    let drawing = false;
+
+    const isPdfDrawTarget = (target: EventTarget | null) =>
+      target instanceof Element && !!target.closest('[data-pdf-draw-layer]');
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0 || isPdfDrawTarget(e.target)) return;
+      const pane = wrapper.querySelector('.react-flow__pane');
+      if (!pane?.contains(e.target as globalThis.Node)) return;
+      if ((e.target as Element).closest('.react-flow__node')) return;
+
+      drawing = true;
+      const pt = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      const kind = usePlaygroundDrawStore.getState().drawPenKind;
+      currentStroke = createNewStroke(kind, pt);
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (!drawing || !currentStroke) return;
+      const pt = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      const last = currentStroke.points.at(-1);
+      if (last) {
+        const dx = pt.x - last.x;
+        const dy = pt.y - last.y;
+        if (dx * dx + dy * dy < 4) return;
+      }
+      currentStroke = { ...currentStroke, points: [...currentStroke.points, pt] };
+    };
+
+    const onPointerUp = () => {
+      if (!drawing || !currentStroke) return;
+      if (currentStroke.points.length > 1) {
+        setCanvasDrawings((prev) => [...prev, currentStroke!]);
+      }
+      drawing = false;
+      currentStroke = null;
+    };
+
+    wrapper.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    return () => {
+      wrapper.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+  }, [activeTool, screenToFlowPosition]);
 
   // Find parent node for a given component (reads from ref to avoid stale closure)
   const findParentNode = useCallback((componentName: string, parentId?: string): Node | undefined => {
@@ -1801,11 +2094,12 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
     if (isGeneratingRef.current) {
       generationQueueRef.current.push(payload);
       const queuePf = getProviderFields();
+      const queueProvider = (queuePf.provider ?? 'cursor') as ProviderId;
       window.dispatchEvent(
         new CustomEvent<GenerationQueuedPayload>(GENERATION_QUEUED_EVENT, {
           detail: {
             componentId: payload.targetComponentId || 'cursor-chat-freeform',
-            model: payload.model || 'auto',
+            model: resolveAgentModel(queueProvider, payload.model) ?? 'auto',
             provider: queuePf.provider as GenerationQueuedPayload['provider'],
             flowPosition: payload.canvasPosition ?? null,
           },
@@ -1901,6 +2195,8 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
       });
 
       const editPf = getProviderFields();
+      const editProvider = (editPf.provider ?? 'cursor') as ProviderId;
+      const editResolvedModel = resolveAgentModel(editProvider, payload.model);
       // Dispatch GENERATION_START_EVENT so the presence bubble appears
       window.dispatchEvent(
         new CustomEvent<GenerationStartPayload>(GENERATION_START_EVENT, {
@@ -1909,7 +2205,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
             componentName: editComponentName,
             parentNodeId: payload.targetNodeId,
             iterationCount: 0,
-            model: payload.model || undefined,
+            model: editResolvedModel,
             provider: editPf.provider as GenerationStartPayload['provider'],
             flowPosition: payload.canvasPosition,
             editMode: true,
@@ -1928,7 +2224,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
           body: JSON.stringify({
             prompt,
             componentId: editComponentId,
-            model: payload.model || undefined,
+            model: editResolvedModel,
             ...getProviderFields(),
             ...(isHtmlEdit ? { htmlFolder: payload.htmlPageSlug } : {}),
             ...(isJsxEdit && payload.jsxFile ? { jsxFile: payload.jsxFile } : {}),
@@ -1980,6 +2276,10 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
       targetType,
       sourceFilename,
     } = payload;
+
+    const canvasGenPfEarly = getProviderFields();
+    const genProvider = (canvasGenPfEarly.provider ?? 'cursor') as ProviderId;
+    const resolvedModel = resolveAgentModel(genProvider, payloadModel);
 
     // Combine skill prompts (raw mode bypasses all prompt composition)
     let combinedSkillPrompt: string | undefined;
@@ -2228,7 +2528,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
             componentName,
             parentNodeId: targetNodeId,
             iterationCount,
-            model: payloadModel || undefined,
+            model: resolvedModel,
             provider: canvasGenPf.provider as GenerationStartPayload['provider'],
             flowPosition: payload.canvasPosition,
             ...(isHtmlTarget ? { renderMode: 'html' as const, htmlFolder: payload.htmlPageSlug } : {}),
@@ -2248,7 +2548,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
             prompt,
             componentId,
             iterationCount,
-            model: payloadModel || undefined,
+            model: resolvedModel,
             ...canvasGenPf,
             ...(isHtmlTarget ? { htmlFolder: payload.htmlPageSlug } : {}),
             ...(isJsxTarget && payload.jsxFile ? { jsxFile: payload.jsxFile } : {}),
@@ -2301,7 +2601,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
             componentName: 'Freeform',
             parentNodeId: '',
             iterationCount: 0,
-            model: payloadModel || 'auto',
+            model: resolvedModel,
             provider: canvasGenPf.provider as GenerationStartPayload['provider'],
             flowPosition: payload.canvasPosition ?? undefined,
           },
@@ -2331,7 +2631,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
             prompt: freeformPrompt,
             componentId: 'cursor-chat-freeform',
             iterationCount: 0,
-            model: payloadModel || undefined,
+            model: resolvedModel,
             ...canvasGenPf,
           }),
         });
@@ -2491,6 +2791,50 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
           return;
         }
 
+        // Check for PDF file drops
+        const pdfFiles = Array.from(files).filter(
+          (f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name),
+        );
+        if (pdfFiles.length > 0) {
+          const position = screenToFlowPosition({
+            x: event.clientX,
+            y: event.clientY,
+          });
+          pdfFiles.forEach((file, idx) => {
+            const reader = new FileReader();
+            reader.onload = async () => {
+              const base64 = reader.result as string;
+              try {
+                const res = await fetch('/playground/api/pdfs', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ pdfBase64: base64, originalName: file.name }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                  const newNode: Node = {
+                    id: getNodeId(),
+                    type: 'pdf',
+                    position: { x: position.x + idx * 420, y: position.y },
+                    style: { width: 480, height: 640 },
+                    data: {
+                      pdfPath: data.path,
+                      pdfUrl: data.url,
+                      filename: data.filename,
+                      originalName: file.name,
+                    },
+                  };
+                  setNodes((nds) => nds.concat(newNode));
+                }
+              } catch (err) {
+                console.error('[Playground] PDF upload failed:', err);
+              }
+            };
+            reader.readAsDataURL(file);
+          });
+          return;
+        }
+
         // Check for HTML file drops
         const htmlFiles = Array.from(files).filter((f) =>
           /\.(html?|htm)$/i.test(f.name)
@@ -2577,7 +2921,6 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
 
       const isHtml = componentId.startsWith(HTML_ID_PREFIX);
       const isJsxFrame = componentId.startsWith(JSX_ID_PREFIX);
-      const isDesignSystem = componentId === DESIGN_SYSTEM_SHOWCASE_ID;
       const parentNodeId = getNodeId();
       const newNode: Node = {
         id: parentNodeId,
@@ -2588,9 +2931,6 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
           ...(isHtml ? {
             renderMode: 'html' as const,
             htmlFolder: componentId.slice(HTML_ID_PREFIX.length),
-          } : {}),
-          ...(isDesignSystem ? {
-            renderMode: 'design-system' as const,
           } : {}),
         },
       };
@@ -2725,6 +3065,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
   const handlePaneClick = useCallback((event: React.MouseEvent) => {
     setContextMenu(null);
     useInteractiveNodeStore.getState().setInteractiveNodeId(null);
+    setStrokeSelection(null);
 
     if (activeTool === 'text') {
       const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
@@ -2739,7 +3080,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
       setNodes((nds) => nds.map((n) => ({ ...n, selected: false })).concat(newNode));
       setActiveTool('select');
     }
-  }, [activeTool, screenToFlowPosition, getNodeId, setNodes]);
+  }, [activeTool, screenToFlowPosition, getNodeId, setNodes, setStrokeSelection]);
 
   // Right-click context menu on canvas pane
   const handlePaneContextMenu = useCallback((event: MouseEvent | React.MouseEvent) => {
@@ -3282,6 +3623,8 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
 
   // Handle node deletion - check for children first
   const onNodesDelete = useCallback(async (deletedNodes: Node[]) => {
+    if (usePlaygroundDrawStore.getState().strokeSelection) return;
+
     for (const node of deletedNodes) {
       if (node.type === 'image' && node.data.filename) {
         try {
@@ -3864,6 +4207,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
     setEdges([]);
     setKnownIterations([]);
     setCollapsedNodeIds(new Set());
+    setCanvasDrawings([]);
 
     localStorage.removeItem(STORAGE_KEY);
 
@@ -3929,40 +4273,73 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
     window.dispatchEvent(new CustomEvent('playground:toolbar-activate-chat'));
   }, []);
 
-  // Escape or V key resets to select mode
+  const toggleDrawPenKind = useCallback(
+    (kind: DrawPenKind) => {
+      if (activeTool === 'draw' && drawPenKind === kind) {
+        setActiveTool('select');
+      } else {
+        setDrawPenKind(kind);
+        setActiveTool('draw');
+      }
+    },
+    [activeTool, drawPenKind, setDrawPenKind],
+  );
+
+  // Tool shortcuts: V select, P pen, H highlighter, Escape leaves draw/text
   useEffect(() => {
+    const isTypingTarget = () => {
+      const active = document.activeElement;
+      if (!active) return false;
+      const tag = active.tagName.toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return true;
+      if ((active as HTMLElement).isContentEditable) return true;
+      if (active.closest('[role="dialog"]') || active.closest('[data-radix-popper-content-wrapper]')) return true;
+      return false;
+    };
+
     const handler = (e: KeyboardEvent) => {
-      if (activeTool !== 'select' && (e.key === 'Escape' || e.key === 'v' || e.key === 'V')) {
-        const active = document.activeElement;
-        if (active) {
-          const tag = active.tagName.toLowerCase();
-          if (tag === 'input' || tag === 'textarea') return;
-          if ((active as HTMLElement).isContentEditable) return;
-          if (active.closest('[role="dialog"]') || active.closest('[data-radix-popper-content-wrapper]')) return;
-        }
+      if (isTypingTarget()) return;
+
+      if (e.key === 'v' || e.key === 'V') {
+        setActiveTool('select');
+        return;
+      }
+      if (e.key === 'p' || e.key === 'P') {
+        e.preventDefault();
+        toggleDrawPenKind('pen');
+        return;
+      }
+      if (e.key === 'h' || e.key === 'H') {
+        e.preventDefault();
+        toggleDrawPenKind('highlight');
+        return;
+      }
+      if (activeTool !== 'select' && e.key === 'Escape') {
         setActiveTool('select');
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [activeTool]);
+  }, [activeTool, toggleDrawPenKind]);
 
   return (
     <TooltipProvider>
       <div
         ref={reactFlowWrapper}
-        className={`w-full h-full${activeTool === 'text' ? ' playground-text-tool' : ''}`}
+        className={`w-full h-full${activeTool === 'text' ? ' playground-text-tool' : ''}${activeTool === 'draw' ? ' playground-draw-tool' : ''}`}
       >
         {/* XY Flow reads pane fill from `--xy-background-color`; Tailwind bg-* often loses to `.react-flow` in the cascade. */}
         <ReactFlow
           nodes={visibleNodes}
           edges={[]}
-          onNodesChange={onNodesChange}
+          onNodesChange={handleNodesChange}
           onEdgesChange={onEdgesChange}
           onNodesDelete={onNodesDelete}
           onConnect={onConnect}
           onDragOver={onDragOver}
           onDrop={onDrop}
+          onNodeDragStart={onNodeDragStart}
+          onNodeDragStop={onNodeDragStop}
           onPaneClick={handlePaneClick}
           onPaneContextMenu={handlePaneContextMenu}
           onNodeContextMenu={handleNodeContextMenu}
@@ -3978,15 +4355,17 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
           zoomOnScroll={false}
           zoomOnPinch
           panOnDrag={false}
-          selectionOnDrag
+          selectionOnDrag={activeTool === 'select'}
           selectionMode={SelectionMode.Partial}
-          nodesDraggable
+          nodesDraggable={activeTool !== 'draw'}
           nodesConnectable={false}
           elementsSelectable
+          deleteKeyCode={strokeSelection ? null : ['Delete', 'Backspace']}
         >
           {/* <Controls
             className="!bg-white !border-stone-200 !rounded-lg !shadow-sm [&>button]:!bg-white [&>button]:!border-stone-200 [&>button]:!text-stone-600 [&>button:hover]:!bg-stone-50"
           /> */}
+        <PlaygroundCanvasDrawLayer strokes={canvasDrawings} />
         <Background
           variant={BackgroundVariant.Dots}
           gap={dynamicBg.gap}
@@ -4049,6 +4428,32 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
             <path d="M5 3l14 9-7 1-4 7z" />
           </svg>
+        </button>
+
+        {/* Draw tool — icon shows pen vs highlighter; click toggles active kind off */}
+        <button
+          onClick={() => toggleDrawPenKind(drawPenKind)}
+          className={`flex items-center justify-center w-9 h-9 rounded-xl transition-colors ${
+            activeTool === 'draw'
+              ? drawPenKind === 'highlight'
+                ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200/80'
+                : 'bg-stone-100 text-stone-900'
+              : drawPenKind === 'highlight'
+                ? 'text-amber-600 hover:bg-amber-50/60'
+                : 'text-stone-500 hover:text-stone-800 hover:bg-stone-50'
+          }`}
+          aria-label={drawPenKind === 'highlight' ? 'Highlighter' : 'Pen'}
+          title={
+            drawPenKind === 'highlight'
+              ? 'Highlighter (H) — click or H to toggle'
+              : 'Pen (P) — click or P to toggle'
+          }
+        >
+          {drawPenKind === 'highlight' ? (
+            <Highlighter className="w-[18px] h-[18px]" strokeWidth={1.75} />
+          ) : (
+            <Pencil className="w-[18px] h-[18px]" strokeWidth={1.75} />
+          )}
         </button>
 
         {/* Text tool */}

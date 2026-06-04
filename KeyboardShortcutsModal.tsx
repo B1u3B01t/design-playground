@@ -117,7 +117,7 @@ export default function KeyboardShortcutsModal({ open, onOpenChange }: KeyboardS
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Keyboard Shortcuts</DialogTitle>
           <DialogDescription>
@@ -125,7 +125,7 @@ export default function KeyboardShortcutsModal({ open, onOpenChange }: KeyboardS
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-2 gap-x-6 gap-y-3 mt-1">
+        <div className="flex flex-col gap-3 mt-1">
           {CATEGORIES.map((category) => {
             const bindings = DEFAULT_KEYBINDINGS.filter((d) => d.category === category);
             if (bindings.length === 0) return null;

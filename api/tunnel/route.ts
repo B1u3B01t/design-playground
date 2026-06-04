@@ -1,189 +1,202 @@
 import { NextResponse } from 'next/server';
+import { spawn, type ChildProcess } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import type { Listener } from '@ngrok/ngrok';
 
-// ── Persisted state file (HMR + cross-restart URL recovery) ─────────────────
-const STATE_FILE = path.join(os.tmpdir(), 'aiverse-tunnel.json');
+// ── PID file — survives HMR module reloads ──────────────────────────────────
+const PID_FILE = path.join(os.tmpdir(), 'aiverse-tunnel.pid');
+const URL_FILE = path.join(os.tmpdir(), 'aiverse-tunnel.url');
+const PORT_FILE = path.join(os.tmpdir(), 'aiverse-tunnel.port');
 
-interface PersistedState {
-  pid: number;
-  url: string;
-  port: number;
-  source: 'shared' | 'self';
-}
-
-function readState(): PersistedState | null {
+function readPidFile(): number | null {
   try {
-    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) as PersistedState;
-  } catch { return null; }
-}
-
-function writeState(s: PersistedState) {
-  fs.writeFileSync(STATE_FILE, JSON.stringify(s), 'utf8');
-}
-
-function clearStateFile() {
-  try { fs.unlinkSync(STATE_FILE); } catch { /* already gone */ }
-}
-
-// ── Module singleton — pinned to globalThis so HMR doesn't drop the Listener ─
-interface CachedTunnel {
-  url: string;
-  port: number;
-  source: 'shared' | 'self';
-  /** null when source === 'shared' (the agent owns the listener). */
-  listener: Listener | null;
-}
-
-const G = globalThis as unknown as { __aiverseTunnel?: CachedTunnel };
-
-function getCached(): CachedTunnel | null { return G.__aiverseTunnel ?? null; }
-function setCached(t: CachedTunnel | null) {
-  if (t) G.__aiverseTunnel = t;
-  else delete G.__aiverseTunnel;
-}
-
-// Drop any state file left by a previous Node process — the ngrok session
-// from that process is dead, so its URL is meaningless to us now.
-(function reconcileOnLoad() {
-  const s = readState();
-  if (s && s.pid !== process.pid) clearStateFile();
-})();
-
-// ── Host-agent rendezvous (the Playground Electron app writes this file) ───
-// The @ngrok/ngrok Node SDK ignores `name` and `web_addr`, so the standard
-// :4040 inspector isn't available. The host instead drops a JSON file with
-// its tunnel URL + pid; we read it and verify the owner is alive.
-const RENDEZVOUS_FILE = path.join(os.tmpdir(), 'playground-app-tunnel.json');
-
-interface Rendezvous {
-  agent: 'playground-app';
-  pid: number;
-  port: number;
-  url: string;
-}
-
-function readRendezvous(): Rendezvous | null {
-  try {
-    const raw = fs.readFileSync(RENDEZVOUS_FILE, 'utf8');
-    const parsed = JSON.parse(raw) as Partial<Rendezvous>;
-    if (
-      parsed.agent !== 'playground-app' ||
-      typeof parsed.pid !== 'number' ||
-      typeof parsed.port !== 'number' ||
-      typeof parsed.url !== 'string'
-    ) {
-      return null;
-    }
-    try {
-      process.kill(parsed.pid, 0);
-    } catch {
-      return null;
-    }
-    return parsed as Rendezvous;
+    const raw = fs.readFileSync(PID_FILE, 'utf8').trim();
+    const pid = parseInt(raw, 10);
+    return isNaN(pid) ? null : pid;
   } catch {
     return null;
   }
 }
 
-// ── Self-spawn via the SDK ─────────────────────────────────────────────────
-async function startSelfTunnel(port: number): Promise<{ url: string; listener: Listener }> {
-  const ngrok = await import('@ngrok/ngrok');
-  const listener = await ngrok.forward({
-    addr: port,
-    authtoken: process.env.NGROK_AUTHTOKEN!,
-  });
-  const url = listener.url();
-  if (!url) {
-    await listener.close().catch(() => {});
-    throw new Error('ngrok did not return a URL');
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0); // signal 0 = existence check, no actual signal
+    return true;
+  } catch {
+    return false;
   }
-  return { url, listener };
 }
 
-// ── GET — current cached tunnel (or null) ──────────────────────────────────
+function readUrlFile(): string | null {
+  try { return fs.readFileSync(URL_FILE, 'utf8').trim() || null; } catch { return null; }
+}
+
+function readPortFile(): number | null {
+  try {
+    const raw = fs.readFileSync(PORT_FILE, 'utf8').trim();
+    const p = parseInt(raw, 10);
+    return isNaN(p) ? null : p;
+  } catch { return null; }
+}
+
+function writePidFiles(pid: number, url: string, port: number) {
+  fs.writeFileSync(PID_FILE, String(pid), 'utf8');
+  fs.writeFileSync(URL_FILE, url, 'utf8');
+  fs.writeFileSync(PORT_FILE, String(port), 'utf8');
+}
+
+function clearPidFiles() {
+  for (const f of [PID_FILE, URL_FILE, PORT_FILE]) {
+    try { fs.unlinkSync(f); } catch { /* already gone */ }
+  }
+}
+
+// ── Kill an orphaned SSH process by PID ────────────────────────────────────
+function killOrphan() {
+  const pid = readPidFile();
+  if (pid && isProcessAlive(pid)) {
+    try { process.kill(pid, 'SIGTERM'); } catch { /* already dead */ }
+  }
+  clearPidFiles();
+}
+
+// ── In-memory singleton (valid for current module lifetime) ─────────────────
+let tunnelProcess: ChildProcess | null = null;
+let tunnelUrl: string | null = null;
+let tunnelPort: number | null = null;
+
+// On module load: recover URL from files if the process is still alive,
+// otherwise clean up any stale files left by a previous hot-reload.
+(function recoverOnModuleLoad() {
+  const pid = readPidFile();
+  if (pid && isProcessAlive(pid)) {
+    tunnelUrl = readUrlFile();
+    tunnelPort = readPortFile();
+    // We don't have the ChildProcess handle but we have the PID — enough to kill it.
+    // Represent it as a thin wrapper so killOrphan() can use process.kill(pid).
+  } else {
+    clearPidFiles();
+  }
+})();
+
+// ── Graceful shutdown on SIGTERM / SIGINT (dev server stop) ─────────────────
+function registerShutdownOnce() {
+  const handler = () => {
+    killOrphan();
+    if (tunnelProcess && !tunnelProcess.killed) tunnelProcess.kill('SIGTERM');
+    process.exit(0);
+  };
+  // Use once so we don't stack listeners across HMR reloads
+  process.once('SIGTERM', handler);
+  process.once('SIGINT',  handler);
+}
+registerShutdownOnce();
+
+// ── GET  → return current tunnel URL (or null) ─────────────────────────────
 export async function GET() {
-  const c = getCached();
-  if (c) return NextResponse.json({ url: c.url, port: c.port, source: c.source });
-  return NextResponse.json({ url: null, port: null, source: null });
+  // Re-check that the process is still alive (could have died silently)
+  const pid = readPidFile();
+  if (pid && !isProcessAlive(pid)) {
+    clearPidFiles();
+    tunnelProcess = null;
+    tunnelUrl = null;
+    tunnelPort = null;
+  }
+  return NextResponse.json({ url: tunnelUrl, port: tunnelPort });
 }
 
-// ── POST { port } — open or reuse a tunnel ─────────────────────────────────
+// ── POST { port } → start tunnel if not already running ─────────────────────
 export async function POST(req: Request) {
   const { port } = (await req.json()) as { port: number };
 
-  // Cached hit on same port → reuse (covers both shared and self).
-  const cached = getCached();
-  if (cached && cached.port === port) {
-    return NextResponse.json({ url: cached.url, port, source: cached.source });
+  // Already running for the same port → return immediately
+  const alivePid = readPidFile();
+  if (tunnelUrl && tunnelPort === port && alivePid && isProcessAlive(alivePid)) {
+    return NextResponse.json({ url: tunnelUrl, port });
   }
 
-  // 1) Host Playground app's tunnel, advertised via rendezvous file
-  const rendezvous = readRendezvous();
-  if (rendezvous && rendezvous.port === port) {
-    // If we had a self-tunnel, close it — the host's covers us now.
-    if (cached?.source === 'self' && cached.listener) {
-      await cached.listener.close().catch(() => {});
-    }
-    const next: CachedTunnel = {
-      url: rendezvous.url,
-      port,
-      source: 'shared',
-      listener: null,
+  // Kill any stale process (different port or dead)
+  killOrphan();
+  if (tunnelProcess && !tunnelProcess.killed) {
+    tunnelProcess.kill('SIGTERM');
+  }
+  tunnelProcess = null;
+  tunnelUrl = null;
+  tunnelPort = null;
+
+  // Start a new localhost.run tunnel via SSH
+  return new Promise<Response>((resolve) => {
+    const proc = spawn('ssh', [
+      '-tt',
+      '-o', 'StrictHostKeyChecking=no',
+      '-o', 'ServerAliveInterval=60',
+      '-R', `80:localhost:${port}`,
+      'nokey@localhost.run',
+    ]);
+
+    tunnelProcess = proc;
+    tunnelPort = port;
+
+    let resolved = false;
+
+    const onData = (chunk: Buffer) => {
+      const text = chunk.toString();
+      const match = text.match(/(https:\/\/[a-zA-Z0-9-]+\.lhr\.life)/);
+      if (match && !resolved) {
+        resolved = true;
+        tunnelUrl = match[1];
+        // Persist PID + URL so they survive HMR
+        if (proc.pid) writePidFiles(proc.pid, tunnelUrl, port);
+        resolve(NextResponse.json({ url: tunnelUrl, port }));
+      }
     };
-    setCached(next);
-    writeState({ pid: process.pid, url: next.url, port, source: 'shared' });
-    return NextResponse.json({ url: next.url, port, source: 'shared' });
-  }
 
-  // 2) Self-spawn if we have a token
-  if (!process.env.NGROK_AUTHTOKEN) {
-    return NextResponse.json({ error: 'no_token' }, { status: 400 });
-  }
+    proc.stdout?.on('data', onData);
+    proc.stderr?.on('data', onData);
 
-  // Different port? Close the stale self-listener first.
-  if (cached?.source === 'self' && cached.listener) {
-    await cached.listener.close().catch(() => {});
-  }
-  setCached(null);
-  clearStateFile();
+    proc.on('close', () => {
+      tunnelProcess = null;
+      tunnelUrl = null;
+      tunnelPort = null;
+      clearPidFiles();
+    });
 
-  try {
-    const { url, listener } = await startSelfTunnel(port);
-    const next: CachedTunnel = { url, port, source: 'self', listener };
-    setCached(next);
-    writeState({ pid: process.pid, url, port, source: 'self' });
-    return NextResponse.json({ url, port, source: 'self' });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Failed to start ngrok tunnel';
-    return NextResponse.json({ error: msg }, { status: 500 });
-  }
+    proc.on('error', (err) => {
+      tunnelProcess = null;
+      tunnelUrl = null;
+      tunnelPort = null;
+      clearPidFiles();
+      if (!resolved) {
+        resolved = true;
+        resolve(NextResponse.json(
+          { error: `Failed to start tunnel: ${err.message}` },
+          { status: 500 },
+        ));
+      }
+    });
+
+    // Timeout after 15 s
+    setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        resolve(NextResponse.json(
+          { error: 'Tunnel connection timed out (15 s)' },
+          { status: 504 },
+        ));
+      }
+    }, 15_000);
+  });
 }
 
-// ── DELETE — tear down our own listener; shared agent is left alone ────────
+// ── DELETE → tear down the tunnel ───────────────────────────────────────────
 export async function DELETE() {
-  const cached = getCached();
-  if (cached?.source === 'self' && cached.listener) {
-    await cached.listener.close().catch(() => {});
+  killOrphan();
+  if (tunnelProcess && !tunnelProcess.killed) {
+    tunnelProcess.kill('SIGTERM');
   }
-  setCached(null);
-  clearStateFile();
+  tunnelProcess = null;
+  tunnelUrl = null;
+  tunnelPort = null;
   return NextResponse.json({ ok: true });
 }
-
-// ── Close our listener if the dev server exits cleanly ─────────────────────
-function registerShutdownOnce() {
-  const handler = () => {
-    const c = getCached();
-    if (c?.source === 'self' && c.listener) {
-      c.listener.close().catch(() => {});
-    }
-    clearStateFile();
-    process.exit(0);
-  };
-  process.once('SIGTERM', handler);
-  process.once('SIGINT', handler);
-}
-registerShutdownOnce();

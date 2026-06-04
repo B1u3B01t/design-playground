@@ -1,10 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import Image from 'next/image';
-import { LayoutGrid, Eraser, RefreshCw, X, SlidersVertical, Keyboard, ChevronDown, Copy } from 'lucide-react';
-import { useDevModeStore } from './lib/dev-mode-store';
+import { LayoutGrid, Eraser, RefreshCw, X, Settings, Keyboard, ChevronDown, Copy, Palette } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { getModelIconConfig } from './lib/model-icons';
 import { CANVAS_BACKGROUND_COLOR } from './lib/constants';
@@ -38,6 +36,7 @@ import {
 import { cn } from './lib/utils';
 import ModelSettingsModal from './ModelSettingsModal';
 import KeyboardShortcutsModal from './KeyboardShortcutsModal';
+import DesignSystemModal from './DesignSystemModal';
 
 // ---------------------------------------------------------------------------
 // Presence Bubble Type
@@ -85,9 +84,7 @@ export default function PlaygroundHeader({
 }: PlaygroundHeaderProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [devModeMenu, setDevModeMenu] = useState<{ x: number; y: number } | null>(null);
-  const devMode = useDevModeStore((s) => s.enabled);
-  const toggleDevMode = useDevModeStore((s) => s.toggle);
+  const [designOpen, setDesignOpen] = useState(false);
   const [presenceBubbles, setPresenceBubbles] = useState<PresenceBubble[]>([]);
   const [projectContext, setProjectContext] = useState<ProjectContext>({
     projectName: 'project',
@@ -123,18 +120,6 @@ export default function PlaygroundHeader({
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (!devModeMenu) return;
-    const handleClick = () => setDevModeMenu(null);
-    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDevModeMenu(null); };
-    window.addEventListener('click', handleClick);
-    window.addEventListener('keydown', handleKey);
-    return () => {
-      window.removeEventListener('click', handleClick);
-      window.removeEventListener('keydown', handleKey);
-    };
-  }, [devModeMenu]);
 
   // Hydrate presence bubbles from localStorage after mount to avoid SSR mismatch
   useEffect(() => {
@@ -420,20 +405,26 @@ export default function PlaygroundHeader({
           <Tooltip>
             <TooltipTrigger asChild>
               <button
+                onClick={() => setDesignOpen(true)}
+                className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
+                aria-label="Design system"
+              >
+                <Palette className="w-[18px] h-[18px]" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Design system</p>
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
                 onClick={() => setSettingsOpen(true)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  const MENU_WIDTH = 180;
-                  const MENU_HEIGHT = 44;
-                  const PADDING = 8;
-                  const x = Math.min(e.clientX, window.innerWidth - MENU_WIDTH - PADDING);
-                  const y = Math.min(e.clientY, window.innerHeight - MENU_HEIGHT - PADDING);
-                  setDevModeMenu({ x, y });
-                }}
                 className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
                 aria-label="Model settings"
               >
-                <SlidersVertical className="w-[18px] h-[18px]" />
+                <Settings className="w-[18px] h-[18px]" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -456,39 +447,35 @@ export default function PlaygroundHeader({
             </TooltipContent>
           </Tooltip>
 
-          {devMode && (
-            <>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={handleClear}
-                    className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
-                    aria-label="Clear all"
-                  >
-                    <Eraser className="w-[18px] h-[18px]" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p>Clear all</p>
-                </TooltipContent>
-              </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={handleClear}
+                className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
+                aria-label="Clear all"
+              >
+                <Eraser className="w-[18px] h-[18px]" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Clear all</p>
+            </TooltipContent>
+          </Tooltip>
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={handleRefresh}
-                    className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
-                    aria-label="Refresh variations"
-                  >
-                    <RefreshCw className="w-[18px] h-[18px]" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p>Refresh variations</p>
-                </TooltipContent>
-              </Tooltip>
-            </>
-          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={handleRefresh}
+                className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
+                aria-label="Refresh variations"
+              >
+                <RefreshCw className="w-[18px] h-[18px]" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Refresh variations</p>
+            </TooltipContent>
+          </Tooltip>
 
           {/* Presence bubbles — stacked, active leftmost on top */}
           {presenceBubbles.length > 0 && (
@@ -586,38 +573,7 @@ export default function PlaygroundHeader({
 
       <ModelSettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} />
       <KeyboardShortcutsModal open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
-
-      {devModeMenu && createPortal(
-        <div
-          className="fixed z-50 min-w-[180px] bg-white border border-stone-200 rounded-2xl shadow-lg p-1 animate-in fade-in zoom-in-95 duration-100"
-          style={{ top: devModeMenu.y, left: devModeMenu.x }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            onClick={() => {
-              toggleDevMode();
-              setDevModeMenu(null);
-            }}
-            className="flex items-center justify-between gap-3 w-full px-3 py-1.5 text-[13px] text-stone-700 hover:bg-stone-100 transition-colors text-left rounded-xl"
-          >
-            <span>Dev mode</span>
-            <span
-              className={cn(
-                'relative inline-flex h-[16px] w-[28px] items-center rounded-full transition-colors',
-                devMode ? 'bg-stone-800' : 'bg-stone-300',
-              )}
-            >
-              <span
-                className={cn(
-                  'inline-block h-[12px] w-[12px] rounded-full bg-white shadow transition-transform',
-                  devMode ? 'translate-x-[14px]' : 'translate-x-[2px]',
-                )}
-              />
-            </span>
-          </button>
-        </div>,
-        document.body,
-      )}
+      <DesignSystemModal open={designOpen} onOpenChange={setDesignOpen} />
     </TooltipProvider>
   );
 }
