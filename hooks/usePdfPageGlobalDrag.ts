@@ -35,11 +35,11 @@ function applyPageDrop(
 ): Node[] {
   const targetNode = nodes.find((n) => n.id === targetNodeId);
   if (!targetNode || targetNode.type !== 'pdf') return nodes;
-  const targetData = targetNode.data as PdfNodeData;
+  const targetData = targetNode.data as unknown as PdfNodeData;
   if (typeof targetData.extractedPage === 'number') return nodes;
 
   const sourceNode = nodes.find((n) => n.id === payload.sourceNodeId);
-  const sourceData = sourceNode?.data as PdfNodeData | undefined;
+  const sourceData = sourceNode?.data as unknown as PdfNodeData | undefined;
   if (sourceData && sourceData.pdfUrl !== targetData.pdfUrl) return nodes;
 
   const targetTotal = getTargetPageCount(targetNodeId);
@@ -83,7 +83,7 @@ export function usePdfPageGlobalDrag(
 
       const targetNode = getNode(targetId);
       if (!targetNode || targetNode.type !== 'pdf') return;
-      const targetData = targetNode.data as PdfNodeData;
+      const targetData = targetNode.data as unknown as PdfNodeData;
       if (typeof targetData.extractedPage === 'number') return;
 
       const insertIndex = computePageInsertIndex(dropTarget, e.clientY);
@@ -122,7 +122,7 @@ export function usePdfPageGlobalDrag(
         applyPageDrop(nds, payload, targetId, insertIndex, (nodeId) => {
           const n = nds.find((x) => x.id === nodeId) ?? getNode(nodeId);
           if (!n || n.type !== 'pdf') return 1;
-          return getPdfTotalPages(n.data as PdfNodeData);
+          return getPdfTotalPages(n.data as unknown as PdfNodeData);
         }),
       );
 
