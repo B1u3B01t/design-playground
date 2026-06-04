@@ -74,8 +74,8 @@ export function applyMovePdfPage(
   };
 
   const nextNodes = nodes.map((n) => {
-    if (n.id === targetNodeId) return { ...n, data: nextTargetData };
-    if (n.id === sourceNodeId && !deleteSourceNodeId) return { ...n, data: nextSourceData };
+    if (n.id === targetNodeId) return { ...n, data: nextTargetData as unknown as Record<string, unknown> };
+    if (n.id === sourceNodeId && !deleteSourceNodeId) return { ...n, data: nextSourceData as unknown as Record<string, unknown> };
     return n;
   });
 
@@ -135,7 +135,7 @@ export function applyMergePdfNodes(
 
   const nextNodes = nodes
     .filter((n) => n.id !== sourceNodeId)
-    .map((n) => (n.id === targetNodeId ? { ...n, data: nextTargetData } : n));
+    .map((n) => (n.id === targetNodeId ? { ...n, data: nextTargetData as unknown as Record<string, unknown> } : n));
 
   return { nodes: nextNodes, deleteSourceNodeId: sourceNodeId };
 }
