@@ -399,7 +399,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
   }, []);
 
   const onNodeDragStop = useCallback(
-    (event: MouseEvent, node: Node) => {
+    (event: React.MouseEvent, node: Node) => {
       if (node.type !== 'pdf') return;
 
       const el = document.elementFromPoint(event.clientX, event.clientY);
