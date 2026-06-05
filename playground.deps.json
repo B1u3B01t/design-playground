@@ -17,6 +17,7 @@
     "tw-animate-css": "latest",
     "html-to-image": "latest",
     "pdfjs-dist": "5.4.296",
+    "@ngrok/ngrok": "latest",
     "zustand": "latest"
   },
   "requires": [

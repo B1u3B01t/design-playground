@@ -19,7 +19,7 @@ export interface PendingChild {
   status: 'pending' | 'analyzing' | 'done' | 'error';
 }
 
-export default function PlaygroundClient() {
+export default function PlaygroundClient({ projectId }: { projectId?: string }) {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
   const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
@@ -508,6 +508,7 @@ export default function PlaygroundClient() {
             <PlaygroundCanvas
               sidebarVisible={sidebarVisible}
               onToggleSidebar={() => setSidebarVisible((v) => !v)}
+              projectId={projectId}
             />
           </div>
         </div>
