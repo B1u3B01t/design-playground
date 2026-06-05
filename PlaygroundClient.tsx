@@ -21,16 +21,50 @@ export interface PendingChild {
 
 export default function PlaygroundClient({ projectId }: { projectId?: string }) {
   const [sidebarVisible, setSidebarVisible] = useState(true);
+  /** Whether the sidebar was opened via hover (auto-hide on leave) vs click (sticky) */
+  const sidebarHoverRef = useRef(false);
+  const sidebarHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
   const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
   const [pendingChildren, setPendingChildren] = useState<Map<string, PendingChild[]>>(new Map());
   const hasScanTriggered = useRef(false);
   const scanPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Cleanup polling on unmount
+  const cancelSidebarHideTimer = useCallback(() => {
+    if (sidebarHideTimerRef.current) {
+      clearTimeout(sidebarHideTimerRef.current);
+      sidebarHideTimerRef.current = null;
+    }
+  }, []);
+
+  const handleShowSidebar = useCallback(() => {
+    cancelSidebarHideTimer();
+    if (!sidebarVisible) {
+      sidebarHoverRef.current = true;
+      setSidebarVisible(true);
+    }
+  }, [sidebarVisible, cancelSidebarHideTimer]);
+
+  const startSidebarHideTimer = useCallback(() => {
+    if (!sidebarHoverRef.current) return;
+    cancelSidebarHideTimer();
+    sidebarHideTimerRef.current = setTimeout(() => {
+      setSidebarVisible(false);
+      sidebarHoverRef.current = false;
+    }, 300);
+  }, [cancelSidebarHideTimer]);
+
+  const handleToggleSidebar = useCallback(() => {
+    cancelSidebarHideTimer();
+    sidebarHoverRef.current = false;
+    setSidebarVisible((v) => !v);
+  }, [cancelSidebarHideTimer]);
+
+  // Cleanup timers on unmount
   useEffect(() => {
     return () => {
       if (scanPollRef.current) clearTimeout(scanPollRef.current);
+      if (sidebarHideTimerRef.current) clearTimeout(sidebarHideTimerRef.current);
     };
   }, []);
 
@@ -52,12 +86,12 @@ export default function PlaygroundClient({ projectId }: { projectId?: string }) 
     const handler = (e: KeyboardEvent) => {
       if (matchesAction(e, 'sidebar.toggle')) {
         e.preventDefault();
-        setSidebarVisible((v) => !v);
+        handleToggleSidebar();
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [handleToggleSidebar]);
 
   // Auto-scan on first visit
   useEffect(() => {
@@ -486,18 +520,20 @@ export default function PlaygroundClient({ projectId }: { projectId?: string }) 
         onDrop={(e) => e.preventDefault()}
       >
         {/* Top header — full width */}
-        <PlaygroundHeader sidebarVisible={sidebarVisible} onToggleSidebar={() => setSidebarVisible(!sidebarVisible)} />
+        <PlaygroundHeader sidebarVisible={sidebarVisible} onToggleSidebar={handleToggleSidebar} />
 
         {/* Body: sidebar + canvas */}
-        {/* Rail: inset 1.5rem (= left-6), toolbar outer width ~54px, 1.5rem gap */}
+        {/* Rail: inset 1.5rem (= left-6), toolbar outer width ~54px, small gap */}
         <div className="flex flex-1 overflow-hidden relative">
           <div
-            className={`absolute left-[calc(1.5rem+54px+1.5rem)] top-6 bottom-6 z-10 transition-all duration-[250ms] ease-in-out ${
+            className={`absolute left-[calc(1.5rem+54px+0.5rem)] top-6 bottom-6 z-10 transition-all duration-[250ms] ease-in-out ${
               sidebarVisible ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 -translate-x-3 pointer-events-none'
             }`}
+            onMouseEnter={cancelSidebarHideTimer}
+            onMouseLeave={startSidebarHideTimer}
           >
             <PlaygroundSidebar
-              onCollapse={() => setSidebarVisible(false)}
+              onCollapse={() => { cancelSidebarHideTimer(); sidebarHoverRef.current = false; setSidebarVisible(false); }}
               onOpenDiscovery={() => setDiscoveryOpen(true)}
               pendingChildren={pendingChildren}
             />
@@ -507,7 +543,10 @@ export default function PlaygroundClient({ projectId }: { projectId?: string }) 
           <div className="flex-1 relative">
             <PlaygroundCanvas
               sidebarVisible={sidebarVisible}
-              onToggleSidebar={() => setSidebarVisible((v) => !v)}
+              onToggleSidebar={handleToggleSidebar}
+              onShowSidebar={handleShowSidebar}
+              onHideSidebar={startSidebarHideTimer}
+//            onToggleSidebar={() => setSidebarVisible((v) => !v)}
               projectId={projectId}
             />
           </div>

@@ -14,6 +14,10 @@ interface PlaygroundDrawStore {
   setStrokeSelectEnabled: (enabled: boolean) => void;
   strokeSelection: DrawStrokeSelection | null;
   setStrokeSelection: (selection: DrawStrokeSelection | null) => void;
+  /** Multi-selection: set of canvas stroke IDs selected via marquee drag */
+  multiStrokeSelection: Set<string>;
+  setMultiStrokeSelection: (ids: Set<string>) => void;
+  clearAllStrokeSelection: () => void;
   drawPenKind: DrawPenKind;
   setDrawPenKind: (kind: DrawPenKind) => void;
 }
@@ -24,7 +28,10 @@ export const usePlaygroundDrawStore = create<PlaygroundDrawStore>((set) => ({
   strokeSelectEnabled: true,
   setStrokeSelectEnabled: (enabled) => set({ strokeSelectEnabled: enabled }),
   strokeSelection: null,
-  setStrokeSelection: (selection) => set({ strokeSelection: selection }),
+  setStrokeSelection: (selection) => set({ multiStrokeSelection: new Set(), strokeSelection: selection }),
+  multiStrokeSelection: new Set<string>(),
+  setMultiStrokeSelection: (ids) => set({ multiStrokeSelection: ids, strokeSelection: null }),
+  clearAllStrokeSelection: () => set({ strokeSelection: null, multiStrokeSelection: new Set() }),
   drawPenKind: 'pen',
   setDrawPenKind: (kind) => set({ drawPenKind: kind }),
 }));

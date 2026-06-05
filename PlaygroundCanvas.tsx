@@ -307,11 +307,13 @@ interface GenerationInfo {
 interface PlaygroundCanvasProps {
   sidebarVisible: boolean;
   onToggleSidebar: () => void;
+  onShowSidebar: () => void;
+  onHideSidebar: () => void;
   /** Stable per-project id used to scope persisted canvas state to this project. */
   projectId?: string;
 }
 
-export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, projectId }: PlaygroundCanvasProps) {
+export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar,onShowSidebar, onHideSidebar, projectId }: PlaygroundCanvasProps) {
   const dynamicBg = useDynamicBackground();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
@@ -502,7 +504,8 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
 
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      if (usePlaygroundDrawStore.getState().strokeSelection) {
+      const ds = usePlaygroundDrawStore.getState();
+      if (ds.strokeSelection || ds.multiStrokeSelection.size > 0) {
         const withoutRemove = changes.filter((c) => c.type !== 'remove');
         if (withoutRemove.length === 0) return;
         onNodesChange(withoutRemove);
@@ -646,7 +649,10 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
 
   const CANVAS_DRAW_EXTENT = 8000;
 
-  // Delete selected pen stroke with Backspace / Delete
+  const multiStrokeSelection = usePlaygroundDrawStore((s) => s.multiStrokeSelection);
+  const clearAllStrokeSelection = usePlaygroundDrawStore((s) => s.clearAllStrokeSelection);
+
+  // Delete selected pen stroke(s) with Backspace / Delete
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
@@ -657,7 +663,19 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
         if ((active as HTMLElement).isContentEditable) return;
         if (active.closest('[role="dialog"]') || active.closest('[data-radix-popper-content-wrapper]')) return;
       }
-      const sel = usePlaygroundDrawStore.getState().strokeSelection;
+      const store = usePlaygroundDrawStore.getState();
+      const sel = store.strokeSelection;
+      const multi = store.multiStrokeSelection;
+
+      if (multi.size > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        setCanvasDrawings((prev) => prev.filter((s) => !multi.has(s.id)));
+        clearAllStrokeSelection();
+        return;
+      }
+
       if (!sel) return;
       e.preventDefault();
       e.stopPropagation();
@@ -676,11 +694,11 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
           }),
         );
       }
-      setStrokeSelection(null);
+      clearAllStrokeSelection();
     };
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
-  }, [setNodes, setStrokeSelection]);
+  }, [setNodes, clearAllStrokeSelection]);
 
   // Select canvas ink strokes in select mode (complements path hit targets)
   useEffect(() => {
@@ -758,8 +776,9 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
     const wrapper = reactFlowWrapper.current;
     if (!wrapper) return;
 
-    let currentStroke: DrawStroke | null = null;
+    let currentStrokeId: string | null = null;
     let drawing = false;
+    let points: DrawStroke['points'] = [];
 
     const isPdfDrawTarget = (target: EventTarget | null) =>
       target instanceof Element && !!target.closest('[data-pdf-draw-layer]');
@@ -773,28 +792,38 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
       drawing = true;
       const pt = screenToFlowPosition({ x: e.clientX, y: e.clientY });
       const kind = usePlaygroundDrawStore.getState().drawPenKind;
-      currentStroke = createNewStroke(kind, pt);
+      const stroke = createNewStroke(kind, pt);
+      currentStrokeId = stroke.id;
+      points = stroke.points;
+      setCanvasDrawings((prev) => [...prev, stroke]);
     };
 
     const onPointerMove = (e: PointerEvent) => {
-      if (!drawing || !currentStroke) return;
+      if (!drawing || !currentStrokeId) return;
       const pt = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-      const last = currentStroke.points.at(-1);
+      const last = points.at(-1);
       if (last) {
         const dx = pt.x - last.x;
         const dy = pt.y - last.y;
         if (dx * dx + dy * dy < 4) return;
       }
-      currentStroke = { ...currentStroke, points: [...currentStroke.points, pt] };
+      points = [...points, pt];
+      const newPoints = points;
+      const id = currentStrokeId;
+      setCanvasDrawings((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, points: newPoints } : s)),
+      );
     };
 
     const onPointerUp = () => {
-      if (!drawing || !currentStroke) return;
-      if (currentStroke.points.length > 1) {
-        setCanvasDrawings((prev) => [...prev, currentStroke!]);
+      if (!drawing || !currentStrokeId) return;
+      if (points.length <= 1) {
+        const id = currentStrokeId;
+        setCanvasDrawings((prev) => prev.filter((s) => s.id !== id));
       }
       drawing = false;
-      currentStroke = null;
+      currentStrokeId = null;
+      points = [];
     };
 
     wrapper.addEventListener('pointerdown', onPointerDown);
@@ -3645,7 +3674,8 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
 
   // Handle node deletion - check for children first
   const onNodesDelete = useCallback(async (deletedNodes: Node[]) => {
-    if (usePlaygroundDrawStore.getState().strokeSelection) return;
+    const ds = usePlaygroundDrawStore.getState();
+    if (ds.strokeSelection || ds.multiStrokeSelection.size > 0) return;
 
     for (const node of deletedNodes) {
       if (node.type === 'image' && node.data.filename) {
@@ -4298,7 +4328,8 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
   const toggleDrawPenKind = useCallback(
     (kind: DrawPenKind) => {
       if (activeTool === 'draw' && drawPenKind === kind) {
-        setActiveTool('select');
+        const next: DrawPenKind = kind === 'pen' ? 'highlight' : 'pen';
+        setDrawPenKind(next);
       } else {
         setDrawPenKind(kind);
         setActiveTool('draw');
@@ -4345,7 +4376,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
   }, [activeTool, toggleDrawPenKind]);
 
   return (
-    <TooltipProvider>
+    <TooltipProvider delayDuration={150} skipDelayDuration={0}>
       <div
         ref={reactFlowWrapper}
         className={`w-full h-full${activeTool === 'text' ? ' playground-text-tool' : ''}${activeTool === 'draw' ? ' playground-draw-tool' : ''}`}
@@ -4382,12 +4413,12 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
           nodesDraggable={activeTool !== 'draw'}
           nodesConnectable={false}
           elementsSelectable
-          deleteKeyCode={strokeSelection ? null : ['Delete', 'Backspace']}
+          deleteKeyCode={strokeSelection || multiStrokeSelection.size > 0 ? null : ['Delete', 'Backspace']}
         >
           {/* <Controls
             className="!bg-white !border-stone-200 !rounded-lg !shadow-sm [&>button]:!bg-white [&>button]:!border-stone-200 [&>button]:!text-stone-600 [&>button:hover]:!bg-stone-50"
           /> */}
-        <PlaygroundCanvasDrawLayer strokes={canvasDrawings} />
+        <PlaygroundCanvasDrawLayer strokes={canvasDrawings} wrapperRef={reactFlowWrapper} />
         <Background
           variant={BackgroundVariant.Dots}
           gap={dynamicBg.gap}
@@ -4409,9 +4440,11 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
 
       {/* Match PlaygroundClient: left-6 (1.5rem); vertically centered */}
       <div className="absolute left-6 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-2 bg-white rounded-2xl border border-stone-200 shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-2">
-        {/* Sidebar toggle (hexagon) */}
+        {/* Sidebar toggle (hexagon) — hover instantly shows panel */}
         <button
           onClick={onToggleSidebar}
+          onMouseEnter={onShowSidebar}
+          onMouseLeave={onHideSidebar}
           className={`group flex items-center justify-center w-9 h-9 rounded-xl transition-colors ${
             sidebarVisible ? 'bg-stone-100 text-stone-900' : 'text-stone-500 hover:text-stone-800 hover:bg-stone-50'
           }`}
