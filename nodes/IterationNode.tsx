@@ -19,7 +19,7 @@ import {
 import { resolveRegistryItem, generateAdoptPrompt } from '../registry';
 import { getIterationComponent } from '../iterations';
 import { SizeButtons } from './shared/SizeButtons';
-import { NodeLabel, useInverseZoom } from './shared/NodeLabel';
+import { NodeLabel } from './shared/NodeLabel';
 import { loadOnCanvasComponentModule } from './oncanvas-loader';
 import {
   COMPONENT_SIZE_CHANGE_EVENT,
@@ -86,8 +86,6 @@ interface IterationNodeProps {
 }
 
 function IterationNode({ id, data, selected = false }: IterationNodeProps) {
-  const labelInvScale = useInverseZoom();
-  const hidePlayButton = labelInvScale * 14 > 14 + 6;
   const { deleteElements, updateNodeData, setNodes } = useReactFlow();
   const [isDeleting, setIsDeleting] = useState(false);
   const [adoptionStatus, setAdoptionStatus] = useState<'idle' | 'adopting' | 'adopted' | 'error'>(
@@ -188,7 +186,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
     ? `/${data.htmlFolder}/${data.htmlIterationFolder}/index.html`
     : data.filename.replace(/\.tsx$/, ''),
     [data.filename, isHtml, data.htmlFolder, data.htmlIterationFolder]);
-  const { share: handleShare, state: shareState, disabledTooltip: shareDisabledTooltip } = useTunnelShare(iterationSlug);
+  const { share: handleShare, state: shareState } = useTunnelShare(iterationSlug);
 
   const { resolvedProps, isLoadingProps, propsError } = useAsyncProps((isHtml || isJsx) ? '' : registryId);
   const registryItem = useMemo(() => (isHtml || isJsx) ? null : resolveRegistryItem(registryId), [registryId, isHtml, isJsx]);
@@ -510,15 +508,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
                   window.open(url, '_blank', 'noopener,noreferrer');
                 }}
                 className="nodrag shrink-0 p-0 leading-none rounded-[5px] transition-colors"
-                style={{
-                  color: selected ? '#0B99FF' : '#A8A29E',
-                  display: 'inline-block',
-                  transform: `scale(${labelInvScale})`,
-                  transformOrigin: 'left bottom',
-                  willChange: 'transform',
-                  visibility: hidePlayButton ? 'hidden' : 'visible',
-                  pointerEvents: hidePlayButton ? 'none' : undefined,
-                }}
+                style={{ color: selected ? '#0B99FF' : '#A8A29E' }}
                 aria-label="Open in new tab"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
@@ -822,7 +812,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
               <TooltipTrigger asChild>
                 <button
                   onClick={handleShare}
-                  disabled={shareState === 'connecting' || shareState === 'disabled'}
+                  disabled={shareState === 'connecting'}
                   className={`w-8 h-8 flex items-center justify-center rounded-full bg-white border transition-colors disabled:opacity-50 ${
                     shareState === 'copied'
                       ? 'border-green-300 text-green-600'
@@ -848,8 +838,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
               </TooltipTrigger>
               <TooltipContent side="right">
                 <p>
-                  {shareState === 'disabled' ? shareDisabledTooltip :
-                   shareState === 'connecting' ? 'Starting tunnel…' :
+                  {shareState === 'connecting' ? 'Starting tunnel…' :
                    shareState === 'copied' ? 'Link copied!' :
                    shareState === 'error' ? 'Tunnel failed' :
                    'Copy public link'}

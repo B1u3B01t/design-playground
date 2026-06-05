@@ -4,15 +4,6 @@ import { memo, type CSSProperties, type ReactNode } from 'react';
 import { useNodeId, useStore } from '@xyflow/react';
 import { NODE_LABEL_MAX_INV_SCALE, NODE_LABEL_SCALE_THRESHOLD } from '../../lib/constants';
 
-/** Inverse-zoom factor: grows as the canvas zooms out, capped by the constants. */
-export function useInverseZoom(): number {
-  const zoom = useStore((s) => s.transform[2]);
-  return Math.min(
-    NODE_LABEL_MAX_INV_SCALE,
-    Math.max(1, NODE_LABEL_SCALE_THRESHOLD / zoom),
-  );
-}
-
 type NodeLabelProps = {
   children: ReactNode;
   color?: string;
@@ -21,7 +12,11 @@ type NodeLabelProps = {
 };
 
 function NodeLabelInner({ children, color, className, style }: NodeLabelProps) {
-  const inv = useInverseZoom();
+  const zoom = useStore((s) => s.transform[2]);
+  const inv = Math.min(
+    NODE_LABEL_MAX_INV_SCALE,
+    Math.max(1, NODE_LABEL_SCALE_THRESHOLD / zoom),
+  );
 
   const nodeId = useNodeId();
   const nodeWidth = useStore((s) => {

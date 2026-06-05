@@ -7,7 +7,8 @@ function buildAgentArgs(opts: AgentSpawnOptions): string[] {
   } else {
     args.push('--output-format', 'text');
   }
-  if (opts.model)        args.push('--model', opts.model);
+  const model = opts.model?.trim();
+  if (model && model !== 'auto') args.push('--model', model);
   if (opts.effort)       args.push('--effort', opts.effort);
   if (opts.maxBudgetUsd) args.push('--max-budget-usd', String(opts.maxBudgetUsd));
   if (opts.maxTurns)     args.push('--max-turns', String(opts.maxTurns));

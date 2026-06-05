@@ -19,7 +19,7 @@ export interface PendingChild {
   status: 'pending' | 'analyzing' | 'done' | 'error';
 }
 
-export default function PlaygroundClient() {
+export default function PlaygroundClient({ projectId }: { projectId?: string }) {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   /** Whether the sidebar was opened via hover (auto-hide on leave) vs click (sticky) */
   const sidebarHoverRef = useRef(false);
@@ -546,6 +546,8 @@ export default function PlaygroundClient() {
               onToggleSidebar={handleToggleSidebar}
               onShowSidebar={handleShowSidebar}
               onHideSidebar={startSidebarHideTimer}
+//            onToggleSidebar={() => setSidebarVisible((v) => !v)}
+              projectId={projectId}
             />
           </div>
         </div>

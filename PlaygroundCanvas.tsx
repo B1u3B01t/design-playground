@@ -214,10 +214,21 @@ interface CanvasState {
   canvasDrawings?: DrawStroke[];
 }
 
-function loadCanvasState(): CanvasState | null {
+function loadCanvasState(storageKey: string): CanvasState | null {
   if (typeof window === 'undefined') return null;
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    let stored = localStorage.getItem(storageKey);
+    // One-time migration: the canvas used to live under a single unscoped key that
+    // every project on this origin shared. Adopt that legacy data for the first
+    // project that loads, then drop it so it can't leak into other projects.
+    if (!stored && storageKey !== STORAGE_KEY) {
+      const legacy = localStorage.getItem(STORAGE_KEY);
+      if (legacy) {
+        localStorage.setItem(storageKey, legacy);
+        localStorage.removeItem(STORAGE_KEY);
+        stored = legacy;
+      }
+    }
     if (stored) {
       const state = JSON.parse(stored) as CanvasState;
       const skeletonIds = new Set(
@@ -242,6 +253,7 @@ function loadCanvasState(): CanvasState | null {
 }
 
 function saveCanvasState(
+  storageKey: string,
   nodes: Node[],
   edges: Edge[],
   counter: number,
@@ -260,7 +272,7 @@ function saveCanvasState(
       viewport,
       canvasDrawings,
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(storageKey, JSON.stringify(state));
   } catch (e) {
     console.error('Failed to save canvas state:', e);
   }
@@ -297,13 +309,19 @@ interface PlaygroundCanvasProps {
   onToggleSidebar: () => void;
   onShowSidebar: () => void;
   onHideSidebar: () => void;
+  /** Stable per-project id used to scope persisted canvas state to this project. */
+  projectId?: string;
 }
 
-export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, onShowSidebar, onHideSidebar }: PlaygroundCanvasProps) {
+export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar,onShowSidebar, onHideSidebar, projectId }: PlaygroundCanvasProps) {
   const dynamicBg = useDynamicBackground();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
-  const initialState = loadCanvasState();
+  // Scope canvas persistence to this project. localStorage is keyed by origin
+  // (http://localhost:<port>), so without this two projects that reuse a port would
+  // read back each other's frames. Falls back to the unscoped key when no id is given.
+  const storageKey = projectId ? `${STORAGE_KEY}:${projectId}` : STORAGE_KEY;
+  const initialState = loadCanvasState(storageKey);
   const [knownIterations, setKnownIterations] = useState<string[]>(initialState?.knownIterations || []);
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(
     new Set(initialState?.collapsedNodeIds || []),
@@ -401,10 +419,12 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, onSh
   }, []);
 
   const onNodeDragStop = useCallback(
-    (event: React.MouseEvent, node: Node) => {
+    (event: MouseEvent | TouchEvent, node: Node, _nodes: Node[]) => {
       if (node.type !== 'pdf') return;
 
-      const el = document.elementFromPoint(event.clientX, event.clientY);
+      const clientX = 'clientX' in event ? event.clientX : (event.changedTouches[0]?.clientX ?? 0);
+      const clientY = 'clientY' in event ? event.clientY : (event.changedTouches[0]?.clientY ?? 0);
+      const el = document.elementFromPoint(clientX, clientY);
       const dropTarget = el?.closest('[data-pdf-drop-target]') as HTMLElement | null;
       if (!dropTarget) return;
 
@@ -417,7 +437,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, onSh
       const targetData = targetNode.data as unknown as PdfNodeData;
       if (typeof targetData.extractedPage === 'number') return;
 
-      const insertIndex = computePageInsertIndex(dropTarget, event.clientY);
+      const insertIndex = computePageInsertIndex(dropTarget, clientY);
       const sourceData = node.data as unknown as PdfNodeData;
       const targetTotal = getPdfTotalPages(targetData);
       const sourceTotal = getPdfTotalPages(sourceData);
@@ -465,7 +485,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, onSh
   usePdfPageGlobalDrag(setNodes, getNode);
 
   const onNodeDragStart = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
+    (_event: MouseEvent | TouchEvent, node: Node, _nodes: Node[]) => {
       if (node.type !== 'pdf') return;
       const sourceData = node.data as unknown as PdfNodeData;
       if (typeof sourceData.extractedPage !== 'number') return;
@@ -718,6 +738,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, onSh
   // Save to localStorage whenever nodes or edges change
   useEffect(() => {
     saveCanvasState(
+      storageKey,
       nodes,
       edges,
       nodeIdCounterRef.current,
@@ -727,12 +748,13 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, onSh
       getViewport(),
       canvasDrawingsRef.current,
     );
-  }, [nodes, edges, knownIterations, collapsedNodeIds, canvasDrawings, getViewport]);
+  }, [nodes, edges, knownIterations, collapsedNodeIds, canvasDrawings, getViewport, storageKey]);
 
   // Save viewport on page unload (captures pan/zoom changes that don't trigger node updates)
   useEffect(() => {
     const handler = () => {
       saveCanvasState(
+        storageKey,
         nodesRef.current,
         edges,
         nodeIdCounterRef.current,
@@ -745,7 +767,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, onSh
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [edges, getViewport]);
+  }, [edges, getViewport, storageKey]);
 
   // Freehand drawing on empty canvas (PDF pages use DrawSurface inside the node)
   useEffect(() => {
@@ -4239,10 +4261,10 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, onSh
     setCollapsedNodeIds(new Set());
     setCanvasDrawings([]);
 
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(storageKey);
 
     setShowClearDialog(false);
-  }, [setNodes, setEdges, setKnownIterations, setCollapsedNodeIds, stopPolling]);
+  }, [setNodes, setEdges, setKnownIterations, setCollapsedNodeIds, stopPolling, storageKey]);
 
   // Image upload via toolbar button (reuses same logic as drag-drop)
   const handleImageFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
