@@ -120,6 +120,7 @@ function PdfPageView({
           pixelRatio !== 1 ? [pixelRatio, 0, 0, pixelRatio, 0, 0] : undefined;
 
         const task = page.render({
+          canvas,
           canvasContext: ctx,
           viewport,
           transform,

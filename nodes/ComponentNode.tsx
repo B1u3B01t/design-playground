@@ -5,9 +5,11 @@ import { useNodeId, useReactFlow, NodeResizeControl } from '@xyflow/react';
 import { Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { resolveRegistryItem } from '../registry';
+import { findFlowDescriptorForComponent } from '../lib/flows/registry';
+import { FLOW_DECOMPOSE_EVENT, type FlowDecomposePayload } from '../lib/constants';
 import IterateDialog from './shared/IterateDialog';
 import { SizeButtons } from './shared/SizeButtons';
-import { NodeLabel } from './shared/NodeLabel';
+import { NodeLabel, useInverseZoom } from './shared/NodeLabel';
 import { loadOnCanvasComponentModule } from './oncanvas-loader';
 
 import { useAsyncProps, useScrollCapture, useHtmlContent } from '../hooks/useNodeShared';
@@ -22,6 +24,8 @@ import {
   GENERATION_ERROR_EVENT,
   EDIT_COMPLETE_EVENT,
   JSX_COMPONENT_ADDED_EVENT,
+  DESIGN_SYSTEM_GENERATED_EVENT,
+  DESIGN_SYSTEM_SHOWCASE_RAW_URL,
   SIZE_CONFIG,
   getDisplayDimensions,
   RESIZE_MIN_WIDTH,
@@ -36,8 +40,8 @@ interface ComponentNodeProps {
     size?: ComponentSize;
     /** Whether this node has been freeform-resized */
     customResized?: boolean;
-    /** Render mode: 'react' (default), 'html' for saved HTML, 'jsx' for pasted TSX, 'embed' for pasted URLs */
-    renderMode?: 'react' | 'html' | 'jsx' | 'embed';
+    /** Render mode: 'react' (default), 'html' for saved HTML, 'jsx' for pasted TSX, 'embed' for pasted URLs, 'design-system' for the generated showcase */
+    renderMode?: 'react' | 'html' | 'jsx' | 'embed' | 'design-system';
     /** HTML page folder name (when renderMode is 'html') */
     htmlFolder?: string;
     /** On-canvas JSX component filename in canvas-components/ (when renderMode is 'jsx') */
@@ -49,11 +53,16 @@ interface ComponentNodeProps {
 }
 
 function ComponentNode({ data, selected = false }: ComponentNodeProps) {
+  const labelInvScale = useInverseZoom();
+  // Hide the play button once its visual width (14px × inv) overruns its
+  // layout slot (14 + 6 gap) so it doesn't visually overlap the label.
+  const hidePlayButton = labelInvScale * 14 > 14 + 6;
   const componentId = data.componentId;
   const isHtml = data.renderMode === 'html';
   const isJsx = data.renderMode === 'jsx';
   const isEmbed = data.renderMode === 'embed';
-  const registryItem = isHtml || isJsx || isEmbed ? null : resolveRegistryItem(componentId);
+  const isDesignSystem = data.renderMode === 'design-system';
+  const registryItem = isHtml || isJsx || isEmbed || isDesignSystem ? null : resolveRegistryItem(componentId);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isGlobalGenerating, setIsGlobalGenerating] = useState(false);
   const [iframeKey, setIframeKey] = useState(() => Date.now());
@@ -106,12 +115,27 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   }, [isJsx, data.jsxFile, jsxLoadAttempt]);
 
   const { resolvedProps, isLoadingProps, propsError } = useAsyncProps(
-    isHtml || isJsx || isEmbed ? '' : componentId,
+    isHtml || isJsx || isEmbed || isDesignSystem ? '' : componentId,
   );
   const handleWheel = useScrollCapture(scrollContainerRef);
 
   const nodeId = useNodeId();
-  const { updateNodeData, setNodes } = useReactFlow();
+  const { updateNodeData, setNodes, getNode } = useReactFlow();
+  const flowDescriptor = !isHtml && !isJsx && !isEmbed && !isDesignSystem
+    ? findFlowDescriptorForComponent(componentId)
+    : null;
+
+  const handleDecompose = useCallback(() => {
+    if (!nodeId || !flowDescriptor) return;
+    const node = getNode(nodeId);
+    if (!node) return;
+    const payload: FlowDecomposePayload = {
+      parentNodeId: nodeId,
+      componentId,
+      anchor: { x: node.position.x, y: node.position.y },
+    };
+    window.dispatchEvent(new CustomEvent(FLOW_DECOMPOSE_EVENT, { detail: payload }));
+  }, [nodeId, flowDescriptor, getNode, componentId]);
   const isInteractive = useIsInteractiveNode(nodeId);
   const setInteractiveNodeId = useInteractiveNodeStore((s) => s.setInteractiveNodeId);
 
@@ -151,7 +175,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   const sharePath = isHtml
     ? `/${data.htmlFolder || componentId}/index.html`
     : componentId;
-  const { share: handleTunnelShare, state: shareState } = useTunnelShare(sharePath);
+  const { share: handleTunnelShare, state: shareState, disabledTooltip: shareDisabledTooltip } = useTunnelShare(sharePath);
 
   const [embedLinkCopied, setEmbedLinkCopied] = useState(false);
   const handleShare = useCallback(async () => {
@@ -172,7 +196,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
 
   // Prefer the persisted size from node data (survives reload), then registry default
   const [size, setSize] = useState<ComponentSize>(
-    data.size || registryItem?.size || (isHtml || isEmbed ? 'laptop' : 'default'),
+    data.size || registryItem?.size || (isHtml || isEmbed || isDesignSystem ? 'laptop' : 'default'),
   );
   const [isResizing, setIsResizing] = useState(false);
   const [isCustomResized, setIsCustomResized] = useState(!!data.customResized);
@@ -233,10 +257,22 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
     }));
   };
 
-  const htmlSrc = isHtml ? `/${data.htmlFolder}/index.html?t=${iframeKey}` : '';
-  const htmlContent = useHtmlContent(htmlSrc, isHtml);
+  const htmlSrc = isHtml
+    ? `/${data.htmlFolder}/index.html?t=${iframeKey}`
+    : isDesignSystem
+      ? `${DESIGN_SYSTEM_SHOWCASE_RAW_URL}&t=${iframeKey}`
+      : '';
+  const htmlContent = useHtmlContent(htmlSrc, isHtml || isDesignSystem);
 
-  if (!isHtml && !isJsx && !isEmbed && !registryItem) {
+  // Refresh the design-system iframe when a new showcase is generated.
+  useEffect(() => {
+    if (!isDesignSystem) return;
+    const handler = () => setIframeKey(Date.now());
+    window.addEventListener(DESIGN_SYSTEM_GENERATED_EVENT, handler);
+    return () => window.removeEventListener(DESIGN_SYSTEM_GENERATED_EVENT, handler);
+  }, [isDesignSystem]);
+
+  if (!isHtml && !isJsx && !isEmbed && !isDesignSystem && !registryItem) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4 min-w-[200px]">
         <p className="text-red-600 text-sm">Unknown component: {componentId}</p>
@@ -259,7 +295,9 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
       ? (data.jsxFile?.replace('.tsx', '') || componentId)
       : isEmbed
         ? embedUrlLabel
-        : (registryItem?.label || componentId);
+        : isDesignSystem
+          ? 'Design System'
+          : (registryItem?.label || componentId);
   const effectiveProps = (resolvedProps ?? props ?? {}) as Record<string, unknown>;
   const config = SIZE_CONFIG[size];
   const isPreset = size !== 'default';
@@ -306,7 +344,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
       <div className="flex items-center justify-between px-0.5 pb-1.5 cursor-grab">
         {/* Left: open-in-new-tab + label (always visible) */}
         <div className="flex items-center gap-1.5">
-          {!isJsx && (
+          {!isJsx && !isDesignSystem && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -323,6 +361,12 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                     color: selected
                       ? (isHtml ? '#F97316' : isEmbed ? '#0D9488' : '#0B99FF')
                       : '#A8A29E',
+                    display: 'inline-block',
+                    transform: `scale(${labelInvScale})`,
+                    transformOrigin: 'left bottom',
+                    willChange: 'transform',
+                    visibility: hidePlayButton ? 'hidden' : 'visible',
+                    pointerEvents: hidePlayButton ? 'none' : undefined,
                   }}
                   aria-label="Open in new tab"
                 >
@@ -335,7 +379,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
               <TooltipContent><p>Open in new tab</p></TooltipContent>
             </Tooltip>
           )}
-          <NodeLabel color={isHtml ? '#F97316' : isJsx ? '#7C3AED' : isEmbed ? '#0D9488' : '#0B99FF'}>
+          <NodeLabel color={isHtml ? '#F97316' : isJsx ? '#7C3AED' : isEmbed ? '#0D9488' : isDesignSystem ? '#C026D3' : '#0B99FF'}>
             {label}
           </NodeLabel>
         </div>
@@ -357,12 +401,12 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
           onMouseLeave={hoverHint.onMouseLeave}
           className={`relative app-theme bg-background overflow-hidden rounded-xl ${isResizing ? '' : 'transition-all'} ${
             selected
-              ? `ring-2 ${isHtml ? 'ring-orange-400' : isJsx ? 'ring-purple-400' : isEmbed ? 'ring-teal-400' : 'ring-[#0B99FF]'}`
+              ? `ring-2 ${isHtml ? 'ring-orange-400' : isJsx ? 'ring-purple-400' : isEmbed ? 'ring-teal-400' : isDesignSystem ? 'ring-fuchsia-400' : 'ring-[#0B99FF]'}`
               : ''
           } ${isInteractive ? 'ring-offset-2' : ''} ${isFillMode ? 'w-full h-full' : ''}`}
           style={isJsx ? { contain: 'paint' } : undefined}
         >
-          {isHtml || isEmbed ? (
+          {isHtml || isEmbed || isDesignSystem ? (
             <div
               className="relative"
               style={isPreset
@@ -474,7 +518,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
 
         {/* Right-side vertical action toolbar — always in DOM, invisible when not selected */}
         <div className={`absolute top-0 left-full pl-2 flex flex-col items-center gap-2 nodrag transition-opacity ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-                {!isEmbed ? (
+                {!isEmbed && !isDesignSystem ? (
                   <IterateDialog
                     componentId={componentId}
                     componentName={isHtml ? (data.htmlFolder || componentId) : label.replace(/\s*\(.*\)/, '')}
@@ -486,11 +530,35 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                   />
                 ) : null}
 
+                {flowDescriptor && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={handleDecompose}
+                        className="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-stone-200 text-stone-400 hover:text-purple-600 hover:border-purple-300 transition-colors"
+                        aria-label="Decompose into stages"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="4" width="6" height="6" rx="1.5" />
+                          <rect x="15" y="4" width="6" height="6" rx="1.5" />
+                          <rect x="3" y="14" width="6" height="6" rx="1.5" />
+                          <rect x="15" y="14" width="6" height="6" rx="1.5" />
+                          <path d="M9 7h6M9 17h6M6 10v4M18 10v4" />
+                        </svg>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <p>Decompose into {flowDescriptor.stages.length} stages</p>
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+
+                {!isDesignSystem && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
                       onClick={handleShare}
-                      disabled={!isEmbed && shareState === 'connecting'}
+                      disabled={!isEmbed && (shareState === 'connecting' || shareState === 'disabled')}
                       className={`w-8 h-8 flex items-center justify-center rounded-full bg-white border transition-colors disabled:opacity-50 ${
                         effectiveShareState === 'copied'
                           ? 'border-green-300 text-green-600'
@@ -518,16 +586,19 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                     <p>
                       {isEmbed
                         ? (effectiveShareState === 'copied' ? 'URL copied!' : 'Copy page URL')
-                        : effectiveShareState === 'connecting'
-                          ? 'Starting tunnel…'
-                          : effectiveShareState === 'copied'
-                            ? 'Link copied!'
-                            : effectiveShareState === 'error'
-                              ? 'Tunnel failed'
-                              : 'Copy public link'}
+                        : shareState === 'disabled'
+                          ? shareDisabledTooltip
+                          : effectiveShareState === 'connecting'
+                            ? 'Starting tunnel…'
+                            : effectiveShareState === 'copied'
+                              ? 'Link copied!'
+                              : effectiveShareState === 'error'
+                                ? 'Tunnel failed'
+                                : 'Copy public link'}
                     </p>
                   </TooltipContent>
                 </Tooltip>
+                )}
           </div>
       </div>
 

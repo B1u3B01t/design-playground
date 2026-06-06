@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 
-type ShareState = 'idle' | 'connecting' | 'copied' | 'error';
+export type ShareState = 'idle' | 'connecting' | 'copied' | 'error' | 'disabled';
 
 // ── Module-level flag: only register the beforeunload handler once ───────────
 // (every node mounts its own hook instance; we don't want N listeners)
@@ -105,5 +105,5 @@ export function useTunnelShare(sharePath: string) {
     }
   }, [sharePath, state]);
 
-  return { share, state };
+  return { share, state, disabledTooltip: undefined as string | undefined };
 }

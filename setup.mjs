@@ -9,7 +9,7 @@
  * Usage:  node src/app/playground/setup.mjs
  */
 
-import { readFileSync, existsSync, copyFileSync, mkdirSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -39,16 +39,6 @@ function detectPackageManager(root) {
   if (existsSync(join(root, 'pnpm-lock.yaml'))) return 'pnpm';
   if (existsSync(join(root, 'yarn.lock'))) return 'yarn';
   return 'npm';
-}
-
-function copyPdfWorker(root) {
-  const workerSrc = join(root, 'node_modules', 'pdfjs-dist', 'build', 'pdf.worker.min.mjs');
-  if (!existsSync(workerSrc)) return;
-
-  const publicDir = join(root, 'public');
-  if (!existsSync(publicDir)) mkdirSync(publicDir, { recursive: true });
-  copyFileSync(workerSrc, join(publicDir, 'pdf.worker.min.mjs'));
-  console.log(`    ${green('+')} pdf.worker.min.mjs → public/`);
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
@@ -145,40 +135,40 @@ function main() {
     console.log('');
     console.log(bold('  Dependencies:'));
     console.log(`    ${green('+')} All ${required.length} packages already installed.`);
-  } else {
-    // 6. Detect package manager & install
-    const pm = detectPackageManager(root);
-    const installCmd = pm === 'yarn'
-      ? `yarn add ${missing.join(' ')}`
-      : `${pm} install ${missing.join(' ')}`;
-
     console.log('');
-    console.log(bold('  Dependencies:'));
-    for (const dep of required) {
-      if (missing.includes(dep)) {
-        console.log(`    ${cyan('~')} ${dep} ${dim('(installing)')}`);
-      } else {
-        console.log(`    ${green('+')} ${dep}`);
-      }
-    }
-
+    console.log(green('  Done! Start your dev server and visit /playground'));
     console.log('');
-    console.log(dim(`  Running: ${installCmd}`));
-    console.log('');
+    process.exit(0);
+  }
 
-    try {
-      execSync(installCmd, { cwd: root, stdio: 'inherit' });
-    } catch {
-      console.log('');
-      console.log(red('  Installation failed. Try running manually:'));
-      console.log(`    ${installCmd}`);
-      process.exit(1);
+  // 6. Detect package manager & install
+  const pm = detectPackageManager(root);
+  const installCmd = pm === 'yarn'
+    ? `yarn add ${missing.join(' ')}`
+    : `${pm} install ${missing.join(' ')}`;
+
+  console.log('');
+  console.log(bold('  Dependencies:'));
+  for (const dep of required) {
+    if (missing.includes(dep)) {
+      console.log(`    ${cyan('~')} ${dep} ${dim('(installing)')}`);
+    } else {
+      console.log(`    ${green('+')} ${dep}`);
     }
   }
 
   console.log('');
-  console.log(bold('  PDF worker:'));
-  copyPdfWorker(root);
+  console.log(dim(`  Running: ${installCmd}`));
+  console.log('');
+
+  try {
+    execSync(installCmd, { cwd: root, stdio: 'inherit' });
+  } catch {
+    console.log('');
+    console.log(red('  Installation failed. Try running manually:'));
+    console.log(`    ${installCmd}`);
+    process.exit(1);
+  }
 
   console.log('');
   console.log(green('  Done! Start your dev server and visit /playground'));

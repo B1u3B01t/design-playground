@@ -18,8 +18,11 @@ import {
 } from '../ui/alert-dialog';
 import { resolveRegistryItem, generateAdoptPrompt } from '../registry';
 import { getIterationComponent } from '../iterations';
+import { useFlowMocksStore } from '../lib/flow-mocks-store';
+import type { StageNodeData } from '../lib/flows/types';
+import { Star } from 'lucide-react';
 import { SizeButtons } from './shared/SizeButtons';
-import { NodeLabel } from './shared/NodeLabel';
+import { NodeLabel, useInverseZoom } from './shared/NodeLabel';
 import { loadOnCanvasComponentModule } from './oncanvas-loader';
 import {
   COMPONENT_SIZE_CHANGE_EVENT,
@@ -86,7 +89,32 @@ interface IterationNodeProps {
 }
 
 function IterationNode({ id, data, selected = false }: IterationNodeProps) {
-  const { deleteElements, updateNodeData, setNodes } = useReactFlow();
+  const labelInvScale = useInverseZoom();
+  const hidePlayButton = labelInvScale * 14 > 14 + 6;
+  const { deleteElements, updateNodeData, setNodes, getNode } = useReactFlow();
+
+  // Stage canonical-flag wiring: if this iteration's parent is a StageNode,
+  // expose a "Set as canonical" toggle that the simulator/Combine/Adopt
+  // flows read to pick the chosen variant per stage.
+  const parentForStage = data.parentNodeId ? getNode(data.parentNodeId) : null;
+  const stageParentData =
+    parentForStage?.type === 'stage'
+      ? (parentForStage.data as unknown as StageNodeData)
+      : null;
+  const canonicalSet = useFlowMocksStore((s) =>
+    stageParentData
+      ? s.flows[stageParentData.flowId]?.canonicalIterationByStage?.[stageParentData.stageId] === data.filename
+      : false,
+  );
+  const setCanonical = useFlowMocksStore((s) => s.setCanonical);
+  const toggleCanonical = useCallback(() => {
+    if (!stageParentData) return;
+    setCanonical(
+      stageParentData.flowId,
+      stageParentData.stageId,
+      canonicalSet ? null : data.filename,
+    );
+  }, [stageParentData, setCanonical, canonicalSet, data.filename]);
   const [isDeleting, setIsDeleting] = useState(false);
   const [adoptionStatus, setAdoptionStatus] = useState<'idle' | 'adopting' | 'adopted' | 'error'>(
     () => data.adopted ? 'adopted' : 'idle',
@@ -186,7 +214,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
     ? `/${data.htmlFolder}/${data.htmlIterationFolder}/index.html`
     : data.filename.replace(/\.tsx$/, ''),
     [data.filename, isHtml, data.htmlFolder, data.htmlIterationFolder]);
-  const { share: handleShare, state: shareState } = useTunnelShare(iterationSlug);
+  const { share: handleShare, state: shareState, disabledTooltip: shareDisabledTooltip } = useTunnelShare(iterationSlug);
 
   const { resolvedProps, isLoadingProps, propsError } = useAsyncProps((isHtml || isJsx) ? '' : registryId);
   const registryItem = useMemo(() => (isHtml || isJsx) ? null : resolveRegistryItem(registryId), [registryId, isHtml, isJsx]);
@@ -508,7 +536,15 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
                   window.open(url, '_blank', 'noopener,noreferrer');
                 }}
                 className="nodrag shrink-0 p-0 leading-none rounded-[5px] transition-colors"
-                style={{ color: selected ? '#0B99FF' : '#A8A29E' }}
+                style={{
+                  color: selected ? '#0B99FF' : '#A8A29E',
+                  display: 'inline-block',
+                  transform: `scale(${labelInvScale})`,
+                  transformOrigin: 'left bottom',
+                  willChange: 'transform',
+                  visibility: hidePlayButton ? 'hidden' : 'visible',
+                  pointerEvents: hidePlayButton ? 'none' : undefined,
+                }}
                 aria-label="Open in new tab"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
@@ -716,6 +752,32 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
                 jsxFile={data.jsxFile}
               />
 
+            {/* Set as canonical for this stage — only shown when parent is a StageNode */}
+            {stageParentData && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={toggleCanonical}
+                    className={`w-8 h-8 flex items-center justify-center rounded-full border transition-colors ${
+                      canonicalSet
+                        ? 'bg-amber-50 border-amber-300 text-amber-600'
+                        : 'bg-white border-stone-200 text-stone-400 hover:text-amber-600 hover:border-amber-300'
+                    }`}
+                    aria-label={canonicalSet ? 'Unset canonical' : 'Set as canonical for this stage'}
+                  >
+                    <Star className={`w-3.5 h-3.5 ${canonicalSet ? 'fill-current' : ''}`} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p>
+                    {canonicalSet
+                      ? 'Canonical variant for this stage (click to unset)'
+                      : 'Set as canonical for this stage'}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+
             {/* Use this (adopt) */}
             <Tooltip>
               <TooltipTrigger asChild>
@@ -812,7 +874,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
               <TooltipTrigger asChild>
                 <button
                   onClick={handleShare}
-                  disabled={shareState === 'connecting'}
+                  disabled={shareState === 'connecting' || shareState === 'disabled'}
                   className={`w-8 h-8 flex items-center justify-center rounded-full bg-white border transition-colors disabled:opacity-50 ${
                     shareState === 'copied'
                       ? 'border-green-300 text-green-600'
@@ -838,7 +900,8 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
               </TooltipTrigger>
               <TooltipContent side="right">
                 <p>
-                  {shareState === 'connecting' ? 'Starting tunnel…' :
+                  {shareState === 'disabled' ? shareDisabledTooltip :
+                   shareState === 'connecting' ? 'Starting tunnel…' :
                    shareState === 'copied' ? 'Link copied!' :
                    shareState === 'error' ? 'Tunnel failed' :
                    'Copy public link'}

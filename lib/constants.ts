@@ -52,6 +52,12 @@ export const FIT_COMPONENT_NODES_EVENT = 'playground:fit-component-nodes';
 /** Fired to trigger auto-arrange of canvas nodes */
 export const PLAYGROUND_AUTO_ARRANGE_EVENT = 'PLAYGROUND_AUTO_ARRANGE';
 
+/** Fired to open the Skills catalog modal */
+export const OPEN_SKILLS_CATALOG_EVENT = 'playground:open-skills-catalog';
+
+/** Fired after a skill is added or removed so listeners can refresh */
+export const SKILLS_CHANGED_EVENT = 'playground:skills-changed';
+
 /** Fired when an iteration node's collapse/expand state is toggled */
 export const ITERATION_COLLAPSE_TOGGLE_EVENT = 'playground:iteration-collapse-toggle';
 
@@ -63,6 +69,38 @@ export const DRAG_ITERATE_EVENT = 'playground:drag-iterate';
 
 /** Fired to programmatically open cursor chat on a target node */
 export const CURSOR_CHAT_OPEN_EVENT = 'playground:cursor-chat-open';
+
+/** Fired to decompose a component/iteration node into per-stage StageNodes */
+export const FLOW_DECOMPOSE_EVENT = 'playground:flow-decompose';
+
+export interface FlowDecomposePayload {
+  /** Node id of the ComponentNode/IterationNode being decomposed */
+  parentNodeId: string;
+  /** Source component registry id (e.g. 'signup') */
+  componentId: string;
+  /** Anchor canvas position (parent node's position) used to place stages */
+  anchor: { x: number; y: number };
+}
+
+/** Fired to open the flow simulator and play a flow's stages end-to-end */
+export const FLOW_PLAY_EVENT = 'playground:flow-play';
+
+export interface FlowPlayPayload {
+  /** Flow instance id (matches StageNodeData.flowId) */
+  flowId: string;
+  /** When true, use the canonical iteration for each stage instead of base */
+  useCanonical?: boolean;
+}
+
+/** Fired to open the Combine preview (plays canonical variants stitched together) */
+export const FLOW_COMBINE_EVENT = 'playground:flow-combine';
+
+/** Fired to open the Adopt diff modal for a flow */
+export const FLOW_ADOPT_EVENT = 'playground:flow-adopt';
+
+export interface FlowAdoptPayload {
+  flowId: string;
+}
 
 export interface CursorChatOpenPayload {
   targetNode: import('../hooks/useCursorChat').CursorChatTargetNode;
@@ -90,6 +128,18 @@ export const ENABLED_MODELS_STORAGE_KEY = 'playground-model-settings';
 /** Key for persisting user keybinding overrides */
 export const KEYBINDINGS_STORAGE_KEY = 'playground-keybindings';
 
+/** Key for persisting the dev-mode toggle (gates Refresh/Clear in the header) */
+export const DEV_MODE_STORAGE_KEY = 'playground-dev-mode';
+
+/** Sidebar drag id for the generated design-system showcase */
+export const DESIGN_SYSTEM_SHOWCASE_ID = 'design-system:showcase';
+
+/** API URL serving raw HTML for the generated design-system showcase */
+export const DESIGN_SYSTEM_SHOWCASE_RAW_URL = '/playground/api/design/preview-showcase?raw=1';
+
+/** Fires after a successful design-system showcase generation */
+export const DESIGN_SYSTEM_GENERATED_EVENT = 'playground:design-system-generated';
+
 /** Key for persisting presence bubbles across page reloads */
 export const PRESENCE_BUBBLES_STORAGE_KEY = 'playground-presence-bubbles';
 
@@ -98,9 +148,6 @@ export const GENERATION_INFO_STORAGE_KEY = 'playground-generation-info';
 
 /** Key for persisting the add-all queue in sessionStorage */
 export const ADD_ALL_QUEUE_STORAGE_KEY = 'playground-add-all-queue';
-
-/** Key for persisting dev mode toggle */
-export const DEV_MODE_STORAGE_KEY = 'playground-dev-mode';
 
 // ---------------------------------------------------------------------------
 // Timing Constants
@@ -156,6 +203,9 @@ export const ARRANGE_GROUP_GAP = 100;
 
 /** Horizontal gap between the component column and iteration column (px) */
 export const ARRANGE_HORIZONTAL_GAP = 80;
+
+/** Padding around the decomposed stage cluster's dotted backdrop (px) */
+export const STAGE_GROUP_PADDING = 32;
 
 /** Horizontal gap between tiles inside a bento cluster (px) */
 export const ARRANGE_BENTO_TILE_GAP_X = 48;
@@ -615,7 +665,7 @@ export interface CursorChatSubmitPayload {
   targetNodeId: string | null;
   targetComponentId: string | null;
   targetComponentName: string | null;
-  targetType: 'component' | 'iteration' | 'image' | 'text' | null;
+  targetType: 'component' | 'iteration' | 'image' | 'text' | 'stage' | null;
   sourceFilename?: string;
   iterationCount?: number;
   canvasPosition: { x: number; y: number };

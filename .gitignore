@@ -20,6 +20,8 @@ data/*.mockData.ts
 canvas-components/*
 !canvas-components/index.ts
 
+skills/
+
 # Eval harness run artifacts (per-run, not tracked)
 evals/runs/
 
