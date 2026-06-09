@@ -6,8 +6,6 @@ import {
   Controls,
   Background,
   BackgroundVariant,
-  useNodesState,
-  useEdgesState,
   addEdge,
   Connection,
   useReactFlow,
@@ -28,6 +26,11 @@ import {
   AlertDialogTitle,
 } from './ui/alert-dialog';
 import { getProviderFields } from './lib/generation-body';
+import { loadCanvasState, saveCanvasState, type GenerationInfo } from './lib/canvas-persistence';
+import { useCanvasFlow } from './lib/canvas-flow';
+import { useMultiplayer } from './lib/multiplayer-context';
+import { CanvasPresenceLayer } from './lib/presence';
+import { CommentsLayer } from './lib/comments';
 
 import ComponentNode from './nodes/ComponentNode';
 import IterationNode from './nodes/IterationNode';
@@ -183,93 +186,13 @@ interface IterationFile {
   sourceIteration: string | null;
 }
 
-interface CanvasState {
-  nodes: Node[];
-  edges: Edge[];
-  nodeIdCounter: number;
-  knownIterations: string[];
-  collapsedNodeIds?: string[];
-  /** Persisted generation info for resuming after page reload */
-  generationInfo?: GenerationInfo | null;
-  /** Persisted viewport (pan/zoom) */
-  viewport?: { x: number; y: number; zoom: number };
-}
-
-function loadCanvasState(): CanvasState | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const state = JSON.parse(stored) as CanvasState;
-      const skeletonIds = new Set(
-        state.nodes.filter(n => n.type === 'skeleton').map(n => n.id),
-      );
-      // Strip skeleton nodes unless we have generationInfo to resume
-      const hasValidGenInfo = state.generationInfo &&
-        (Date.now() - state.generationInfo.startTime <= 10 * 60 * 1000);
-      if (skeletonIds.size > 0 && !hasValidGenInfo) {
-        state.nodes = state.nodes.filter(n => n.type !== 'skeleton');
-        state.edges = state.edges.filter(
-          e => !skeletonIds.has(e.source) && !skeletonIds.has(e.target),
-        );
-        state.generationInfo = null;
-      }
-      return state;
-    }
-  } catch (e) {
-    console.error('Failed to load canvas state:', e);
-  }
-  return null;
-}
-
-function saveCanvasState(
-  nodes: Node[],
-  edges: Edge[],
-  counter: number,
-  knownIterations: string[],
-  collapsedNodeIds: string[],
-  generationInfo?: GenerationInfo | null,
-  viewport?: { x: number; y: number; zoom: number },
-) {
-  if (typeof window === 'undefined') return;
-  try {
-    const state: CanvasState = {
-      nodes, edges, nodeIdCounter: counter, knownIterations, collapsedNodeIds,
-      // Only persist generationInfo when skeletons are present
-      generationInfo: nodes.some(n => n.type === 'skeleton') ? generationInfo : null,
-      viewport,
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch (e) {
-    console.error('Failed to save canvas state:', e);
-  }
-}
+// CanvasState, loadCanvasState, saveCanvasState moved to ./lib/canvas-persistence
 
 // Re-export event names so existing imports keep working
 export { ITERATION_PROMPT_COPIED_EVENT, ITERATION_FETCH_EVENT } from './lib/constants';
 import { ITERATION_PROMPT_COPIED_EVENT, ITERATION_FETCH_EVENT } from './lib/constants';
 
-// Track generation info for status display
-interface GenerationInfo {
-  componentId: string;
-  componentName: string;
-  parentNodeId: string;
-  iterationCount: number;
-  skeletonNodeIds: string[];
-  startTime: number; // Timestamp when generation started
-  /** Skeleton positions for post-generation repositioning (always set) */
-  skeletonPositions?: { x: number; y: number }[];
-  /** Grid layout positions for each skeleton node (ordered by variant number) */
-  gridPositions?: { x: number; y: number }[];
-  /** Parent node cell size so real iteration nodes can match ghost/skeleton sizing */
-  gridCellSize?: { width: number; height: number };
-  /** Render mode for this generation */
-  renderMode?: 'react' | 'html' | 'jsx';
-  /** HTML page folder (when renderMode is 'html') */
-  htmlFolder?: string;
-  /** Base or iteration filename in canvas-components/ (when renderMode is 'jsx') */
-  jsxFile?: string;
-}
+// GenerationInfo moved to ./lib/canvas-persistence
 
 interface PlaygroundCanvasProps {
   sidebarVisible: boolean;
@@ -353,9 +276,21 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
     initialized.current = true;
   }
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialState?.nodes || []);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialState?.edges || []);
+  const multiplayer = useMultiplayer();
+  const {
+    nodes,
+    setNodes,
+    onNodesChange,
+    edges,
+    setEdges,
+    onEdgesChange,
+    isLoading: isFlowLoading,
+  } = useCanvasFlow();
   const { screenToFlowPosition, fitView, setCenter, getViewport } = useReactFlow();
+
+  // Multiplayer: the host seeds a fresh room once from its local canvas (see effect below).
+  const seedDataRef = useRef(initialState);
+  const didSeedRef = useRef(false);
 
   // Running timer during generation + safety timeout for orphaned skeletons
   useEffect(() => {
@@ -478,19 +413,35 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
     knownIterationsRef.current = knownIterations;
   }, [knownIterations]);
 
-  // Save to localStorage whenever nodes or edges change
+  // Save to localStorage whenever nodes or edges change (single-player only — in multiplayer
+  // the Liveblocks room is the source of truth, so we don't persist canvas state locally).
   useEffect(() => {
+    if (multiplayer.enabled) return;
     saveCanvasState(nodes, edges, nodeIdCounterRef.current, knownIterations, Array.from(collapsedNodeIds), generationInfoRef.current, getViewport());
-  }, [nodes, edges, knownIterations, collapsedNodeIds, getViewport]);
+  }, [multiplayer.enabled, nodes, edges, knownIterations, collapsedNodeIds, getViewport]);
 
   // Save viewport on page unload (captures pan/zoom changes that don't trigger node updates)
   useEffect(() => {
+    if (multiplayer.enabled) return;
     const handler = () => {
       saveCanvasState(nodesRef.current, edges, nodeIdCounterRef.current, knownIterationsRef.current, Array.from(collapsedNodeIdsRef.current), generationInfoRef.current, getViewport());
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [edges, getViewport]);
+  }, [multiplayer.enabled, edges, getViewport]);
+
+  // Multiplayer: the host seeds a fresh (empty) room once from its local canvas, so an existing
+  // local design becomes the shared starting point. Guests and non-empty rooms are left as-is.
+  useEffect(() => {
+    if (!multiplayer.enabled || !multiplayer.isHost || didSeedRef.current) return;
+    if (isFlowLoading) return;
+    didSeedRef.current = true;
+    const seed = seedDataRef.current;
+    if (nodes.length === 0 && seed?.nodes?.length) {
+      setNodes(seed.nodes);
+      if (seed.edges?.length) setEdges(seed.edges);
+    }
+  }, [multiplayer.enabled, multiplayer.isHost, isFlowLoading, nodes.length, setNodes, setEdges]);
 
   // Find parent node for a given component (reads from ref to avoid stale closure)
   const findParentNode = useCallback((componentName: string, parentId?: string): Node | undefined => {
@@ -3994,6 +3945,8 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
           bgColor={CANVAS_BACKGROUND_COLOR}
           color={BACKGROUND_COLOR}
         />
+        {multiplayer.enabled && <CanvasPresenceLayer />}
+        {multiplayer.enabled && <CommentsLayer />}
       </ReactFlow>
 
       {/* Hidden file input for image upload */}

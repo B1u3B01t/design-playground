@@ -16,7 +16,11 @@
     "@tailwindcss/typography": "latest",
     "tw-animate-css": "latest",
     "html-to-image": "latest",
-    "zustand": "latest"
+    "zustand": "latest",
+    "@liveblocks/client": "latest",
+    "@liveblocks/react": "latest",
+    "@liveblocks/react-flow": "latest",
+    "@liveblocks/react-ui": "latest"
   },
   "requires": [
     "next",

@@ -16,6 +16,11 @@ import {
   SKILLS_CHANGED_EVENT,
 } from './lib/constants';
 import { preloadAllComponents } from './registry';
+import { LiveblocksProvider, RoomProvider } from '@liveblocks/react';
+import { liveblocksAuth } from './liveblocks.config';
+import { MultiplayerProvider, type MultiplayerState } from './lib/multiplayer-context';
+import { CanvasFlowProvider } from './lib/canvas-flow';
+import { GenerationPresenceBridge } from './lib/presence';
 
 export interface PendingChild {
   id: string;
@@ -24,7 +29,13 @@ export interface PendingChild {
   status: 'pending' | 'analyzing' | 'done' | 'error';
 }
 
-export default function PlaygroundClient() {
+export default function PlaygroundClient({
+  roomId,
+  isHost = false,
+}: {
+  roomId?: string;
+  isHost?: boolean;
+} = {}) {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
   const [skillsCatalogOpen, setSkillsCatalogOpen] = useState(false);
@@ -490,7 +501,7 @@ export default function PlaygroundClient() {
     }
   }, [notifySidebar, analyzeChildren]);
 
-  return (
+  const body = (
     <ReactFlowProvider>
       <div
         className="playground-main-view fixed inset-0 flex flex-col overflow-hidden z-50"
@@ -518,10 +529,12 @@ export default function PlaygroundClient() {
 
           {/* Canvas — always full size, sidebar overlays */}
           <div className="flex-1 relative">
-            <PlaygroundCanvas
-              sidebarVisible={sidebarVisible}
-              onToggleSidebar={() => setSidebarVisible((v) => !v)}
-            />
+            <CanvasFlowProvider>
+              <PlaygroundCanvas
+                sidebarVisible={sidebarVisible}
+                onToggleSidebar={() => setSidebarVisible((v) => !v)}
+              />
+            </CanvasFlowProvider>
           </div>
         </div>
       </div>
@@ -545,5 +558,33 @@ export default function PlaygroundClient() {
       />
 
     </ReactFlowProvider>
+  );
+
+  const multiplayer: MultiplayerState = {
+    enabled: !!roomId,
+    isHost,
+    roomId: roomId ?? null,
+  };
+
+  // Single-player: no Liveblocks providers, just expose a (disabled) multiplayer context.
+  if (!roomId) {
+    return <MultiplayerProvider value={multiplayer}>{body}</MultiplayerProvider>;
+  }
+
+  // Multiplayer: mount Liveblocks providers around the existing canvas. Storage for the
+  // canvas is created lazily by useLiveblocksFlow (no initialStorage needed); we use the
+  // non-suspense hooks everywhere, so no ClientSideSuspense boundary is required.
+  return (
+    <LiveblocksProvider authEndpoint={liveblocksAuth}>
+      <RoomProvider
+        id={roomId}
+        initialPresence={{ cursor: null, selection: [], generating: false }}
+      >
+        <MultiplayerProvider value={multiplayer}>
+          <GenerationPresenceBridge />
+          {body}
+        </MultiplayerProvider>
+      </RoomProvider>
+    </LiveblocksProvider>
   );
 }

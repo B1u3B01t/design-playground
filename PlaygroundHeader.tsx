@@ -37,6 +37,8 @@ import {
   type GenerationAgentPreviewPayload,
 } from './lib/constants';
 import { cn } from './lib/utils';
+import { useMultiplayer } from './lib/multiplayer-context';
+import { PresenceAvatars } from './lib/presence';
 import ModelSettingsModal from './ModelSettingsModal';
 import KeyboardShortcutsModal from './KeyboardShortcutsModal';
 
@@ -84,6 +86,7 @@ export default function PlaygroundHeader({
   sidebarVisible: _sidebarVisible,
   onToggleSidebar: _onToggleSidebar,
 }: PlaygroundHeaderProps) {
+  const multiplayer = useMultiplayer();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [devModeMenu, setDevModeMenu] = useState<{ x: number; y: number } | null>(null);
@@ -403,6 +406,7 @@ export default function PlaygroundHeader({
 
         {/* Right: action icons + presence bubbles */}
         <div className="flex items-center gap-0.5">
+          {multiplayer.enabled && <PresenceAvatars />}
           <Tooltip>
             <TooltipTrigger asChild>
               <button

@@ -15,6 +15,7 @@ import { getModelIconConfig } from './lib/model-icons';
 import { type ModelOption } from './lib/constants';
 import type { ProviderId, ClaudeCodeOptions } from './lib/providers/types';
 import { getAllProviders, getProvider } from './lib/providers/registry';
+import { getDisplayName, setDisplayName } from './liveblocks.config';
 
 // ---------------------------------------------------------------------------
 // Effort level options for Claude Code
@@ -56,6 +57,12 @@ export default function ModelSettingsModal({ open, onOpenChange }: ModelSettings
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [localClaudeOpts, setLocalClaudeOpts] = useState<ClaudeCodeOptions>(claudeCodeOptions);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [displayName, setDisplayNameState] = useState('');
+
+  // Load the saved display name when the modal opens.
+  useEffect(() => {
+    if (open) setDisplayNameState(getDisplayName());
+  }, [open]);
 
   // Sync from store when modal opens or provider changes
   useEffect(() => {
@@ -126,6 +133,24 @@ export default function ModelSettingsModal({ open, onOpenChange }: ModelSettings
             </button>
           </DialogDescription>
         </DialogHeader>
+
+        {/* Display name — your identity in shared (multiplayer) sessions */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-stone-700">Your name</label>
+          <input
+            type="text"
+            value={displayName}
+            onChange={(e) => {
+              setDisplayNameState(e.target.value);
+              setDisplayName(e.target.value);
+            }}
+            placeholder="Set a name for shared sessions"
+            className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-[13px] text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-400/40"
+          />
+          <p className="text-[11px] text-stone-400">
+            Shown to others in shared sessions. Applies the next time you join a session.
+          </p>
+        </div>
 
         {/* Provider segment control */}
         <div className="flex gap-0.5 p-0.5 bg-stone-100 rounded-lg">
