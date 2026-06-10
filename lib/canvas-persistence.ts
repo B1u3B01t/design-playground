@@ -6,6 +6,7 @@
 
 import type { Node, Edge } from '@xyflow/react';
 import { STORAGE_KEY } from './constants';
+import type { DrawStroke } from './draw-types';
 
 /** Track generation info for status display + resuming after a page reload. */
 export interface GenerationInfo {
@@ -39,12 +40,25 @@ export interface CanvasState {
   generationInfo?: GenerationInfo | null;
   /** Persisted viewport (pan/zoom) */
   viewport?: { x: number; y: number; zoom: number };
+  /** Freehand strokes in flow coordinates on the canvas */
+  canvasDrawings?: DrawStroke[];
 }
 
-export function loadCanvasState(): CanvasState | null {
+export function loadCanvasState(storageKey: string = STORAGE_KEY): CanvasState | null {
   if (typeof window === 'undefined') return null;
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    let stored = localStorage.getItem(storageKey);
+    // One-time migration: the canvas used to live under a single unscoped key that
+    // every project on this origin shared. Adopt that legacy data for the first
+    // project that loads, then drop it so it can't leak into other projects.
+    if (!stored && storageKey !== STORAGE_KEY) {
+      const legacy = localStorage.getItem(STORAGE_KEY);
+      if (legacy) {
+        localStorage.setItem(storageKey, legacy);
+        localStorage.removeItem(STORAGE_KEY);
+        stored = legacy;
+      }
+    }
     if (stored) {
       const state = JSON.parse(stored) as CanvasState;
       const skeletonIds = new Set(
@@ -69,6 +83,7 @@ export function loadCanvasState(): CanvasState | null {
 }
 
 export function saveCanvasState(
+  storageKey: string,
   nodes: Node[],
   edges: Edge[],
   counter: number,
@@ -76,6 +91,7 @@ export function saveCanvasState(
   collapsedNodeIds: string[],
   generationInfo?: GenerationInfo | null,
   viewport?: { x: number; y: number; zoom: number },
+  canvasDrawings?: DrawStroke[],
 ) {
   if (typeof window === 'undefined') return;
   try {
@@ -84,8 +100,9 @@ export function saveCanvasState(
       // Only persist generationInfo when skeletons are present
       generationInfo: nodes.some(n => n.type === 'skeleton') ? generationInfo : null,
       viewport,
+      canvasDrawings,
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(storageKey, JSON.stringify(state));
   } catch (e) {
     console.error('Failed to save canvas state:', e);
   }

@@ -14,6 +14,7 @@ import {
   ADD_ALL_QUEUE_STORAGE_KEY,
   OPEN_SKILLS_CATALOG_EVENT,
   SKILLS_CHANGED_EVENT,
+  STORAGE_KEY,
 } from './lib/constants';
 import { preloadAllComponents } from './registry';
 import { LiveblocksProvider, RoomProvider } from '@liveblocks/react';
@@ -31,9 +32,11 @@ export interface PendingChild {
 }
 
 export default function PlaygroundClient({
+  projectId,
   roomId,
   isHost = false,
 }: {
+  projectId?: string;
   roomId?: string;
   isHost?: boolean;
 } = {}) {
@@ -530,10 +533,11 @@ export default function PlaygroundClient({
 
           {/* Canvas — always full size, sidebar overlays */}
           <div className="flex-1 relative">
-            <CanvasFlowProvider>
+            <CanvasFlowProvider storageKey={projectId ? `${STORAGE_KEY}:${projectId}` : STORAGE_KEY}>
               <PlaygroundCanvas
                 sidebarVisible={sidebarVisible}
                 onToggleSidebar={() => setSidebarVisible((v) => !v)}
+                projectId={projectId}
               />
             </CanvasFlowProvider>
           </div>
@@ -557,7 +561,6 @@ export default function PlaygroundClient({
           window.dispatchEvent(new CustomEvent(SKILLS_CHANGED_EVENT));
         }}
       />
-
     </ReactFlowProvider>
   );
 

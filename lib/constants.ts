@@ -70,6 +70,38 @@ export const DRAG_ITERATE_EVENT = 'playground:drag-iterate';
 /** Fired to programmatically open cursor chat on a target node */
 export const CURSOR_CHAT_OPEN_EVENT = 'playground:cursor-chat-open';
 
+/** Fired to decompose a component/iteration node into per-stage StageNodes */
+export const FLOW_DECOMPOSE_EVENT = 'playground:flow-decompose';
+
+export interface FlowDecomposePayload {
+  /** Node id of the ComponentNode/IterationNode being decomposed */
+  parentNodeId: string;
+  /** Source component registry id (e.g. 'signup') */
+  componentId: string;
+  /** Anchor canvas position (parent node's position) used to place stages */
+  anchor: { x: number; y: number };
+}
+
+/** Fired to open the flow simulator and play a flow's stages end-to-end */
+export const FLOW_PLAY_EVENT = 'playground:flow-play';
+
+export interface FlowPlayPayload {
+  /** Flow instance id (matches StageNodeData.flowId) */
+  flowId: string;
+  /** When true, use the canonical iteration for each stage instead of base */
+  useCanonical?: boolean;
+}
+
+/** Fired to open the Combine preview (plays canonical variants stitched together) */
+export const FLOW_COMBINE_EVENT = 'playground:flow-combine';
+
+/** Fired to open the Adopt diff modal for a flow */
+export const FLOW_ADOPT_EVENT = 'playground:flow-adopt';
+
+export interface FlowAdoptPayload {
+  flowId: string;
+}
+
 export interface CursorChatOpenPayload {
   targetNode: import('../hooks/useCursorChat').CursorChatTargetNode;
   screenX: number;
@@ -171,6 +203,9 @@ export const ARRANGE_GROUP_GAP = 100;
 
 /** Horizontal gap between the component column and iteration column (px) */
 export const ARRANGE_HORIZONTAL_GAP = 80;
+
+/** Padding around the decomposed stage cluster's dotted backdrop (px) */
+export const STAGE_GROUP_PADDING = 32;
 
 /** Horizontal gap between tiles inside a bento cluster (px) */
 export const ARRANGE_BENTO_TILE_GAP_X = 48;
@@ -630,7 +665,7 @@ export interface CursorChatSubmitPayload {
   targetNodeId: string | null;
   targetComponentId: string | null;
   targetComponentName: string | null;
-  targetType: 'component' | 'iteration' | 'image' | 'text' | null;
+  targetType: 'component' | 'iteration' | 'image' | 'text' | 'stage' | null;
   sourceFilename?: string;
   iterationCount?: number;
   canvasPosition: { x: number; y: number };

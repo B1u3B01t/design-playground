@@ -2,64 +2,51 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 
 export type ShareState = 'idle' | 'connecting' | 'copied' | 'error' | 'disabled';
 
-interface TunnelConfig {
-  hasToken: boolean;
-  source: 'agent' | 'env' | 'none';
-}
+// ── Module-level flag: only register the beforeunload handler once ───────────
+// (every node mounts its own hook instance; we don't want N listeners)
+let unloadRegistered = false;
 
-const TOOLTIP_ELECTRON =
-  'Sharing is disabled. Add your ngrok auth token in Playground → Settings → Sharing.';
-const TOOLTIP_STANDALONE =
-  'Sharing is disabled. Set NGROK_AUTHTOKEN in your environment to enable.';
+function ensureUnloadCleanup() {
+  if (unloadRegistered) return;
+  unloadRegistered = true;
 
-function isElectronContext(): boolean {
-  if (typeof window === 'undefined') return false;
-  const w = window as unknown as { electron?: unknown };
-  if (w.electron) return true;
-  return /Electron|Playground/i.test(navigator.userAgent || '');
+  // sendBeacon is the only reliable way to fire a request on tab close —
+  // fetch() is cancelled by the browser before it completes.
+  // We POST to a dedicated teardown endpoint with beacon (no body needed).
+  window.addEventListener('beforeunload', () => {
+    // Prefer sendBeacon (fire-and-forget, browser guarantees delivery)
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/playground/api/tunnel/beacon');
+    } else {
+      // Synchronous XHR fallback — only works in some browsers on unload
+      const xhr = new XMLHttpRequest();
+      xhr.open('DELETE', '/playground/api/tunnel', false /* sync */);
+      xhr.send();
+    }
+  });
 }
 
 /**
- * Manages the ngrok tunnel and copies a public link for a component/iteration.
+ * Hook that manages the localhost.run tunnel and copies a public shareable
+ * link for a specific component/iteration path.
  *
  * `sharePath` can be:
- * - a registry/iteration slug (e.g. "pricing-card") → /playground/iterations/[slug]
- * - an absolute app path starting with "/" (e.g. "/landing/index.html") → used as-is
+ * - a registry/iteration slug (e.g. "pricing-card"), which maps to
+ *   /playground/iterations/[slug], or
+ * - an absolute app path starting with "/" (e.g. "/landing/index.html"),
+ *   used for HTML page shares.
  */
 export function useTunnelShare(sharePath: string) {
   const [state, setState] = useState<ShareState>('idle');
-  const [disabledTooltip, setDisabledTooltip] = useState<string>(TOOLTIP_STANDALONE);
+  // Track in-flight timeouts so we can clear them if the component unmounts
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Fetch /config on mount and on window focus so the button reflects current
-  // token availability without a full reload.
+  // Register the tab-close cleanup once, globally
   useEffect(() => {
-    let cancelled = false;
-
-    const refresh = async () => {
-      try {
-        const res = await fetch('/playground/api/tunnel/config');
-        const cfg = (await res.json()) as TunnelConfig;
-        if (cancelled) return;
-        if (cfg.source === 'none') {
-          setDisabledTooltip(isElectronContext() ? TOOLTIP_ELECTRON : TOOLTIP_STANDALONE);
-          setState((prev) => (prev === 'idle' || prev === 'disabled' ? 'disabled' : prev));
-        } else {
-          setState((prev) => (prev === 'disabled' ? 'idle' : prev));
-        }
-      } catch {
-        // If config probe fails, leave state alone — the user can still try.
-      }
-    };
-
-    refresh();
-    window.addEventListener('focus', refresh);
-    return () => {
-      cancelled = true;
-      window.removeEventListener('focus', refresh);
-    };
+    ensureUnloadCleanup();
   }, []);
 
+  // Clean up any pending state-reset timers on unmount
   useEffect(() => {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -67,38 +54,47 @@ export function useTunnelShare(sharePath: string) {
   }, []);
 
   const share = useCallback(async () => {
-    if (state === 'connecting' || state === 'disabled') return;
+    if (state === 'connecting') return;
 
     setState('connecting');
 
     try {
+      // Derive the port from the current browser URL
       const port = Number(window.location.port) || (window.location.protocol === 'https:' ? 443 : 80);
 
-      const startRes = await fetch('/playground/api/tunnel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ port }),
-      });
-      const startData = await startRes.json();
+      // 1. Check if tunnel is already running
+      const checkRes = await fetch('/playground/api/tunnel');
+      const checkData = await checkRes.json();
 
-      if (startRes.status === 400 && startData.error === 'no_token') {
-        setDisabledTooltip(isElectronContext() ? TOOLTIP_ELECTRON : TOOLTIP_STANDALONE);
-        setState('disabled');
-        return;
+      let tunnelBaseUrl: string;
+
+      if (checkData.url && checkData.port === port) {
+        tunnelBaseUrl = checkData.url;
+      } else {
+        // 2. Start a new tunnel
+        const startRes = await fetch('/playground/api/tunnel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ port }),
+        });
+        const startData = await startRes.json();
+
+        if (!startRes.ok || !startData.url) {
+          console.error('[useTunnelShare] Tunnel error:', startData.error);
+          setState('error');
+          timeoutRef.current = setTimeout(() => setState('idle'), 2000);
+          return;
+        }
+        tunnelBaseUrl = startData.url;
       }
 
-      if (!startRes.ok || !startData.url) {
-        console.error('[useTunnelShare] Tunnel error:', startData.error);
-        setState('error');
-        timeoutRef.current = setTimeout(() => setState('idle'), 2000);
-        return;
-      }
-
-      const normalizedBase = (startData.url as string).replace(/\/$/, '');
+      // 3. Build the full shareable URL
+      const normalizedBase = tunnelBaseUrl.replace(/\/$/, '');
       const shareUrl = sharePath.startsWith('/')
         ? `${normalizedBase}${sharePath}`
         : `${normalizedBase}/playground/iterations/${sharePath}`;
 
+      // 4. Copy to clipboard
       await navigator.clipboard.writeText(shareUrl);
       setState('copied');
       timeoutRef.current = setTimeout(() => setState('idle'), 2000);
@@ -109,5 +105,5 @@ export function useTunnelShare(sharePath: string) {
     }
   }, [sharePath, state]);
 
-  return { share, state, disabledTooltip };
+  return { share, state, disabledTooltip: undefined as string | undefined };
 }

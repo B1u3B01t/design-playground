@@ -83,8 +83,8 @@ function diffEdges(prev: Edge[], next: Edge[]): EdgeChange<Edge>[] {
 }
 
 /** Single-player: classic local React Flow state seeded from localStorage (unchanged behavior). */
-function SoloFlowProvider({ children }: { children: ReactNode }) {
-  const [initial] = useState(loadCanvasState);
+function SoloFlowProvider({ children, storageKey }: { children: ReactNode; storageKey?: string }) {
+  const [initial] = useState(() => loadCanvasState(storageKey));
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(initial?.nodes ?? []);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(initial?.edges ?? []);
   const value: CanvasFlowState = {
@@ -197,11 +197,18 @@ function MultiplayerFlowProvider({ children }: { children: ReactNode }) {
 }
 
 /** Picks the solo or multiplayer flow source based on the active session. */
-export function CanvasFlowProvider({ children }: { children: ReactNode }) {
+export function CanvasFlowProvider({
+  children,
+  storageKey,
+}: {
+  children: ReactNode;
+  /** Project-scoped localStorage key for single-player persistence. */
+  storageKey?: string;
+}) {
   const { enabled } = useMultiplayer();
   return enabled ? (
     <MultiplayerFlowProvider>{children}</MultiplayerFlowProvider>
   ) : (
-    <SoloFlowProvider>{children}</SoloFlowProvider>
+    <SoloFlowProvider storageKey={storageKey}>{children}</SoloFlowProvider>
   );
 }

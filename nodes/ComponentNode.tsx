@@ -5,6 +5,8 @@ import { useNodeId, useReactFlow, NodeResizeControl } from '@xyflow/react';
 import { Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { resolveRegistryItem } from '../registry';
+import { findFlowDescriptorForComponent } from '../lib/flows/registry';
+import { FLOW_DECOMPOSE_EVENT, type FlowDecomposePayload } from '../lib/constants';
 import IterateDialog from './shared/IterateDialog';
 import { SizeButtons } from './shared/SizeButtons';
 import { NodeLabel, useInverseZoom } from './shared/NodeLabel';
@@ -118,7 +120,22 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   const handleWheel = useScrollCapture(scrollContainerRef);
 
   const nodeId = useNodeId();
-  const { updateNodeData, setNodes } = useReactFlow();
+  const { updateNodeData, setNodes, getNode } = useReactFlow();
+  const flowDescriptor = !isHtml && !isJsx && !isEmbed && !isDesignSystem
+    ? findFlowDescriptorForComponent(componentId)
+    : null;
+
+  const handleDecompose = useCallback(() => {
+    if (!nodeId || !flowDescriptor) return;
+    const node = getNode(nodeId);
+    if (!node) return;
+    const payload: FlowDecomposePayload = {
+      parentNodeId: nodeId,
+      componentId,
+      anchor: { x: node.position.x, y: node.position.y },
+    };
+    window.dispatchEvent(new CustomEvent(FLOW_DECOMPOSE_EVENT, { detail: payload }));
+  }, [nodeId, flowDescriptor, getNode, componentId]);
   const isInteractive = useIsInteractiveNode(nodeId);
   const setInteractiveNodeId = useInteractiveNodeStore((s) => s.setInteractiveNodeId);
 
@@ -512,6 +529,29 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                     jsxFile={data.jsxFile}
                   />
                 ) : null}
+
+                {flowDescriptor && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={handleDecompose}
+                        className="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-stone-200 text-stone-400 hover:text-purple-600 hover:border-purple-300 transition-colors"
+                        aria-label="Decompose into stages"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="4" width="6" height="6" rx="1.5" />
+                          <rect x="15" y="4" width="6" height="6" rx="1.5" />
+                          <rect x="3" y="14" width="6" height="6" rx="1.5" />
+                          <rect x="15" y="14" width="6" height="6" rx="1.5" />
+                          <path d="M9 7h6M9 17h6M6 10v4M18 10v4" />
+                        </svg>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <p>Decompose into {flowDescriptor.stages.length} stages</p>
+                    </TooltipContent>
+                  </Tooltip>
+                )}
 
                 {!isDesignSystem && (
                 <Tooltip>

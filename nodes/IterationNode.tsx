@@ -18,6 +18,9 @@ import {
 } from '../ui/alert-dialog';
 import { resolveRegistryItem, generateAdoptPrompt } from '../registry';
 import { getIterationComponent } from '../iterations';
+import { useFlowMocksStore } from '../lib/flow-mocks-store';
+import type { StageNodeData } from '../lib/flows/types';
+import { Star } from 'lucide-react';
 import { SizeButtons } from './shared/SizeButtons';
 import { NodeLabel, useInverseZoom } from './shared/NodeLabel';
 import { loadOnCanvasComponentModule } from './oncanvas-loader';
@@ -88,7 +91,30 @@ interface IterationNodeProps {
 function IterationNode({ id, data, selected = false }: IterationNodeProps) {
   const labelInvScale = useInverseZoom();
   const hidePlayButton = labelInvScale * 14 > 14 + 6;
-  const { deleteElements, updateNodeData, setNodes } = useReactFlow();
+  const { deleteElements, updateNodeData, setNodes, getNode } = useReactFlow();
+
+  // Stage canonical-flag wiring: if this iteration's parent is a StageNode,
+  // expose a "Set as canonical" toggle that the simulator/Combine/Adopt
+  // flows read to pick the chosen variant per stage.
+  const parentForStage = data.parentNodeId ? getNode(data.parentNodeId) : null;
+  const stageParentData =
+    parentForStage?.type === 'stage'
+      ? (parentForStage.data as unknown as StageNodeData)
+      : null;
+  const canonicalSet = useFlowMocksStore((s) =>
+    stageParentData
+      ? s.flows[stageParentData.flowId]?.canonicalIterationByStage?.[stageParentData.stageId] === data.filename
+      : false,
+  );
+  const setCanonical = useFlowMocksStore((s) => s.setCanonical);
+  const toggleCanonical = useCallback(() => {
+    if (!stageParentData) return;
+    setCanonical(
+      stageParentData.flowId,
+      stageParentData.stageId,
+      canonicalSet ? null : data.filename,
+    );
+  }, [stageParentData, setCanonical, canonicalSet, data.filename]);
   const [isDeleting, setIsDeleting] = useState(false);
   const [adoptionStatus, setAdoptionStatus] = useState<'idle' | 'adopting' | 'adopted' | 'error'>(
     () => data.adopted ? 'adopted' : 'idle',
@@ -725,6 +751,32 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
                 htmlIterationFolder={data.htmlIterationFolder}
                 jsxFile={data.jsxFile}
               />
+
+            {/* Set as canonical for this stage — only shown when parent is a StageNode */}
+            {stageParentData && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={toggleCanonical}
+                    className={`w-8 h-8 flex items-center justify-center rounded-full border transition-colors ${
+                      canonicalSet
+                        ? 'bg-amber-50 border-amber-300 text-amber-600'
+                        : 'bg-white border-stone-200 text-stone-400 hover:text-amber-600 hover:border-amber-300'
+                    }`}
+                    aria-label={canonicalSet ? 'Unset canonical' : 'Set as canonical for this stage'}
+                  >
+                    <Star className={`w-3.5 h-3.5 ${canonicalSet ? 'fill-current' : ''}`} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p>
+                    {canonicalSet
+                      ? 'Canonical variant for this stage (click to unset)'
+                      : 'Set as canonical for this stage'}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            )}
 
             {/* Use this (adopt) */}
             <Tooltip>

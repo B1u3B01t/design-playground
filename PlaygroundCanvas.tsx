@@ -12,6 +12,7 @@ import {
   Node,
   Edge,
   SelectionMode,
+  type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { TooltipProvider } from './ui/tooltip';
@@ -31,12 +32,40 @@ import { useCanvasFlow } from './lib/canvas-flow';
 import { useMultiplayer } from './lib/multiplayer-context';
 import { CanvasPresenceLayer } from './lib/presence';
 import { CommentsLayer } from './lib/comments';
+import { resolveAgentModel } from './lib/resolve-agent-model';
+import type { ProviderId } from './lib/providers/types';
+import PlaygroundCanvasDrawLayer from './PlaygroundCanvasDrawLayer';
+import { usePlaygroundDrawStore } from './lib/playground-draw-store';
+import { createNewStroke, type DrawPenKind, type DrawStroke } from './lib/draw-types';
+import { Highlighter, Pencil } from 'lucide-react';
 
 import ComponentNode from './nodes/ComponentNode';
 import IterationNode from './nodes/IterationNode';
 import SkeletonIterationNode from './nodes/SkeletonIterationNode';
 import DragGhostNode from './nodes/DragGhostNode';
 import ImageNode from './nodes/ImageNode';
+import PdfNode, { type PdfNodeData } from './nodes/PdfNode';
+import StageNode, {
+  STAGE_NODE_DEFAULT_HEIGHT,
+  STAGE_NODE_FRAME_WIDTH,
+  STAGE_NODE_HEADER_HEIGHT,
+} from './nodes/StageNode';
+import StageGroupNode from './nodes/StageGroupNode';
+import { findFlowDescriptorForComponent } from './lib/flows/registry';
+import { useFlowMocksStore } from './lib/flow-mocks-store';
+import { MockDataPanel } from './components/MockDataPanel';
+import { FlowSimulator } from './components/FlowSimulator';
+import { FlowAdoptModal } from './components/FlowAdoptModal';
+import type { StageNodeData } from './lib/flows/types';
+import { hitTestStrokes } from './lib/draw-hit-test';
+import { computePageInsertIndex } from './lib/pdf-page-order';
+import {
+  applyMergePdfNodes,
+  applyMovePdfPage,
+  applyReorderPdfPage,
+} from './lib/pdf-page-move';
+import { usePdfPageGlobalDrag } from './hooks/usePdfPageGlobalDrag';
+import { usePlaygroundPdfDragStore } from './lib/playground-pdf-drag-store';
 import TextNode from './nodes/TextNode';
 import { matchesAction } from './lib/keybindings';
 import {
@@ -77,6 +106,7 @@ import {
   ARRANGE_START_X,
   ARRANGE_START_Y,
   ARRANGE_HORIZONTAL_GAP,
+  STAGE_GROUP_PADDING,
   ARRANGE_BENTO_TILE_GAP_X,
   ARRANGE_BENTO_TILE_GAP_Y,
   ARRANGE_BENTO_CLUSTER_MAX_WIDTH,
@@ -120,6 +150,8 @@ import {
   CURSOR_CHAT_DEFAULT_COUNT,
   CURSOR_CHAT_DEFAULT_DEPTH,
   CURSOR_CHAT_OPEN_EVENT,
+  FLOW_DECOMPOSE_EVENT,
+  type FlowDecomposePayload,
   type StylingMode,
   type GenerationStartPayload,
   type GenerationCompletePayload,
@@ -147,7 +179,10 @@ const nodeTypes = {
   skeleton: SkeletonIterationNode,
   'drag-ghost': DragGhostNode,
   image: ImageNode,
+  pdf: PdfNode,
   text: TextNode,
+  stage: StageNode,
+  stageGroup: StageGroupNode,
 };
 
 const DEFAULT_SKILL_IDS = ['design-variations', 'frontend-design'] as const;
@@ -197,13 +232,19 @@ import { ITERATION_PROMPT_COPIED_EVENT, ITERATION_FETCH_EVENT } from './lib/cons
 interface PlaygroundCanvasProps {
   sidebarVisible: boolean;
   onToggleSidebar: () => void;
+  /** Stable per-project id used to scope persisted canvas state to this project. */
+  projectId?: string;
 }
 
-export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: PlaygroundCanvasProps) {
+export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, projectId }: PlaygroundCanvasProps) {
   const dynamicBg = useDynamicBackground();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
-  const initialState = loadCanvasState();
+  // Scope canvas persistence to this project. localStorage is keyed by origin
+  // (http://localhost:<port>), so without this two projects that reuse a port would
+  // read back each other's frames. Falls back to the unscoped key when no id is given.
+  const storageKey = projectId ? `${STORAGE_KEY}:${projectId}` : STORAGE_KEY;
+  const initialState = loadCanvasState(storageKey);
   const [knownIterations, setKnownIterations] = useState<string[]>(initialState?.knownIterations || []);
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(
     new Set(initialState?.collapsedNodeIds || []),
@@ -243,9 +284,19 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
   const [creatingPage, setCreatingPage] = useState(false);
   const newPageInputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Canvas tool mode: 'select' is default pointer, 'text' is click-to-place text
-  const [activeTool, setActiveTool] = useState<'select' | 'text'>('select');
+  // Canvas tool mode: 'select' is default pointer, 'text' is click-to-place text, 'draw' is freehand ink
+  const [activeTool, setActiveTool] = useState<'select' | 'text' | 'draw'>('select');
+  const [canvasDrawings, setCanvasDrawings] = useState<DrawStroke[]>(
+    initialState?.canvasDrawings ?? [],
+  );
+  const canvasDrawingsRef = useRef<DrawStroke[]>(initialState?.canvasDrawings ?? []);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const setDrawToolActive = usePlaygroundDrawStore((s) => s.setDrawToolActive);
+  const setStrokeSelectEnabled = usePlaygroundDrawStore((s) => s.setStrokeSelectEnabled);
+  const setStrokeSelection = usePlaygroundDrawStore((s) => s.setStrokeSelection);
+  const drawPenKind = usePlaygroundDrawStore((s) => s.drawPenKind);
+  const setDrawPenKind = usePlaygroundDrawStore((s) => s.setDrawPenKind);
+  const strokeSelection = usePlaygroundDrawStore((s) => s.strokeSelection);
 
   // Delete cascade/reparent dialog
   const [deleteDialogNode, setDeleteDialogNode] = useState<Node | null>(null);
@@ -286,7 +337,114 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
     onEdgesChange,
     isLoading: isFlowLoading,
   } = useCanvasFlow();
-  const { screenToFlowPosition, fitView, setCenter, getViewport } = useReactFlow();
+  const { screenToFlowPosition, fitView, setCenter, getViewport, getNode } = useReactFlow();
+
+  const getPdfTotalPages = useCallback((pdfData: PdfNodeData): number => {
+    if (pdfData.totalPages) return pdfData.totalPages;
+    const nums = [
+      ...(pdfData.pageOrder ?? []),
+      ...(pdfData.hiddenPages ?? []),
+      ...(typeof pdfData.extractedPage === 'number' ? [pdfData.extractedPage] : []),
+    ];
+    return Math.max(1, ...nums, 1);
+  }, []);
+
+  const onNodeDragStop = useCallback(
+    (event: MouseEvent | TouchEvent, node: Node, _nodes: Node[]) => {
+      if (node.type !== 'pdf') return;
+
+      const clientX = 'clientX' in event ? event.clientX : (event.changedTouches[0]?.clientX ?? 0);
+      const clientY = 'clientY' in event ? event.clientY : (event.changedTouches[0]?.clientY ?? 0);
+      const el = document.elementFromPoint(clientX, clientY);
+      const dropTarget = el?.closest('[data-pdf-drop-target]') as HTMLElement | null;
+      if (!dropTarget) return;
+
+      const targetId = dropTarget.getAttribute('data-pdf-node-id');
+      if (!targetId) return;
+
+      const targetNode = getNode(targetId);
+      if (!targetNode || targetNode.type !== 'pdf') return;
+
+      const targetData = targetNode.data as unknown as PdfNodeData;
+      if (typeof targetData.extractedPage === 'number') return;
+
+      const insertIndex = computePageInsertIndex(dropTarget, clientY);
+      const sourceData = node.data as unknown as PdfNodeData;
+      const targetTotal = getPdfTotalPages(targetData);
+      const sourceTotal = getPdfTotalPages(sourceData);
+
+      if (typeof sourceData.extractedPage === 'number') {
+        const storePayload = usePlaygroundPdfDragStore.getState().payload;
+        if (!storePayload) return;
+      }
+
+      setNodes((nds) => {
+        if (typeof sourceData.extractedPage === 'number') {
+          if (node.id === targetId) {
+            return applyReorderPdfPage(
+              nds,
+              targetId,
+              sourceData.extractedPage,
+              insertIndex,
+              targetTotal,
+            );
+          }
+          return applyMovePdfPage(
+            nds,
+            node.id,
+            targetId,
+            sourceData.extractedPage,
+            insertIndex,
+            targetTotal,
+          ).nodes;
+        }
+        if (node.id === targetId) return nds;
+        return applyMergePdfNodes(
+          nds,
+          node.id,
+          targetId,
+          insertIndex,
+          sourceTotal,
+          targetTotal,
+        ).nodes;
+      });
+      usePlaygroundPdfDragStore.getState().clear();
+    },
+    [getNode, getPdfTotalPages, setNodes],
+  );
+
+  usePdfPageGlobalDrag(setNodes, getNode);
+
+  const onNodeDragStart = useCallback(
+    (_event: MouseEvent | TouchEvent, node: Node, _nodes: Node[]) => {
+      if (node.type !== 'pdf') return;
+      const sourceData = node.data as unknown as PdfNodeData;
+      if (typeof sourceData.extractedPage !== 'number') return;
+      const payload = {
+        sourceNodeId: node.id,
+        pageNum: sourceData.extractedPage,
+        pdfPath: sourceData.pdfPath,
+        pdfUrl: sourceData.pdfUrl,
+        filename: sourceData.filename,
+        originalName: sourceData.originalName,
+      };
+      usePlaygroundPdfDragStore.getState().setPayload(payload);
+    },
+    [],
+  );
+
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      if (usePlaygroundDrawStore.getState().strokeSelection) {
+        const withoutRemove = changes.filter((c) => c.type !== 'remove');
+        if (withoutRemove.length === 0) return;
+        onNodesChange(withoutRemove);
+        return;
+      }
+      onNodesChange(changes);
+    },
+    [onNodesChange],
+  );
 
   // Multiplayer: the host seeds a fresh room once from its local canvas (see effect below).
   const seedDataRef = useRef(initialState);
@@ -413,22 +571,125 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
     knownIterationsRef.current = knownIterations;
   }, [knownIterations]);
 
+  useEffect(() => {
+    canvasDrawingsRef.current = canvasDrawings;
+  }, [canvasDrawings]);
+
+  useEffect(() => {
+    setDrawToolActive(activeTool === 'draw');
+    setStrokeSelectEnabled(activeTool === 'select');
+    if (activeTool === 'draw') setStrokeSelection(null);
+  }, [activeTool, setDrawToolActive, setStrokeSelectEnabled, setStrokeSelection]);
+
+  const CANVAS_DRAW_EXTENT = 8000;
+
+  // Delete selected pen stroke with Backspace / Delete
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const active = document.activeElement;
+      if (active) {
+        const tag = active.tagName.toLowerCase();
+        if (tag === 'input' || tag === 'textarea') return;
+        if ((active as HTMLElement).isContentEditable) return;
+        if (active.closest('[role="dialog"]') || active.closest('[data-radix-popper-content-wrapper]')) return;
+      }
+      const sel = usePlaygroundDrawStore.getState().strokeSelection;
+      if (!sel) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      if (sel.scope === 'canvas') {
+        setCanvasDrawings((prev) => prev.filter((s) => s.id !== sel.strokeId));
+      } else {
+        setNodes((nds) =>
+          nds.map((n) => {
+            if (n.id !== sel.nodeId || n.type !== 'pdf') return n;
+            const pdfData = n.data as unknown as PdfNodeData;
+            const drawings = { ...(pdfData.drawings ?? {}) };
+            const pageStrokes = drawings[sel.pageKey] ?? [];
+            drawings[sel.pageKey] = pageStrokes.filter((s) => s.id !== sel.strokeId);
+            return { ...n, data: { ...pdfData, drawings } };
+          }),
+        );
+      }
+      setStrokeSelection(null);
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [setNodes, setStrokeSelection]);
+
+  // Select canvas ink strokes in select mode (complements path hit targets)
+  useEffect(() => {
+    if (activeTool !== 'select') return;
+    const wrapper = reactFlowWrapper.current;
+    if (!wrapper) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0 || canvasDrawingsRef.current.length === 0) return;
+      if (e.target instanceof Element && e.target.closest('[data-canvas-draw-stroke]')) return;
+      if (e.target instanceof Element && e.target.closest('[data-pdf-draw-layer]')) return;
+      if (e.target instanceof Element && e.target.closest('.react-flow__node')) return;
+      const pane = wrapper.querySelector('.react-flow__pane');
+      if (!pane?.contains(e.target as globalThis.Node)) return;
+
+      const pt = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      const { zoom } = getViewport();
+      const hit = hitTestStrokes(
+        canvasDrawingsRef.current,
+        pt.x,
+        pt.y,
+        CANVAS_DRAW_EXTENT,
+        CANVAS_DRAW_EXTENT,
+        false,
+        12 / zoom,
+      );
+      if (hit) {
+        e.stopPropagation();
+        setStrokeSelection({ scope: 'canvas', strokeId: hit });
+      }
+    };
+
+    wrapper.addEventListener('pointerdown', onPointerDown, true);
+    return () => wrapper.removeEventListener('pointerdown', onPointerDown, true);
+  }, [activeTool, screenToFlowPosition, getViewport, setStrokeSelection]);
+
   // Save to localStorage whenever nodes or edges change (single-player only — in multiplayer
   // the Liveblocks room is the source of truth, so we don't persist canvas state locally).
   useEffect(() => {
     if (multiplayer.enabled) return;
-    saveCanvasState(nodes, edges, nodeIdCounterRef.current, knownIterations, Array.from(collapsedNodeIds), generationInfoRef.current, getViewport());
-  }, [multiplayer.enabled, nodes, edges, knownIterations, collapsedNodeIds, getViewport]);
+    saveCanvasState(
+      storageKey,
+      nodes,
+      edges,
+      nodeIdCounterRef.current,
+      knownIterations,
+      Array.from(collapsedNodeIds),
+      generationInfoRef.current,
+      getViewport(),
+      canvasDrawingsRef.current,
+    );
+  }, [multiplayer.enabled, nodes, edges, knownIterations, collapsedNodeIds, canvasDrawings, getViewport, storageKey]);
 
   // Save viewport on page unload (captures pan/zoom changes that don't trigger node updates)
   useEffect(() => {
     if (multiplayer.enabled) return;
     const handler = () => {
-      saveCanvasState(nodesRef.current, edges, nodeIdCounterRef.current, knownIterationsRef.current, Array.from(collapsedNodeIdsRef.current), generationInfoRef.current, getViewport());
+      saveCanvasState(
+        storageKey,
+        nodesRef.current,
+        edges,
+        nodeIdCounterRef.current,
+        knownIterationsRef.current,
+        Array.from(collapsedNodeIdsRef.current),
+        generationInfoRef.current,
+        getViewport(),
+        canvasDrawingsRef.current,
+      );
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [multiplayer.enabled, edges, getViewport]);
+  }, [multiplayer.enabled, edges, getViewport, storageKey]);
 
   // Multiplayer: the host seeds a fresh (empty) room once from its local canvas, so an existing
   // local design becomes the shared starting point. Guests and non-empty rooms are left as-is.
@@ -442,6 +703,62 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
       if (seed.edges?.length) setEdges(seed.edges);
     }
   }, [multiplayer.enabled, multiplayer.isHost, isFlowLoading, nodes.length, setNodes, setEdges]);
+
+  // Freehand drawing on empty canvas (PDF pages use DrawSurface inside the node)
+  useEffect(() => {
+    if (activeTool !== 'draw') return;
+
+    const wrapper = reactFlowWrapper.current;
+    if (!wrapper) return;
+
+    let currentStroke: DrawStroke | null = null;
+    let drawing = false;
+
+    const isPdfDrawTarget = (target: EventTarget | null) =>
+      target instanceof Element && !!target.closest('[data-pdf-draw-layer]');
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0 || isPdfDrawTarget(e.target)) return;
+      const pane = wrapper.querySelector('.react-flow__pane');
+      if (!pane?.contains(e.target as globalThis.Node)) return;
+      if ((e.target as Element).closest('.react-flow__node')) return;
+
+      drawing = true;
+      const pt = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      const kind = usePlaygroundDrawStore.getState().drawPenKind;
+      currentStroke = createNewStroke(kind, pt);
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (!drawing || !currentStroke) return;
+      const pt = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      const last = currentStroke.points.at(-1);
+      if (last) {
+        const dx = pt.x - last.x;
+        const dy = pt.y - last.y;
+        if (dx * dx + dy * dy < 4) return;
+      }
+      currentStroke = { ...currentStroke, points: [...currentStroke.points, pt] };
+    };
+
+    const onPointerUp = () => {
+      if (!drawing || !currentStroke) return;
+      if (currentStroke.points.length > 1) {
+        setCanvasDrawings((prev) => [...prev, currentStroke!]);
+      }
+      drawing = false;
+      currentStroke = null;
+    };
+
+    wrapper.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    return () => {
+      wrapper.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+  }, [activeTool, screenToFlowPosition]);
 
   // Find parent node for a given component (reads from ref to avoid stale closure)
   const findParentNode = useCallback((componentName: string, parentId?: string): Node | undefined => {
@@ -1752,11 +2069,12 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
     if (isGeneratingRef.current) {
       generationQueueRef.current.push(payload);
       const queuePf = getProviderFields();
+      const queueProvider = (queuePf.provider ?? 'cursor') as ProviderId;
       window.dispatchEvent(
         new CustomEvent<GenerationQueuedPayload>(GENERATION_QUEUED_EVENT, {
           detail: {
             componentId: payload.targetComponentId || 'cursor-chat-freeform',
-            model: payload.model || 'auto',
+            model: resolveAgentModel(queueProvider, payload.model) ?? 'auto',
             provider: queuePf.provider as GenerationQueuedPayload['provider'],
             flowPosition: payload.canvasPosition ?? null,
           },
@@ -1852,6 +2170,8 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
       });
 
       const editPf = getProviderFields();
+      const editProvider = (editPf.provider ?? 'cursor') as ProviderId;
+      const editResolvedModel = resolveAgentModel(editProvider, payload.model);
       // Dispatch GENERATION_START_EVENT so the presence bubble appears
       window.dispatchEvent(
         new CustomEvent<GenerationStartPayload>(GENERATION_START_EVENT, {
@@ -1860,7 +2180,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
             componentName: editComponentName,
             parentNodeId: payload.targetNodeId,
             iterationCount: 0,
-            model: payload.model || undefined,
+            model: editResolvedModel,
             provider: editPf.provider as GenerationStartPayload['provider'],
             flowPosition: payload.canvasPosition,
             editMode: true,
@@ -1879,7 +2199,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
           body: JSON.stringify({
             prompt,
             componentId: editComponentId,
-            model: payload.model || undefined,
+            model: editResolvedModel,
             ...getProviderFields(),
             ...(isHtmlEdit ? { htmlFolder: payload.htmlPageSlug } : {}),
             ...(isJsxEdit && payload.jsxFile ? { jsxFile: payload.jsxFile } : {}),
@@ -1931,6 +2251,10 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
       targetType,
       sourceFilename,
     } = payload;
+
+    const canvasGenPfEarly = getProviderFields();
+    const genProvider = (canvasGenPfEarly.provider ?? 'cursor') as ProviderId;
+    const resolvedModel = resolveAgentModel(genProvider, payloadModel);
 
     // Combine skill prompts (raw mode bypasses all prompt composition)
     let combinedSkillPrompt: string | undefined;
@@ -2179,7 +2503,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
             componentName,
             parentNodeId: targetNodeId,
             iterationCount,
-            model: payloadModel || undefined,
+            model: resolvedModel,
             provider: canvasGenPf.provider as GenerationStartPayload['provider'],
             flowPosition: payload.canvasPosition,
             ...(isHtmlTarget ? { renderMode: 'html' as const, htmlFolder: payload.htmlPageSlug } : {}),
@@ -2199,7 +2523,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
             prompt,
             componentId,
             iterationCount,
-            model: payloadModel || undefined,
+            model: resolvedModel,
             ...canvasGenPf,
             ...(isHtmlTarget ? { htmlFolder: payload.htmlPageSlug } : {}),
             ...(isJsxTarget && payload.jsxFile ? { jsxFile: payload.jsxFile } : {}),
@@ -2252,7 +2576,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
             componentName: 'Freeform',
             parentNodeId: '',
             iterationCount: 0,
-            model: payloadModel || 'auto',
+            model: resolvedModel,
             provider: canvasGenPf.provider as GenerationStartPayload['provider'],
             flowPosition: payload.canvasPosition ?? undefined,
           },
@@ -2282,7 +2606,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
             prompt: freeformPrompt,
             componentId: 'cursor-chat-freeform',
             iterationCount: 0,
-            model: payloadModel || undefined,
+            model: resolvedModel,
             ...canvasGenPf,
           }),
         });
@@ -2435,6 +2759,50 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
                 }
               } catch (err) {
                 console.error('[Playground] Image upload failed:', err);
+              }
+            };
+            reader.readAsDataURL(file);
+          });
+          return;
+        }
+
+        // Check for PDF file drops
+        const pdfFiles = Array.from(files).filter(
+          (f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name),
+        );
+        if (pdfFiles.length > 0) {
+          const position = screenToFlowPosition({
+            x: event.clientX,
+            y: event.clientY,
+          });
+          pdfFiles.forEach((file, idx) => {
+            const reader = new FileReader();
+            reader.onload = async () => {
+              const base64 = reader.result as string;
+              try {
+                const res = await fetch('/playground/api/pdfs', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ pdfBase64: base64, originalName: file.name }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                  const newNode: Node = {
+                    id: getNodeId(),
+                    type: 'pdf',
+                    position: { x: position.x + idx * 420, y: position.y },
+                    style: { width: 480, height: 640 },
+                    data: {
+                      pdfPath: data.path,
+                      pdfUrl: data.url,
+                      filename: data.filename,
+                      originalName: file.name,
+                    },
+                  };
+                  setNodes((nds) => nds.concat(newNode));
+                }
+              } catch (err) {
+                console.error('[Playground] PDF upload failed:', err);
               }
             };
             reader.readAsDataURL(file);
@@ -2676,6 +3044,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
   const handlePaneClick = useCallback((event: React.MouseEvent) => {
     setContextMenu(null);
     useInteractiveNodeStore.getState().setInteractiveNodeId(null);
+    setStrokeSelection(null);
 
     if (activeTool === 'text') {
       const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
@@ -2690,7 +3059,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
       setNodes((nds) => nds.map((n) => ({ ...n, selected: false })).concat(newNode));
       setActiveTool('select');
     }
-  }, [activeTool, screenToFlowPosition, getNodeId, setNodes]);
+  }, [activeTool, screenToFlowPosition, getNodeId, setNodes, setStrokeSelection]);
 
   // Right-click context menu on canvas pane
   const handlePaneContextMenu = useCallback((event: MouseEvent | React.MouseEvent) => {
@@ -3233,6 +3602,8 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
 
   // Handle node deletion - check for children first
   const onNodesDelete = useCallback(async (deletedNodes: Node[]) => {
+    if (usePlaygroundDrawStore.getState().strokeSelection) return;
+
     for (const node of deletedNodes) {
       if (node.type === 'image' && node.data.filename) {
         try {
@@ -3731,6 +4102,161 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
   }, []);
 
   // ---------------------------------------------------------------------------
+  // Flow decompose: parent component → per-stage StageNodes + edges
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const handleDecompose = (e: Event) => {
+      const detail = (e as CustomEvent<FlowDecomposePayload>).detail;
+      if (!detail) return;
+      const descriptor = findFlowDescriptorForComponent(detail.componentId);
+      if (!descriptor) return;
+
+      const flowId = `flow_${detail.parentNodeId}_${descriptor.id}`;
+
+      const existing = useFlowMocksStore.getState().flows[flowId];
+      if (existing) {
+        toast.message('Already decomposed', {
+          description: 'This component has already been split into stages.',
+        });
+        return;
+      }
+
+      const parentNode = nodesRef.current.find((n) => n.id === detail.parentNodeId);
+      const parentWidth =
+        parentNode?.measured?.width ?? DEFAULT_COMPONENT_NODE_WIDTH;
+      const stageY = detail.anchor.y;
+      const startX = detail.anchor.x + parentWidth + ARRANGE_HORIZONTAL_GAP;
+      const stepX = STAGE_NODE_FRAME_WIDTH + ARRANGE_HORIZONTAL_GAP;
+
+      const stageNodeIds: Record<string, string> = {};
+      const newNodes: Node[] = [];
+      const newEdges: Edge[] = [];
+
+      const stageCount = descriptor.stages.length;
+      const clusterWidth =
+        stageCount > 0
+          ? stageCount * STAGE_NODE_FRAME_WIDTH + (stageCount - 1) * ARRANGE_HORIZONTAL_GAP
+          : 0;
+      const clusterHeight = STAGE_NODE_DEFAULT_HEIGHT + STAGE_NODE_HEADER_HEIGHT;
+      const groupNodeId = `stage_group_${flowId}`;
+      newNodes.push({
+        id: groupNodeId,
+        type: 'stageGroup',
+        position: {
+          x: startX - STAGE_GROUP_PADDING,
+          y: stageY - STAGE_GROUP_PADDING,
+        },
+        data: { flowId } as unknown as Record<string, unknown>,
+        style: {
+          width: clusterWidth + STAGE_GROUP_PADDING * 2,
+          height: clusterHeight + STAGE_GROUP_PADDING * 2,
+        },
+        draggable: false,
+        selectable: false,
+        focusable: false,
+        zIndex: -1,
+      });
+
+      descriptor.stages.forEach((stage, idx) => {
+        const stageNodeId = `stage_${flowId}_${stage.id}`;
+        stageNodeIds[stage.id] = stageNodeId;
+        const data: StageNodeData = {
+          flowId,
+          descriptorId: descriptor.id,
+          stageId: stage.id,
+          componentId: stage.componentId,
+          label: stage.label,
+          synthetic: stage.synthetic,
+        };
+        newNodes.push({
+          id: stageNodeId,
+          type: 'stage',
+          position: {
+            x: startX + idx * stepX,
+            y: stageY,
+          },
+          data: data as unknown as Record<string, unknown>,
+        });
+      });
+
+      const firstStageId = stageNodeIds[descriptor.stages[0].id];
+      if (firstStageId) {
+        newEdges.push({
+          id: `edge_${detail.parentNodeId}_${firstStageId}`,
+          source: detail.parentNodeId,
+          target: firstStageId,
+          type: 'smoothstep',
+          animated: false,
+          style: { stroke: '#A855F7', strokeWidth: 1.5 },
+        });
+      }
+
+      descriptor.defaultEdges.forEach(({ from, to }) => {
+        const source = stageNodeIds[from];
+        const target = stageNodeIds[to];
+        if (!source || !target) return;
+        newEdges.push({
+          id: `edge_${source}_${target}`,
+          source,
+          target,
+          type: 'smoothstep',
+          animated: false,
+          style: { stroke: '#A855F7', strokeWidth: 1.5 },
+        });
+      });
+
+      setNodes((nds) => [...nds, ...newNodes]);
+      setEdges((eds) => [...eds, ...newEdges]);
+
+      useFlowMocksStore
+        .getState()
+        .addFlow(flowId, descriptor.id, stageNodeIds, descriptor.seedMocks);
+
+      toast.success('Decomposed into stages', {
+        description: `${descriptor.stages.length} stages added to canvas.`,
+      });
+
+      const fitNodeIds = [detail.parentNodeId, ...newNodes.map((n) => n.id)];
+      setTimeout(() => {
+        fitView({
+          nodes: fitNodeIds.map((id) => ({ id })),
+          duration: 400,
+          padding: 0.15,
+        });
+      }, ARRANGE_FITVIEW_DELAY);
+    };
+
+    window.addEventListener(FLOW_DECOMPOSE_EVENT, handleDecompose as EventListener);
+    return () => {
+      window.removeEventListener(FLOW_DECOMPOSE_EVENT, handleDecompose as EventListener);
+    };
+  }, [setNodes, setEdges, fitView]);
+
+  // ---------------------------------------------------------------------------
+  // Stage group cleanup: drop the dotted backdrop when its stages are all gone
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const liveFlowIds = new Set<string>();
+    for (const n of nodes) {
+      if (n.type === 'stage') {
+        const flowId = (n.data as { flowId?: string } | undefined)?.flowId;
+        if (flowId) liveFlowIds.add(flowId);
+      }
+    }
+    const orphanedGroupIds = nodes
+      .filter((n) => {
+        if (n.type !== 'stageGroup') return false;
+        const flowId = (n.data as { flowId?: string } | undefined)?.flowId;
+        return !flowId || !liveFlowIds.has(flowId);
+      })
+      .map((n) => n.id);
+    if (orphanedGroupIds.length > 0) {
+      const orphanSet = new Set(orphanedGroupIds);
+      setNodes((nds) => nds.filter((n) => !orphanSet.has(n.id)));
+    }
+  }, [nodes, setNodes]);
+
+  // ---------------------------------------------------------------------------
   // Compute hasChildren + isCollapsed for iteration nodes and filter visible
   // ---------------------------------------------------------------------------
   const { visibleNodes, visibleEdges } = (() => {
@@ -3815,11 +4341,12 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
     setEdges([]);
     setKnownIterations([]);
     setCollapsedNodeIds(new Set());
+    setCanvasDrawings([]);
 
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(storageKey);
 
     setShowClearDialog(false);
-  }, [setNodes, setEdges, setKnownIterations, setCollapsedNodeIds, stopPolling]);
+  }, [setNodes, setEdges, setKnownIterations, setCollapsedNodeIds, stopPolling, storageKey]);
 
   // Image upload via toolbar button (reuses same logic as drag-drop)
   const handleImageFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -3880,40 +4407,73 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
     window.dispatchEvent(new CustomEvent('playground:toolbar-activate-chat'));
   }, []);
 
-  // Escape or V key resets to select mode
+  const toggleDrawPenKind = useCallback(
+    (kind: DrawPenKind) => {
+      if (activeTool === 'draw' && drawPenKind === kind) {
+        setActiveTool('select');
+      } else {
+        setDrawPenKind(kind);
+        setActiveTool('draw');
+      }
+    },
+    [activeTool, drawPenKind, setDrawPenKind],
+  );
+
+  // Tool shortcuts: V select, P pen, H highlighter, Escape leaves draw/text
   useEffect(() => {
+    const isTypingTarget = () => {
+      const active = document.activeElement;
+      if (!active) return false;
+      const tag = active.tagName.toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return true;
+      if ((active as HTMLElement).isContentEditable) return true;
+      if (active.closest('[role="dialog"]') || active.closest('[data-radix-popper-content-wrapper]')) return true;
+      return false;
+    };
+
     const handler = (e: KeyboardEvent) => {
-      if (activeTool !== 'select' && (e.key === 'Escape' || e.key === 'v' || e.key === 'V')) {
-        const active = document.activeElement;
-        if (active) {
-          const tag = active.tagName.toLowerCase();
-          if (tag === 'input' || tag === 'textarea') return;
-          if ((active as HTMLElement).isContentEditable) return;
-          if (active.closest('[role="dialog"]') || active.closest('[data-radix-popper-content-wrapper]')) return;
-        }
+      if (isTypingTarget()) return;
+
+      if (e.key === 'v' || e.key === 'V') {
+        setActiveTool('select');
+        return;
+      }
+      if (e.key === 'p' || e.key === 'P') {
+        e.preventDefault();
+        toggleDrawPenKind('pen');
+        return;
+      }
+      if (e.key === 'h' || e.key === 'H') {
+        e.preventDefault();
+        toggleDrawPenKind('highlight');
+        return;
+      }
+      if (activeTool !== 'select' && e.key === 'Escape') {
         setActiveTool('select');
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [activeTool]);
+  }, [activeTool, toggleDrawPenKind]);
 
   return (
     <TooltipProvider>
       <div
         ref={reactFlowWrapper}
-        className={`w-full h-full${activeTool === 'text' ? ' playground-text-tool' : ''}`}
+        className={`w-full h-full${activeTool === 'text' ? ' playground-text-tool' : ''}${activeTool === 'draw' ? ' playground-draw-tool' : ''}`}
       >
         {/* XY Flow reads pane fill from `--xy-background-color`; Tailwind bg-* often loses to `.react-flow` in the cascade. */}
         <ReactFlow
           nodes={visibleNodes}
           edges={[]}
-          onNodesChange={onNodesChange}
+          onNodesChange={handleNodesChange}
           onEdgesChange={onEdgesChange}
           onNodesDelete={onNodesDelete}
           onConnect={onConnect}
           onDragOver={onDragOver}
           onDrop={onDrop}
+          onNodeDragStart={onNodeDragStart}
+          onNodeDragStop={onNodeDragStop}
           onPaneClick={handlePaneClick}
           onPaneContextMenu={handlePaneContextMenu}
           onNodeContextMenu={handleNodeContextMenu}
@@ -3929,15 +4489,17 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
           zoomOnScroll={false}
           zoomOnPinch
           panOnDrag={false}
-          selectionOnDrag
+          selectionOnDrag={activeTool === 'select'}
           selectionMode={SelectionMode.Partial}
-          nodesDraggable
+          nodesDraggable={activeTool !== 'draw'}
           nodesConnectable={false}
           elementsSelectable
+          deleteKeyCode={strokeSelection ? null : ['Delete', 'Backspace']}
         >
           {/* <Controls
             className="!bg-white !border-stone-200 !rounded-lg !shadow-sm [&>button]:!bg-white [&>button]:!border-stone-200 [&>button]:!text-stone-600 [&>button:hover]:!bg-stone-50"
           /> */}
+        <PlaygroundCanvasDrawLayer strokes={canvasDrawings} />
         <Background
           variant={BackgroundVariant.Dots}
           gap={dynamicBg.gap}
@@ -4002,6 +4564,32 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
             <path d="M5 3l14 9-7 1-4 7z" />
           </svg>
+        </button>
+
+        {/* Draw tool — icon shows pen vs highlighter; click toggles active kind off */}
+        <button
+          onClick={() => toggleDrawPenKind(drawPenKind)}
+          className={`flex items-center justify-center w-9 h-9 rounded-xl transition-colors ${
+            activeTool === 'draw'
+              ? drawPenKind === 'highlight'
+                ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200/80'
+                : 'bg-stone-100 text-stone-900'
+              : drawPenKind === 'highlight'
+                ? 'text-amber-600 hover:bg-amber-50/60'
+                : 'text-stone-500 hover:text-stone-800 hover:bg-stone-50'
+          }`}
+          aria-label={drawPenKind === 'highlight' ? 'Highlighter' : 'Pen'}
+          title={
+            drawPenKind === 'highlight'
+              ? 'Highlighter (H) — click or H to toggle'
+              : 'Pen (P) — click or P to toggle'
+          }
+        >
+          {drawPenKind === 'highlight' ? (
+            <Highlighter className="w-[18px] h-[18px]" strokeWidth={1.75} />
+          ) : (
+            <Pencil className="w-[18px] h-[18px]" strokeWidth={1.75} />
+          )}
         </button>
 
         {/* Text tool */}
@@ -4323,6 +4911,11 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar }: Pl
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Flow-mode UI: mock data editor + simulator modal + adopt diff modal */}
+      <MockDataPanel />
+      <FlowSimulator />
+      <FlowAdoptModal />
     </div>
     </TooltipProvider>
   );

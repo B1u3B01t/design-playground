@@ -5,3 +5,4 @@ export { cursorProvider } from './cursor';
 export { claudeCodeProvider } from './claude-code';
 export { DEFAULT_PROVIDER_ID, getProvider, getAllProviders, getAllProviderIds } from './registry';
 export { spawnAgent, getProviderNotFoundMessage, getProviderDisplayName } from './spawn-agent';
+export { resolveAgentModel } from '../resolve-agent-model';
