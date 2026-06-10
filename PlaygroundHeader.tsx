@@ -447,21 +447,6 @@ export default function PlaygroundHeader({
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={() => window.dispatchEvent(new CustomEvent(OPEN_SKILLS_CATALOG_EVENT))}
-                className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
-                aria-label="Skills"
-              >
-                <Sparkles className="w-[18px] h-[18px]" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p>Skills</p>
-            </TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
                 onClick={() => setShortcutsOpen(true)}
                 className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
                 aria-label="Keyboard shortcuts"
