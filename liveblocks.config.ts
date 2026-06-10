@@ -38,14 +38,12 @@ declare global {
 }
 
 // ---------------------------------------------------------------------------
-// Auth endpoint — the ONLY place the Liveblocks secret lives is behind this URL.
-// The local app (loaded from the ngrok tunnel) and browser guests both POST here.
-// Override with NEXT_PUBLIC_LIVEBLOCKS_AUTH_URL for local dev (e.g. /api/liveblocks-auth
-// when running inside aiverse-next itself).
+// Auth endpoint — the Liveblocks secret stays server-side; the browser only POSTs here.
+// Fixed path in this app (no env var — the route always lives next to other playground APIs).
 // ---------------------------------------------------------------------------
-export const LIVEBLOCKS_AUTH_ENDPOINT =
-  process.env.NEXT_PUBLIC_LIVEBLOCKS_AUTH_URL ||
-  "https://aiverse.design/api/liveblocks-auth";
+import { ngrokRequestHeaders } from "./lib/ngrok-headers";
+
+export const LIVEBLOCKS_AUTH_ENDPOINT = "/playground/api/liveblocks-auth";
 
 const USER_ID_KEY = "playground-liveblocks-user-id";
 const USER_NAME_KEY = "playground-liveblocks-user-name";
@@ -85,7 +83,7 @@ export function isSessionHost(): boolean {
 export async function liveblocksAuth(room?: string): Promise<{ token: string }> {
   const res = await fetch(LIVEBLOCKS_AUTH_ENDPOINT, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...ngrokRequestHeaders() },
     body: JSON.stringify({
       room,
       userId: getStableUserId(),
@@ -93,15 +91,25 @@ export async function liveblocksAuth(room?: string): Promise<{ token: string }> 
       isHost: isSessionHost(),
     }),
   });
-  // A 200 with HTML (e.g. an auth middleware redirecting to a login page) would make
-  // res.json() throw a cryptic "Unexpected token '<'" — surface a useful message instead.
+
   const contentType = res.headers.get("content-type") || "";
-  if (!res.ok || !contentType.includes("application/json")) {
-    const detail = res.redirected ? ` (redirected to ${res.url})` : "";
-    throw new Error(
-      `Liveblocks auth failed: ${res.status} from ${LIVEBLOCKS_AUTH_ENDPOINT}${detail}. ` +
-        `Check that the endpoint is reachable, returns JSON, and isn't blocked by auth middleware.`,
-    );
+  if (contentType.includes("application/json")) {
+    const data = (await res.json()) as { token?: string; error?: string };
+    if (!res.ok) {
+      // Import lazily so liveblocks.config stays usable without pulling in sonner on the server.
+      const { isLiveblocksSetupError, showLiveblocksSetupToast } = await import(
+        "./lib/liveblocks-setup"
+      );
+      if (isLiveblocksSetupError(data)) showLiveblocksSetupToast();
+      throw new Error(data.error ?? `Liveblocks auth failed (${res.status})`);
+    }
+    if (!data.token) throw new Error("Liveblocks auth returned no token");
+    return { token: data.token };
   }
-  return res.json();
+
+  const detail = res.redirected ? ` (redirected to ${res.url})` : "";
+  throw new Error(
+    `Liveblocks auth failed: ${res.status} from ${LIVEBLOCKS_AUTH_ENDPOINT}${detail}. ` +
+      `Check that the endpoint is reachable and returns JSON.`,
+  );
 }

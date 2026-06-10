@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
-import { toast } from 'sonner';
+import { toast, Toaster } from 'sonner';
 import PlaygroundSidebar from './PlaygroundSidebar';
 import PlaygroundCanvas from './PlaygroundCanvas';
 import PlaygroundHeader from './PlaygroundHeader';
@@ -21,6 +21,7 @@ import { liveblocksAuth } from './liveblocks.config';
 import { MultiplayerProvider, type MultiplayerState } from './lib/multiplayer-context';
 import { CanvasFlowProvider } from './lib/canvas-flow';
 import { GenerationPresenceBridge } from './lib/presence';
+import { LiveblocksSetupGuard } from './lib/liveblocks-setup';
 
 export interface PendingChild {
   id: string;
@@ -566,25 +567,36 @@ export default function PlaygroundClient({
     roomId: roomId ?? null,
   };
 
+  const toaster = <Toaster position="bottom-right" richColors closeButton />;
+
   // Single-player: no Liveblocks providers, just expose a (disabled) multiplayer context.
   if (!roomId) {
-    return <MultiplayerProvider value={multiplayer}>{body}</MultiplayerProvider>;
+    return (
+      <>
+        {toaster}
+        <MultiplayerProvider value={multiplayer}>{body}</MultiplayerProvider>
+      </>
+    );
   }
 
   // Multiplayer: mount Liveblocks providers around the existing canvas. Storage for the
   // canvas is created lazily by useLiveblocksFlow (no initialStorage needed); we use the
   // non-suspense hooks everywhere, so no ClientSideSuspense boundary is required.
   return (
-    <LiveblocksProvider authEndpoint={liveblocksAuth}>
-      <RoomProvider
-        id={roomId}
-        initialPresence={{ cursor: null, selection: [], generating: false }}
-      >
-        <MultiplayerProvider value={multiplayer}>
-          <GenerationPresenceBridge />
-          {body}
-        </MultiplayerProvider>
-      </RoomProvider>
-    </LiveblocksProvider>
+    <>
+      {toaster}
+      <LiveblocksProvider authEndpoint={liveblocksAuth}>
+        <RoomProvider
+          id={roomId}
+          initialPresence={{ cursor: null, selection: [], generating: false }}
+        >
+          <MultiplayerProvider value={multiplayer}>
+            <LiveblocksSetupGuard />
+            <GenerationPresenceBridge />
+            {body}
+          </MultiplayerProvider>
+        </RoomProvider>
+      </LiveblocksProvider>
+    </>
   );
 }
