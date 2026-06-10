@@ -512,8 +512,9 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
 
   const isPeek = mode === 'peek';
   const isPlaced = mode === 'placed';
-  const currentConfig = getModelIconConfig(model);
-  const nextConfig = nextModel ? getModelIconConfig(nextModel) : currentConfig;
+  const chatActiveProvider = useModelSettingsStore.getState().activeProvider;
+  const currentConfig = getModelIconConfig(model, chatActiveProvider);
+  const nextConfig = nextModel ? getModelIconConfig(nextModel, chatActiveProvider) : currentConfig;
 
   // Effective chat mode: auto-collapses to 'raw' when there's nothing selected
   // (peek, or placed with no target/elements/nodes). The toggle UI is only

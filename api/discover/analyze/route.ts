@@ -133,7 +133,11 @@ export async function POST(req: Request) {
 
   return new Promise<NextResponse>((resolve) => {
     try {
-      const agentProcess = spawnAgent(providerId, { model }, process.cwd());
+      const agentProcess = spawnAgent(providerId, {
+        model,
+        ...(providerId === 'claude-code' ? { claudeDetailedStdout: false } : {}),
+        ...(providerId === 'codex' ? { codexDetailedStdout: false } : {}),
+      }, process.cwd());
 
       log(` Agent process started — PID=${agentProcess.pid}`);
 

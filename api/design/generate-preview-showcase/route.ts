@@ -114,6 +114,7 @@ export async function POST(req: Request) {
           {
             model: body?.model,
             ...(providerId === 'claude-code' ? { claudeDetailedStdout: false } : {}),
+            ...(providerId === 'codex' ? { codexDetailedStdout: false } : {}),
           },
           process.cwd(),
         );

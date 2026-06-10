@@ -8,7 +8,7 @@ import { useModelSettingsStore } from './model-settings-store';
  */
 export function getProviderFields(): Record<string, unknown> {
   const state = useModelSettingsStore.getState();
-  const { activeProvider, claudeCodeOptions } = state;
+  const { activeProvider, claudeCodeOptions, codexOptions } = state;
 
   const fields: Record<string, unknown> = { provider: activeProvider };
 
@@ -17,6 +17,12 @@ export function getProviderFields(): Record<string, unknown> {
     if (claudeCodeOptions.maxBudgetUsd != null) fields.maxBudgetUsd = claudeCodeOptions.maxBudgetUsd;
     if (claudeCodeOptions.maxTurns != null) fields.maxTurns = claudeCodeOptions.maxTurns;
     fields.claudeDetailedStdout = claudeCodeOptions.detailedStdout;
+  }
+
+  if (activeProvider === 'codex') {
+    fields.codexSandbox = codexOptions.sandbox;
+    fields.codexReasoningEffort = codexOptions.reasoningEffort;
+    fields.codexDetailedStdout = codexOptions.detailedStdout;
   }
 
   return fields;

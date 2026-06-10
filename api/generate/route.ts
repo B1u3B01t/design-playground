@@ -343,58 +343,138 @@ const AGENT_PREVIEW_MAX_CHARS = 14_000;
 /** Ignore absurdly long JSONL lines (e.g. system init) when scanning for text deltas. */
 const JSONL_PARSE_MAX_LINE_CHARS = 512_000;
 
+type StreamJsonProvider = 'claude-code' | 'codex';
+
+function shouldStreamJsonForPreview(
+  providerId: ProviderId,
+  body: {
+    claudeDetailedStdout?: boolean;
+    codexDetailedStdout?: boolean;
+  },
+): StreamJsonProvider | null {
+  if (providerId === 'claude-code' && body.claudeDetailedStdout !== false) {
+    return 'claude-code';
+  }
+  if (providerId === 'codex' && body.codexDetailedStdout !== false) {
+    return 'codex';
+  }
+  return null;
+}
+
+const readJsonString = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const findSessionId = (value: unknown, depth = 0): string | null => {
+  if (depth > 4 || value == null) return null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nested = findSessionId(item, depth + 1);
+      if (nested) return nested;
+    }
+    return null;
+  }
+  if (typeof value !== 'object') return null;
+
+  const obj = value as Record<string, unknown>;
+  const direct =
+    readJsonString(obj.session_id) ??
+    readJsonString(obj.sessionId) ??
+    readJsonString(obj.conversation_id) ??
+    readJsonString(obj.conversationId) ??
+    readJsonString(obj.thread_id) ??
+    readJsonString(obj.threadId) ??
+    readJsonString(obj.chat_id) ??
+    readJsonString(obj.chatId);
+  if (direct) return direct;
+
+  const messageObj = obj.message;
+  if (messageObj && typeof messageObj === 'object' && !Array.isArray(messageObj)) {
+    const messageId = readJsonString((messageObj as Record<string, unknown>).id);
+    if (messageId) return messageId;
+  }
+
+  for (const nestedValue of Object.values(obj)) {
+    const nested = findSessionId(nestedValue, depth + 1);
+    if (nested) return nested;
+  }
+  return null;
+};
+
+function trimAssistantPreview(assistantPreview: { value: string }): void {
+  if (assistantPreview.value.length > AGENT_PREVIEW_MAX_CHARS) {
+    assistantPreview.value = assistantPreview.value.slice(-AGENT_PREVIEW_MAX_CHARS);
+  }
+}
+
 /**
- * Append assistant `text_delta` chunks from complete JSONL lines (Claude Code stream-json).
- * Also scans event payloads for session/chat identifiers that can be surfaced to callers.
+ * Append assistant text from Codex `codex exec --json` JSONL lines.
+ * Events: thread.started, item.completed (agent_message / reasoning).
  */
-function appendAssistantTextFromJsonlLines(
+function appendAssistantTextFromCodexJsonlLines(
   lines: string[],
   assistantPreview: { value: string },
 ): { textChanged: boolean; sessionId: string | null } {
   let changed = false;
   let discoveredSessionId: string | null = null;
 
-  const readString = (value: unknown): string | null => {
-    if (typeof value !== 'string') return null;
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  };
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0 || !trimmed.startsWith('{')) continue;
+    if (trimmed.length > JSONL_PARSE_MAX_LINE_CHARS) continue;
+    try {
+      const obj = JSON.parse(trimmed) as {
+        type?: string;
+        thread_id?: string;
+        item?: { type?: string; text?: string };
+        message?: string;
+        error?: string | { message?: string };
+      };
 
-  const findSessionId = (value: unknown, depth = 0): string | null => {
-    if (depth > 4 || value == null) return null;
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        const nested = findSessionId(item, depth + 1);
-        if (nested) return nested;
+      if (obj.type === 'item.completed' && obj.item) {
+        const itemType = obj.item.type;
+        if (
+          (itemType === 'agent_message' || itemType === 'reasoning') &&
+          typeof obj.item.text === 'string' &&
+          obj.item.text.length > 0
+        ) {
+          // Codex emits complete items (not deltas) — separate them for readability.
+          if (assistantPreview.value.length > 0) {
+            assistantPreview.value += '\n\n';
+          }
+          assistantPreview.value += obj.item.text;
+          changed = true;
+        }
       }
-      return null;
-    }
-    if (typeof value !== 'object') return null;
 
-    const obj = value as Record<string, unknown>;
-    const direct =
-      readString(obj.session_id) ??
-      readString(obj.sessionId) ??
-      readString(obj.conversation_id) ??
-      readString(obj.conversationId) ??
-      readString(obj.thread_id) ??
-      readString(obj.threadId) ??
-      readString(obj.chat_id) ??
-      readString(obj.chatId);
-    if (direct) return direct;
-
-    const messageObj = obj.message;
-    if (messageObj && typeof messageObj === 'object' && !Array.isArray(messageObj)) {
-      const messageId = readString((messageObj as Record<string, unknown>).id);
-      if (messageId) return messageId;
+      if (!discoveredSessionId) {
+        if (obj.type === 'thread.started' && obj.thread_id) {
+          discoveredSessionId = obj.thread_id;
+        } else {
+          discoveredSessionId = findSessionId(obj);
+        }
+      }
+    } catch {
+      /* ignore non-JSON or unexpected shape */
     }
+  }
 
-    for (const nestedValue of Object.values(obj)) {
-      const nested = findSessionId(nestedValue, depth + 1);
-      if (nested) return nested;
-    }
-    return null;
-  };
+  trimAssistantPreview(assistantPreview);
+  return { textChanged: changed, sessionId: discoveredSessionId };
+}
+
+/**
+ * Append assistant `text_delta` chunks from complete JSONL lines (Claude Code stream-json).
+ * Also scans event payloads for session/chat identifiers that can be surfaced to callers.
+ */
+function appendAssistantTextFromClaudeJsonlLines(
+  lines: string[],
+  assistantPreview: { value: string },
+): { textChanged: boolean; sessionId: string | null } {
+  let changed = false;
+  let discoveredSessionId: string | null = null;
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -424,14 +504,26 @@ function appendAssistantTextFromJsonlLines(
       /* ignore non-JSON or unexpected shape */
     }
   }
-  if (assistantPreview.value.length > AGENT_PREVIEW_MAX_CHARS) {
-    assistantPreview.value = assistantPreview.value.slice(-AGENT_PREVIEW_MAX_CHARS);
-  }
+  trimAssistantPreview(assistantPreview);
   return { textChanged: changed, sessionId: discoveredSessionId };
 }
 
-/** Pull a user-facing error from Claude stream-json stdout when stderr is empty. */
-function extractStreamJsonError(lines: string[]): string | null {
+function appendAssistantTextFromJsonlLines(
+  lines: string[],
+  assistantPreview: { value: string },
+  provider: StreamJsonProvider,
+): { textChanged: boolean; sessionId: string | null } {
+  if (provider === 'codex') {
+    return appendAssistantTextFromCodexJsonlLines(lines, assistantPreview);
+  }
+  return appendAssistantTextFromClaudeJsonlLines(lines, assistantPreview);
+}
+
+/** Pull a user-facing error from JSONL stdout when stderr is empty. */
+function extractStreamJsonError(
+  lines: string[],
+  provider: StreamJsonProvider,
+): string | null {
   for (let i = lines.length - 1; i >= 0; i--) {
     const trimmed = lines[i]?.trim();
     if (!trimmed?.startsWith('{')) continue;
@@ -440,13 +532,26 @@ function extractStreamJsonError(lines: string[]): string | null {
         type?: string;
         is_error?: boolean;
         result?: string;
-        error?: string;
-        message?: { content?: Array<{ type?: string; text?: string }> };
+        error?: string | { message?: string };
+        message?: string | { content?: Array<{ type?: string; text?: string }> };
       };
+
+      if (provider === 'codex' && obj.type === 'error') {
+        if (typeof obj.message === 'string' && obj.message.trim()) {
+          return obj.message.trim();
+        }
+        if (typeof obj.error === 'string' && obj.error.trim()) {
+          return obj.error.trim();
+        }
+        if (obj.error && typeof obj.error === 'object' && typeof obj.error.message === 'string') {
+          return obj.error.message.trim() || null;
+        }
+      }
+
       if (obj.type === 'result' && obj.is_error && typeof obj.result === 'string') {
         return obj.result.trim() || null;
       }
-      if (obj.type === 'assistant' && obj.error && Array.isArray(obj.message?.content)) {
+      if (obj.type === 'assistant' && obj.error && obj.message && typeof obj.message === 'object' && Array.isArray(obj.message.content)) {
         const text = obj.message.content
           .filter((c) => c.type === 'text' && typeof c.text === 'string')
           .map((c) => c.text)
@@ -459,6 +564,48 @@ function extractStreamJsonError(lines: string[]): string | null {
     }
   }
   return null;
+}
+
+/**
+ * Codex stderr always contains "Reading prompt from stdin..." plus raw
+ * timestamped log lines — strip the noise so real errors surface cleanly.
+ */
+function cleanCodexStderr(stderr: string): string {
+  return stderr
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return false;
+      if (trimmed.startsWith('Reading prompt from stdin')) return false;
+      return true;
+    })
+    .join('\n')
+    .trim();
+}
+
+/** Build a user-facing error, appending Codex auth guidance when login failures are detected. */
+function formatAgentErrorMessage(
+  providerId: ProviderId,
+  stderr: string,
+  streamError: string | null,
+  previewError: string,
+  exitCode: number | null,
+  providerName: string,
+): string {
+  const fallback = `${providerName} agent exited with code ${exitCode}`;
+
+  let base: string;
+  if (providerId === 'codex') {
+    // Prefer the structured JSONL error — Codex stderr is noisy log output.
+    base = streamError || cleanCodexStderr(stderr) || previewError || fallback;
+    const authPattern = /not\s+logged\s+in|login|unauthorized|authentication|auth\s+required|invalid\s+api\s+key/i;
+    if (authPattern.test(base) || authPattern.test(stderr)) {
+      return `${base}\n\nRun \`codex login\` to authenticate the Codex CLI.`;
+    }
+    return base;
+  }
+
+  return stderr.trim() || streamError || previewError || fallback;
 }
 
 // ---------------------------------------------------------------------------
@@ -486,6 +633,12 @@ export async function POST(req: Request) {
       maxTurns?: number;
       /** Claude Code: when not `false`, use stream-json JSONL stdout (default true). */
       claudeDetailedStdout?: boolean;
+      /** Codex: sandbox policy for `codex exec -s`. */
+      codexSandbox?: 'workspace-write' | 'danger-full-access';
+      /** Codex: reasoning effort via config override. */
+      codexReasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+      /** Codex: when not `false`, use `--json` JSONL stdout (default true). */
+      codexDetailedStdout?: boolean;
       htmlFolder?: string;
       jsxFile?: string;
     } | null;
@@ -512,8 +665,8 @@ export async function POST(req: Request) {
         prompt = buildSystemPromptAddon(md) + '\n' + prompt;
       }
     }
-    const streamJsonForPreview =
-      providerId === 'claude-code' && body.claudeDetailedStdout !== false;
+    const streamJsonProvider = shouldStreamJsonForPreview(providerId, body);
+    const streamJsonForPreview = streamJsonProvider !== null;
     /** Same string the client sends (e.g. `html:checkout`) — must match presence bubbles / SSE consumers. */
     const clientComponentId = String(body.componentId).slice(0, 400);
     // Sanitize for file paths / lockfile only (colon and other chars → `_`)
@@ -561,6 +714,13 @@ export async function POST(req: Request) {
           ...(providerId === 'claude-code'
             ? { claudeDetailedStdout: body.claudeDetailedStdout !== false }
             : {}),
+          ...(providerId === 'codex'
+            ? {
+                codexSandbox: body.codexSandbox,
+                codexReasoningEffort: body.codexReasoningEffort,
+                codexDetailedStdout: body.codexDetailedStdout !== false,
+              }
+            : {}),
         }, process.cwd());
 
         // Write lockfile so we can recover from HMR
@@ -578,7 +738,7 @@ export async function POST(req: Request) {
         const stdoutLinesForErrors: string[] = [];
 
         const assistantPreview = { value: '' };
-        let claudeSessionId: string | null = null;
+        let agentSessionId: string | null = null;
         let stdoutLineBuf = '';
         let previewThrottleTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -610,10 +770,16 @@ export async function POST(req: Request) {
           for (const part of parts) {
             if (part.trim()) stdoutLinesForErrors.push(part);
           }
-          const parsed = appendAssistantTextFromJsonlLines(parts, assistantPreview);
-          if (!claudeSessionId && parsed.sessionId) {
-            claudeSessionId = parsed.sessionId;
-            currentLogStream?.write(`\nClaude Session ID: ${claudeSessionId}\n`);
+          const parsed = appendAssistantTextFromJsonlLines(
+            parts,
+            assistantPreview,
+            streamJsonProvider!,
+          );
+          if (!agentSessionId && parsed.sessionId) {
+            agentSessionId = parsed.sessionId;
+            const sessionLabel =
+              streamJsonProvider === 'codex' ? 'Codex Thread ID' : 'Claude Session ID';
+            currentLogStream?.write(`\n${sessionLabel}: ${agentSessionId}\n`);
           }
           if (parsed.textChanged) {
             scheduleAgentPreview();
@@ -636,10 +802,16 @@ export async function POST(req: Request) {
           clearGenerationTimer();
           if (streamJsonForPreview && stdoutLineBuf.trim().length > 0) {
             stdoutLinesForErrors.push(stdoutLineBuf);
-            const parsed = appendAssistantTextFromJsonlLines([stdoutLineBuf], assistantPreview);
-            if (!claudeSessionId && parsed.sessionId) {
-              claudeSessionId = parsed.sessionId;
-              currentLogStream?.write(`\nClaude Session ID: ${claudeSessionId}\n`);
+            const parsed = appendAssistantTextFromJsonlLines(
+              [stdoutLineBuf],
+              assistantPreview,
+              streamJsonProvider!,
+            );
+            if (!agentSessionId && parsed.sessionId) {
+              agentSessionId = parsed.sessionId;
+              const sessionLabel =
+                streamJsonProvider === 'codex' ? 'Codex Thread ID' : 'Claude Session ID';
+              currentLogStream?.write(`\n${sessionLabel}: ${agentSessionId}\n`);
             }
             stdoutLineBuf = '';
           }
@@ -664,25 +836,28 @@ export async function POST(req: Request) {
             resolve(NextResponse.json({
               success: true,
               generationId,
-              claudeSessionId,
+              claudeSessionId: agentSessionId,
               message: 'Generation completed successfully',
             }));
           } else {
             const streamError = streamJsonForPreview
-              ? extractStreamJsonError(stdoutLinesForErrors)
+              ? extractStreamJsonError(stdoutLinesForErrors, streamJsonProvider!)
               : null;
             const previewError = assistantPreview.value.trim();
-            const errorMessage =
-              stderr.trim() ||
-              streamError ||
-              previewError ||
-              `${providerName} agent exited with code ${code}`;
+            const errorMessage = formatAgentErrorMessage(
+              providerId,
+              stderr,
+              streamError,
+              previewError,
+              code,
+              providerName,
+            );
             resolve(NextResponse.json(
               {
                 success: false,
                 error: errorMessage,
                 generationId,
-                claudeSessionId,
+                claudeSessionId: agentSessionId,
               },
               { status: 500 }
             ));
@@ -693,10 +868,16 @@ export async function POST(req: Request) {
         currentProcess.on('error', (error) => {
           clearGenerationTimer();
           if (streamJsonForPreview && stdoutLineBuf.trim().length > 0) {
-            const parsed = appendAssistantTextFromJsonlLines([stdoutLineBuf], assistantPreview);
-            if (!claudeSessionId && parsed.sessionId) {
-              claudeSessionId = parsed.sessionId;
-              currentLogStream?.write(`\nClaude Session ID: ${claudeSessionId}\n`);
+            const parsed = appendAssistantTextFromJsonlLines(
+              [stdoutLineBuf],
+              assistantPreview,
+              streamJsonProvider!,
+            );
+            if (!agentSessionId && parsed.sessionId) {
+              agentSessionId = parsed.sessionId;
+              const sessionLabel =
+                streamJsonProvider === 'codex' ? 'Codex Thread ID' : 'Claude Session ID';
+              currentLogStream?.write(`\n${sessionLabel}: ${agentSessionId}\n`);
             }
             stdoutLineBuf = '';
           }

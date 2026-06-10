@@ -5,7 +5,7 @@ import type { ModelOption } from '../constants';
 // ---------------------------------------------------------------------------
 
 /** Supported CLI provider identifiers */
-export type ProviderId = 'cursor' | 'claude-code';
+export type ProviderId = 'cursor' | 'claude-code' | 'codex';
 
 // ---------------------------------------------------------------------------
 // Agent Spawn Options
@@ -26,6 +26,15 @@ export interface AgentSpawnOptions {
    * When false/omitted, use `text` and log stdout to the chat file.
    */
   claudeDetailedStdout?: boolean;
+  /** Codex only — sandbox policy for `codex exec -s` */
+  codexSandbox?: 'workspace-write' | 'danger-full-access';
+  /** Codex only — reasoning effort via `-c model_reasoning_effort=...` */
+  codexReasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+  /**
+   * Codex only — when true, use `codex exec --json` for live UI parsing.
+   * When false/omitted, plain stdout is logged to the chat file.
+   */
+  codexDetailedStdout?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -68,5 +77,22 @@ export const DEFAULT_CLAUDE_CODE_OPTIONS: ClaudeCodeOptions = {
   effort: 'high',
   maxBudgetUsd: null,
   maxTurns: null,
+  detailedStdout: true,
+};
+
+// ---------------------------------------------------------------------------
+// Codex-Specific Options (persisted in the client store)
+// ---------------------------------------------------------------------------
+
+export interface CodexOptions {
+  sandbox: 'workspace-write' | 'danger-full-access';
+  reasoningEffort: 'low' | 'medium' | 'high' | 'xhigh';
+  /** When true, `--json` for live tooltip; chat download omits raw JSONL. */
+  detailedStdout: boolean;
+}
+
+export const DEFAULT_CODEX_OPTIONS: CodexOptions = {
+  sandbox: 'workspace-write',
+  reasoningEffort: 'high',
   detailedStdout: true,
 };

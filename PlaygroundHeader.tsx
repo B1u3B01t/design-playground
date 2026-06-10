@@ -16,6 +16,15 @@ import {
 import { Play, Combine, Upload } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { getModelIconConfig } from './lib/model-icons';
+import { getProvider } from './lib/providers/registry';
+import type { ProviderId } from './lib/providers/types';
+
+function resolveBubbleDisplayName(model: string, provider: ProviderId): string {
+  if (provider === 'cursor') return model;
+  const config = getProvider(provider);
+  const modelLabel = model && model !== 'auto' ? model : 'default';
+  return `${config.displayName} (${modelLabel})`;
+}
 import { CANVAS_BACKGROUND_COLOR } from './lib/constants';
 import {
   DropdownMenu,
@@ -606,23 +615,22 @@ export default function PlaygroundHeader({
           {presenceBubbles.length > 0 && (
          <div className="flex items-center ml-1.5 gap-0.5">
             {presenceBubbles.map((bubble) => {
-              // Resolve icon: if model is generic ('auto') but provider is claude-code, show Claude icon
-              const iconKey = (bubble.model === 'auto' && bubble.provider === 'claude-code') ? 'claude' : bubble.model;
-              const iconConfig = getModelIconConfig(iconKey);
-              const displayName = bubble.provider === 'claude-code' ? `Claude Code (${bubble.model})` : bubble.model;
+              const bubbleProvider = (bubble.provider ?? 'cursor') as ProviderId;
+              const iconConfig = getModelIconConfig(bubble.model, bubbleProvider);
+              const displayName = resolveBubbleDisplayName(bubble.model, bubbleProvider);
               const tooltipText = bubble.status === 'queued'
                 ? 'Queued — will run after current generation'
                 : bubble.type === 'adopt'
                   ? `Adopting — ${displayName}`
                   : `${displayName} — ${bubble.status}`;
 
-              const showClaudeStreamTooltip =
-                bubble.provider === 'claude-code' &&
+              const showAgentStreamTooltip =
+                (bubbleProvider === 'claude-code' || bubbleProvider === 'codex') &&
                 (bubble.status === 'generating' ||
                   (bubble.status === 'done' && Boolean(bubble.agentPreviewText?.trim())));
 
               return (
-                <Tooltip key={bubble.id} delayDuration={showClaudeStreamTooltip ? 280 : undefined}>
+                <Tooltip key={bubble.id} delayDuration={showAgentStreamTooltip ? 280 : undefined}>
                   <TooltipTrigger asChild>
                 <div
                   className="presence-bubble group"
@@ -661,12 +669,12 @@ export default function PlaygroundHeader({
                     side="bottom"
                     sideOffset={6}
                     className={cn(
-                      showClaudeStreamTooltip
+                      showAgentStreamTooltip
                         ? 'max-w-[min(20rem,calc(100vw-2rem))] p-0 border border-stone-200/90 bg-white text-stone-800 shadow-lg pointer-events-auto overflow-hidden rounded-lg'
                         : 'text-xs',
                     )}
                   >
-                    {showClaudeStreamTooltip ? (
+                    {showAgentStreamTooltip ? (
                       <>
                         <div className="border-b border-stone-100/90 px-3 py-2 text-[11px] font-medium text-stone-600 bg-gradient-to-b from-stone-50 to-stone-50/80">
                           {bubble.status === 'done'

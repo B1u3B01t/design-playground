@@ -1,6 +1,6 @@
 ---
 globs: ["src/app/playground/lib/providers/**"]
-description: "Provider system: Cursor CLI and Claude Code CLI integration, ProviderConfig, spawn-agent, model listing"
+description: "Provider system: Cursor CLI, Claude Code CLI, and Codex CLI integration, ProviderConfig, spawn-agent, model listing"
 ---
 
 # AI Providers
@@ -13,6 +13,7 @@ The playground spawns external AI agents via CLI tools. The provider abstraction
 |----|-----|-------------|
 | `cursor` | `cursor agent` | Default. Uses Cursor's built-in AI agent. |
 | `claude-code` | `claude` | Anthropic's Claude Code CLI. With detailed stdout, stream-json drives the live presence-bubble tooltip; the downloaded chat `.txt` omits raw JSONL (stderr and a short note are still logged). |
+| `codex` | `codex exec` | OpenAI's Codex CLI. With detailed stdout, `--json` JSONL drives the live presence-bubble tooltip. Sandbox configurable (`workspace-write` default, `danger-full-access` opt-in) plus reasoning effort via `CodexOptions`. Auth via `codex login`. |
 
 ## Files
 
@@ -21,6 +22,7 @@ The playground spawns external AI agents via CLI tools. The provider abstraction
 | `types.ts` | `ProviderId`, `ProviderConfig`, `AgentSpawnOptions` interfaces |
 | `cursor.ts` | Cursor CLI provider — `buildAgentArgs()`, `buildModelListArgs()`, `parseModelOutput()` |
 | `claude-code.ts` | Claude Code provider — same interface, plus `ClaudeCodeOptions` (effort, budget, turns) |
+| `codex.ts` | Codex provider — same interface, plus `CodexOptions` (sandbox, reasoning effort, detailed stdout) |
 | `registry.ts` | `getProvider()`, `getAllProviders()`, default provider lookup |
 | `spawn-agent.ts` | Process spawning — child process with stdin piping, SIGTERM cancellation |
 | `index.ts` | Barrel exports |
@@ -45,6 +47,9 @@ interface AgentSpawnOptions {
   maxBudgetUsd?: number;        // claude-code only
   maxTurns?: number;            // claude-code only
   claudeDetailedStdout?: boolean; // claude-code only — stream-json for live UI vs plain text log
+  codexSandbox?: 'workspace-write' | 'danger-full-access'; // codex only
+  codexReasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'; // codex only
+  codexDetailedStdout?: boolean; // codex only — `--json` JSONL for live UI vs plain text log
 }
 ```
 

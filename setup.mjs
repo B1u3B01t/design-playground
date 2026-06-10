@@ -99,6 +99,7 @@ function main() {
   const providers = [
     { name: 'Cursor', cmd: 'cursor --version', installHint: 'https://cursor.com/docs/cli/installation' },
     { name: 'Claude Code', cmd: 'claude --version', installHint: 'npm install -g @anthropic-ai/claude-code' },
+    { name: 'Codex', cmd: 'codex --version', installHint: 'npm install -g @openai/codex — then run `codex login`' },
   ];
 
   let anyProviderFound = false;

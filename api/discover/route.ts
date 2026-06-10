@@ -197,7 +197,11 @@ export async function POST(req: Request) {
 
   return new Promise<NextResponse>((resolve) => {
     try {
-      currentProcess = spawnAgent(providerId, { model }, process.cwd());
+      currentProcess = spawnAgent(providerId, {
+        model,
+        ...(providerId === 'claude-code' ? { claudeDetailedStdout: false } : {}),
+        ...(providerId === 'codex' ? { codexDetailedStdout: false } : {}),
+      }, process.cwd());
 
       if (currentProcess.pid) {
         writeLockfile(currentProcess.pid);

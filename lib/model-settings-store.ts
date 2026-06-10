@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { ProviderId, ClaudeCodeOptions } from './providers/types';
-import { DEFAULT_CLAUDE_CODE_OPTIONS } from './providers/types';
+import type { ProviderId, ClaudeCodeOptions, CodexOptions } from './providers/types';
+import { DEFAULT_CLAUDE_CODE_OPTIONS, DEFAULT_CODEX_OPTIONS } from './providers/types';
 import { getProvider, DEFAULT_PROVIDER_ID, getAllProviderIds } from './providers/registry';
 import type { ModelOption } from './constants';
 
@@ -63,6 +63,10 @@ interface ModelSettingsState {
   // Claude Code-specific options
   claudeCodeOptions: ClaudeCodeOptions;
   setClaudeCodeOptions: (opts: Partial<ClaudeCodeOptions>) => void;
+
+  // Codex-specific options
+  codexOptions: CodexOptions;
+  setCodexOptions: (opts: Partial<CodexOptions>) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -212,21 +216,29 @@ export const useModelSettingsStore = create<ModelSettingsState>()(
         set((state) => ({
           claudeCodeOptions: { ...state.claudeCodeOptions, ...opts },
         })),
+
+      // Codex options
+      codexOptions: DEFAULT_CODEX_OPTIONS,
+      setCodexOptions: (opts: Partial<CodexOptions>) =>
+        set((state) => ({
+          codexOptions: { ...state.codexOptions, ...opts },
+        })),
     }),
     {
       name: STORE_KEY,
-      version: 1,
+      version: 2,
       onRehydrateStorage: () => () => {
         useModelSettingsStore.setState({ hasHydrated: true });
       },
       migrate: (persisted: unknown, version: number) => {
+        const defaultStates = makeDefaultProviderStates();
+
         // v0 → v1: migrate from flat shape to provider-scoped
         if (version === 0 && persisted && typeof persisted === 'object') {
           const old = persisted as {
             enabledModels?: string[];
             availableModels?: ModelOption[];
           };
-          const defaultStates = makeDefaultProviderStates();
           return {
             activeProvider: DEFAULT_PROVIDER_ID,
             providerState: {
@@ -238,14 +250,33 @@ export const useModelSettingsStore = create<ModelSettingsState>()(
               },
             },
             claudeCodeOptions: DEFAULT_CLAUDE_CODE_OPTIONS,
+            codexOptions: DEFAULT_CODEX_OPTIONS,
           };
         }
+
+        if (persisted && typeof persisted === 'object') {
+          const state = persisted as Partial<ModelSettingsState>;
+          const mergedProviderState = { ...defaultStates, ...state.providerState };
+          for (const id of getAllProviderIds()) {
+            if (!mergedProviderState[id]) {
+              mergedProviderState[id] = defaultStates[id];
+            }
+          }
+          return {
+            ...state,
+            providerState: mergedProviderState,
+            claudeCodeOptions: state.claudeCodeOptions ?? DEFAULT_CLAUDE_CODE_OPTIONS,
+            codexOptions: state.codexOptions ?? DEFAULT_CODEX_OPTIONS,
+          };
+        }
+
         return persisted as ModelSettingsState;
       },
       partialize: (state) => ({
         activeProvider: state.activeProvider,
         providerState: state.providerState,
         claudeCodeOptions: state.claudeCodeOptions,
+        codexOptions: state.codexOptions,
       }),
     },
   ),

@@ -10,7 +10,7 @@ import { getProvider } from '../../lib/providers';
  * GET: List models for the requested provider.
  *      - Cursor: runs CLI subcommand, parses output, caches 5 min.
  *      - Claude Code: returns static model list (no CLI subcommand).
- *      Query param: ?provider=cursor|claude-code (default: cursor)
+ *      Query param: ?provider=cursor|claude-code|codex (default: cursor)
  */
 
 // Per-provider in-memory cache

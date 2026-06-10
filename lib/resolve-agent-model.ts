@@ -19,6 +19,12 @@ export function resolveAgentModel(
     return trimmed;
   }
 
+  if (providerId === 'codex') {
+    // Empty string = CLI default; omit `-m`.
+    if (!trimmed || trimmed === 'auto') return undefined;
+    return trimmed;
+  }
+
   // Cursor — `auto` is valid
   if (!trimmed) return 'auto';
   return trimmed;

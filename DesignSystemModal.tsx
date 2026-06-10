@@ -35,6 +35,7 @@ import {
 } from './ui/dialog';
 import { useDesignSystemStore } from './lib/design-system-store';
 import { useModelSettingsStore } from './lib/model-settings-store';
+import { getProvider } from './lib/providers/registry';
 import {
   parseDesignMd,
   resolveToken,
@@ -466,7 +467,7 @@ export default function DesignSystemModal({ open, onOpenChange }: DesignSystemMo
                 aiNotes={aiNotes}
                 onAiNotes={setAiNotes}
                 onAiGenerate={generateFromCodebase}
-                providerLabel={activeProvider === 'claude-code' ? 'Claude Code' : 'Cursor'}
+                providerLabel={getProvider(activeProvider).displayName}
               />
             )}
             {section === 'preview' && (

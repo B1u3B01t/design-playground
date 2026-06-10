@@ -23,23 +23,31 @@ const MODEL_ICON_CONFIGS: Record<string, ModelIconConfig> = {
   gemini: { src: ICON_SRC(geminiIcon), bg: '#ffffff' },
 };
 
+/** Resolve the brand icon for empty/auto model values from the provider. */
+function providerFallbackIcon(providerId?: string): ModelIconConfig {
+  if (providerId === 'claude-code') return MODEL_ICON_CONFIGS.claude;
+  if (providerId === 'codex') return MODEL_ICON_CONFIGS.openai;
+  return MODEL_ICON_CONFIGS.cursor;
+}
+
 /**
  * Returns the icon URL for a given model value string.
  * Matches against known model families; falls back to Cursor icon.
  */
-export function getModelIcon(modelValue: string): string {
-  return getModelIconConfig(modelValue).src;
+export function getModelIcon(modelValue: string, providerId?: string): string {
+  return getModelIconConfig(modelValue, providerId).src;
 }
 
 /**
  * Returns icon URL and background color for the bubble face.
  * Use this when rendering the bubble so bg can change per model.
+ * Pass `providerId` so empty/'auto' values resolve to the provider's brand icon.
  */
-export function getModelIconConfig(modelValue: string): ModelIconConfig {
+export function getModelIconConfig(modelValue: string, providerId?: string): ModelIconConfig {
   const v = modelValue.toLowerCase();
 
-  // Auto or unknown → generic Cursor icon
-  if (v === 'auto') return MODEL_ICON_CONFIGS.cursor;
+  // Auto or empty → provider brand icon (Cursor when unknown)
+  if (!v || v === 'auto') return providerFallbackIcon(providerId);
 
   // Claude family
   if (

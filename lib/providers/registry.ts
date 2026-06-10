@@ -1,6 +1,7 @@
 import type { ProviderId, ProviderConfig } from './types';
 import { cursorProvider } from './cursor';
 import { claudeCodeProvider } from './claude-code';
+import { codexProvider } from './codex';
 
 // ---------------------------------------------------------------------------
 // Provider Registry
@@ -9,6 +10,7 @@ import { claudeCodeProvider } from './claude-code';
 const PROVIDERS = new Map<ProviderId, ProviderConfig>([
   [cursorProvider.id, cursorProvider],
   [claudeCodeProvider.id, claudeCodeProvider],
+  [codexProvider.id, codexProvider],
 ]);
 
 export const DEFAULT_PROVIDER_ID: ProviderId = 'cursor';

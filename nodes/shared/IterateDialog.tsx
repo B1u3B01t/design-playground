@@ -52,6 +52,7 @@ import {
 import { useDragToIterate, clampGrid, type DragDelta, type CursorScreenPos, type DragIterateGrid } from '../../hooks/useDragToIterate';
 import DragSelectionOverlay from './DragSelectionOverlay';
 import { getModelIconConfig } from '../../lib/model-icons';
+import { useModelSettingsStore } from '../../lib/model-settings-store';
 
 // Ghost node ID prefix to identify and clean up drag-ghost nodes
 const GHOST_NODE_PREFIX = 'drag-ghost-';
@@ -104,8 +105,9 @@ function ModelPillDropdown({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const activeProvider = useModelSettingsStore((s) => s.activeProvider);
   const currentLabel = models.find(m => m.value === model)?.label || model || 'Default';
-  const currentConfig = getModelIconConfig(model || currentLabel);
+  const currentConfig = getModelIconConfig(model, activeProvider);
 
   return (
     <div ref={dropdownRef} className="relative">
@@ -131,7 +133,7 @@ function ModelPillDropdown({
       {open && (
         <div className="absolute bottom-full left-0 z-50 mb-2 max-h-64 w-64 overflow-y-auto rounded-2xl border border-stone-200 bg-white p-1.5 shadow-[0_18px_50px_-22px_rgba(0,0,0,0.35)]">
           {models.map((option) => {
-            const config = getModelIconConfig(option.value);
+            const config = getModelIconConfig(option.value, activeProvider);
             return (
               <button
                 key={option.value}
