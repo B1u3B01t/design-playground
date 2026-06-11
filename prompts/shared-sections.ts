@@ -58,6 +58,12 @@ export const PROPS_CONSTRAINT = `- **Props interface**: Keep it IDENTICAL to the
 - **Tree manifest**: Update src/app/playground/iterations/tree.json for every new iteration file.
 - **Registry index**: Register every iteration in src/app/playground/iterations/index.ts with a ".tsx" map key.`;
 
+/** Appended to Codex generation prompts to prevent browser-based verification */
+export const NO_BROWSER_INSTRUCTIONS = `ENVIRONMENT CONSTRAINTS
+- Do NOT open a browser (Chrome, Safari, etc.), run \`open\`, or launch any GUI app to preview or verify changes.
+- Do NOT start a dev server or take screenshots to check your work.
+- The playground canvas hot-reloads and renders your files automatically — writing the files correctly IS the verification.`;
+
 // ---------------------------------------------------------------------------
 // Prompt section formatters
 // ---------------------------------------------------------------------------

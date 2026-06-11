@@ -18,6 +18,7 @@ import {
   resolveAgentModel,
 } from '../../lib/providers';
 import { readDesignMd, buildSystemPromptAddon } from '../../lib/design-md-helpers';
+import { NO_BROWSER_INSTRUCTIONS } from '../../prompts/shared-sections';
 
 /**
  * Playground generation API - Agent CLI Integration
@@ -664,6 +665,9 @@ export async function POST(req: Request) {
       if (md) {
         prompt = buildSystemPromptAddon(md) + '\n' + prompt;
       }
+    }
+    if (providerId === 'codex') {
+      prompt = `${prompt}\n\n${NO_BROWSER_INSTRUCTIONS}`;
     }
     const streamJsonProvider = shouldStreamJsonForPreview(providerId, body);
     const streamJsonForPreview = streamJsonProvider !== null;
