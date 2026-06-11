@@ -337,7 +337,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
     onEdgesChange,
     isLoading: isFlowLoading,
   } = useCanvasFlow();
-  const { screenToFlowPosition, fitView, setCenter, getViewport, getNode } = useReactFlow();
+  const { screenToFlowPosition, fitView, setCenter, getViewport, setViewport, getNode } = useReactFlow();
 
   const getPdfTotalPages = useCallback((pdfData: PdfNodeData): number => {
     if (pdfData.totalPages) return pdfData.totalPages;
@@ -691,18 +691,38 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
     return () => window.removeEventListener('beforeunload', handler);
   }, [multiplayer.enabled, edges, getViewport, storageKey]);
 
-  // Multiplayer: the host seeds a fresh (empty) room once from its local canvas, so an existing
-  // local design becomes the shared starting point. Guests and non-empty rooms are left as-is.
+  // Multiplayer: if the Liveblocks room is still empty after storage loads, copy the local
+  // canvas into the room (e.g. guest joined first, or the room was created empty earlier).
   useEffect(() => {
-    if (!multiplayer.enabled || !multiplayer.isHost || didSeedRef.current) return;
+    if (!multiplayer.enabled || didSeedRef.current) return;
     if (isFlowLoading) return;
-    didSeedRef.current = true;
+
     const seed = seedDataRef.current;
-    if (nodes.length === 0 && seed?.nodes?.length) {
-      setNodes(seed.nodes);
-      if (seed.edges?.length) setEdges(seed.edges);
+    const roomEmpty = nodes.length === 0 && edges.length === 0;
+    if (!roomEmpty) {
+      didSeedRef.current = true;
+      return;
     }
-  }, [multiplayer.enabled, multiplayer.isHost, isFlowLoading, nodes.length, setNodes, setEdges]);
+    if (!seed?.nodes?.length) {
+      didSeedRef.current = true;
+      return;
+    }
+
+    didSeedRef.current = true;
+    setNodes(seed.nodes);
+    if (seed.edges?.length) setEdges(seed.edges);
+    if (seed.viewport) {
+      setViewport(seed.viewport);
+    }
+  }, [
+    multiplayer.enabled,
+    isFlowLoading,
+    nodes.length,
+    edges.length,
+    setNodes,
+    setEdges,
+    setViewport,
+  ]);
 
   // Freehand drawing on empty canvas (PDF pages use DrawSurface inside the node)
   useEffect(() => {

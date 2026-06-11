@@ -22,6 +22,7 @@ import { liveblocksAuth } from './liveblocks.config';
 import { MultiplayerProvider, type MultiplayerState } from './lib/multiplayer-context';
 import { CanvasFlowProvider } from './lib/canvas-flow';
 import { GenerationPresenceBridge } from './lib/presence';
+import './lib/ngrok-headers';
 import { LiveblocksSetupGuard } from './lib/liveblocks-setup';
 
 export interface PendingChild {

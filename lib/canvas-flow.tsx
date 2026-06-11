@@ -106,8 +106,31 @@ function SoloFlowProvider({ children, storageKey }: { children: ReactNode; stora
  * imperative `setNodes(...)` call sites keep working unchanged. Native drag/select interactions
  * wire straight to onNodesChange on <ReactFlow> and never touch the shim.
  */
-function MultiplayerFlowProvider({ children }: { children: ReactNode }) {
-  const flow = useLiveblocksFlow<Node, Edge>();
+function MultiplayerFlowProvider({
+  children,
+  storageKey,
+}: {
+  children: ReactNode;
+  storageKey?: string;
+}) {
+  // Seed new Liveblocks rooms from local canvas so starting a session doesn't wipe progress.
+  // Frozen on first render — useLiveblocksFlow only reads `initial` when storage is first created.
+  const flowOptionsRef = useRef<{
+    nodes?: { initial: Node[] };
+    edges?: { initial: Edge[] };
+  } | null>(null);
+  if (flowOptionsRef.current === null) {
+    const local = loadCanvasState(storageKey);
+    flowOptionsRef.current =
+      local?.nodes?.length
+        ? {
+            nodes: { initial: local.nodes },
+            ...(local.edges?.length ? { edges: { initial: local.edges } } : {}),
+          }
+        : {};
+  }
+
+  const flow = useLiveblocksFlow<Node, Edge>(flowOptionsRef.current);
   const nodes = flow.nodes ?? EMPTY_NODES;
   const edges = flow.edges ?? EMPTY_EDGES;
 
@@ -207,7 +230,7 @@ export function CanvasFlowProvider({
 }) {
   const { enabled } = useMultiplayer();
   return enabled ? (
-    <MultiplayerFlowProvider>{children}</MultiplayerFlowProvider>
+    <MultiplayerFlowProvider storageKey={storageKey}>{children}</MultiplayerFlowProvider>
   ) : (
     <SoloFlowProvider storageKey={storageKey}>{children}</SoloFlowProvider>
   );

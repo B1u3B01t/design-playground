@@ -41,6 +41,7 @@ declare global {
 // Auth endpoint — the Liveblocks secret stays server-side; the browser only POSTs here.
 // Fixed path in this app (no env var — the route always lives next to other playground APIs).
 // ---------------------------------------------------------------------------
+import "./lib/ngrok-headers";
 import { ngrokRequestHeaders } from "./lib/ngrok-headers";
 
 export const LIVEBLOCKS_AUTH_ENDPOINT = "/playground/api/liveblocks-auth";
@@ -107,9 +108,15 @@ export async function liveblocksAuth(room?: string): Promise<{ token: string }> 
     return { token: data.token };
   }
 
+  const body = await res.text();
+  const isNgrokInterstitial =
+    body.includes("ngrok") &&
+    (body.includes("browser-warning") || body.includes("You are about to visit"));
   const detail = res.redirected ? ` (redirected to ${res.url})` : "";
   throw new Error(
-    `Liveblocks auth failed: ${res.status} from ${LIVEBLOCKS_AUTH_ENDPOINT}${detail}. ` +
-      `Check that the endpoint is reachable and returns JSON.`,
+    isNgrokInterstitial
+      ? "Liveblocks auth hit ngrok's browser warning page. Click 'Visit Site' on the ngrok interstitial, then reload this page."
+      : `Liveblocks auth failed: ${res.status} from ${LIVEBLOCKS_AUTH_ENDPOINT}${detail}. ` +
+          `Expected JSON but got ${res.headers.get("content-type") ?? "unknown content-type"}.`,
   );
 }
