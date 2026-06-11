@@ -11,6 +11,7 @@ import {
   type FlowPlayPayload,
 } from '../lib/constants';
 import { stageRenderers } from './stage-renderers';
+import { captureClient } from '../lib/telemetry/client';
 
 interface FlowSimulatorState {
   flowId: string;
@@ -26,6 +27,7 @@ export function FlowSimulator() {
     const handlePlay = (e: Event) => {
       const detail = (e as CustomEvent<FlowPlayPayload>).detail;
       if (!detail?.flowId) return;
+      captureClient('feature_used', { feature: 'flow_simulator_play' });
       setState({
         flowId: detail.flowId,
         useCanonical: !!detail.useCanonical,

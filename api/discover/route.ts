@@ -11,6 +11,7 @@ import { resolvePlaygroundDir } from '../../lib/resolve-playground-dir';
 import { discoveryPrompt } from '../../prompts/discovery.prompt';
 import type { ProviderId } from '../../lib/providers';
 import { spawnAgent, getProviderNotFoundMessage, getProviderDisplayName } from '../../lib/providers';
+import { captureFromRequest } from '../../lib/telemetry/server';
 
 /**
  * Discovery API — scans the project for visual components and pages
@@ -42,6 +43,7 @@ log(` Discovery JSON path: ${DISCOVERY_JSON_PATH}`);
 
 let currentProcess: ChildProcess | null = null;
 let isScanning = false;
+let scanCancelled = false;
 
 function ensureTempDir() {
   if (!fs.existsSync(TEMP_DIR)) {
@@ -194,6 +196,22 @@ export async function POST(req: Request) {
   log(` Using provider: ${providerName}`);
 
   const startTime = Date.now();
+  scanCancelled = false;
+
+  // Telemetry: anonymous counts + duration only (see TELEMETRY.md). The
+  // request handle gates out tunnel/guest-origin scans.
+  const recordDiscovery = (
+    outcome: 'success' | 'agent_error' | 'spawn_error' | 'manifest_missing' | 'cancelled',
+    entries?: unknown[],
+  ) => {
+    const list = Array.isArray(entries) ? (entries as { type?: string }[]) : [];
+    captureFromRequest(req, 'discovery_run', {
+      duration_ms: Date.now() - startTime,
+      outcome,
+      components_found: list.filter((e) => e.type === 'component').length,
+      pages_found: list.filter((e) => e.type === 'page').length,
+    });
+  };
 
   return new Promise<NextResponse>((resolve) => {
     try {
@@ -246,9 +264,11 @@ export async function POST(req: Request) {
           if (data) {
             const entries = (data as { entries?: unknown[] }).entries;
             log(` Scan complete — ${Array.isArray(entries) ? entries.length : 0} entries discovered`);
+            recordDiscovery('success', entries);
             resolve(NextResponse.json({ success: true, status: 'complete', ...data }));
           } else {
             console.error(`${LOG_PREFIX} Agent completed but discovery.json was not created`);
+            recordDiscovery('manifest_missing');
             resolve(NextResponse.json(
               { success: false, error: 'Agent completed but discovery.json was not created.' },
               { status: 500 },
@@ -256,6 +276,7 @@ export async function POST(req: Request) {
           }
         } else {
           console.error(`${LOG_PREFIX} Agent failed — code=${code}, stderr: ${stderr.slice(0, 500)}`);
+          recordDiscovery(scanCancelled ? 'cancelled' : 'agent_error');
           resolve(NextResponse.json(
             { success: false, error: stderr || `${providerName} agent exited with code ${code}` },
             { status: 500 },
@@ -275,6 +296,7 @@ export async function POST(req: Request) {
           ? getProviderNotFoundMessage(providerId)
           : error.message;
 
+        recordDiscovery('spawn_error');
         resolve(NextResponse.json({ success: false, error: message }, { status: 500 }));
       });
     } catch (spawnError) {
@@ -282,6 +304,7 @@ export async function POST(req: Request) {
       removeLockfile();
       isScanning = false;
       currentProcess = null;
+      recordDiscovery('spawn_error');
       const message = spawnError instanceof Error ? spawnError.message : `Failed to spawn ${providerName} agent`;
       resolve(NextResponse.json({ success: false, error: message }, { status: 500 }));
     }
@@ -304,6 +327,7 @@ export async function DELETE() {
   }
 
   try {
+    scanCancelled = true;
     log(` Sending SIGTERM to PID=${currentProcess.pid}`);
     currentProcess.kill('SIGTERM');
     setTimeout(() => {

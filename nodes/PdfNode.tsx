@@ -22,6 +22,7 @@ import {
 } from '../lib/pdf-page-order';
 import { usePlaygroundPdfDragStore } from '../lib/playground-pdf-drag-store';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
+import { captureClient } from '../lib/telemetry/client';
 
 export interface PdfNodeData extends Record<string, unknown> {
   pdfPath: string;
@@ -301,6 +302,11 @@ function PdfNodeInner({ id, data, selected }: { id: string; data: PdfNodeData; s
         if (cancelled) return;
         setPdfDoc(doc);
         setPageCount(doc.numPages);
+        // totalPages unset = first load of a freshly imported PDF (it persists
+        // in node data afterwards, so remounts don't re-count the import).
+        if (data.totalPages === undefined) {
+          captureClient('feature_used', { feature: 'pdf_import', page_count: doc.numPages });
+        }
         updateNodeData(id, { totalPages: doc.numPages });
       } catch (err) {
         if (!cancelled) {

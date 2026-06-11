@@ -34,6 +34,7 @@ import { CanvasPresenceLayer } from './lib/presence';
 import { CommentsLayer } from './lib/comments';
 import { resolveAgentModel } from './lib/resolve-agent-model';
 import type { ProviderId } from './lib/providers/types';
+import { captureClient } from './lib/telemetry/client';
 import PlaygroundCanvasDrawLayer from './PlaygroundCanvasDrawLayer';
 import { usePlaygroundDrawStore } from './lib/playground-draw-store';
 import { createNewStroke, type DrawPenKind, type DrawStroke } from './lib/draw-types';
@@ -187,6 +188,9 @@ const nodeTypes = {
 
 const DEFAULT_SKILL_IDS = ['design-variations', 'frontend-design'] as const;
 let cachedDefaultSkillPrompt: string | null = null;
+
+// Telemetry: report the draw feature at most once per page load.
+let drawFeatureReported = false;
 
 async function loadDefaultSkillPrompt(): Promise<string | null> {
   if (cachedDefaultSkillPrompt !== null) return cachedDefaultSkillPrompt;
@@ -764,6 +768,10 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
     const onPointerUp = () => {
       if (!drawing || !currentStroke) return;
       if (currentStroke.points.length > 1) {
+        if (!drawFeatureReported) {
+          drawFeatureReported = true;
+          captureClient('feature_used', { feature: 'draw' });
+        }
         setCanvasDrawings((prev) => [...prev, currentStroke!]);
       }
       drawing = false;
@@ -2023,6 +2031,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
             componentId,
             iterationCount,
             model: model || undefined,
+            source: 'drag',
             ...getProviderFields(),
             ...(isDragHtml ? { htmlFolder: dragHtmlFolder } : {}),
             ...(isDragJsx && dragJsxFile ? { jsxFile: dragJsxFile } : {}),
@@ -2220,6 +2229,8 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
             prompt,
             componentId: editComponentId,
             model: editResolvedModel,
+            source: 'chat_edit',
+            skillIds: payload.skillIds,
             ...getProviderFields(),
             ...(isHtmlEdit ? { htmlFolder: payload.htmlPageSlug } : {}),
             ...(isJsxEdit && payload.jsxFile ? { jsxFile: payload.jsxFile } : {}),
@@ -2544,6 +2555,8 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
             componentId,
             iterationCount,
             model: resolvedModel,
+            source: 'chat',
+            skillIds: payload.skillIds,
             ...canvasGenPf,
             ...(isHtmlTarget ? { htmlFolder: payload.htmlPageSlug } : {}),
             ...(isJsxTarget && payload.jsxFile ? { jsxFile: payload.jsxFile } : {}),
@@ -2627,6 +2640,8 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
             componentId: 'cursor-chat-freeform',
             iterationCount: 0,
             model: resolvedModel,
+            source: 'chat_freeform',
+            skillIds: payload.skillIds,
             ...canvasGenPf,
           }),
         });
@@ -3583,6 +3598,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
           prompt,
           componentId,
           iterationCount: 0,
+          source: 'new_page',
           ...pf,
         }),
       });

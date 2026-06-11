@@ -19,6 +19,15 @@ import {
 } from '../../lib/providers';
 import { readDesignMd, buildSystemPromptAddon } from '../../lib/design-md-helpers';
 import { NO_BROWSER_INSTRUCTIONS } from '../../prompts/shared-sections';
+import {
+  capture,
+  diffTotalsDelta,
+  getGitDiffTotals,
+  isLocalRequest,
+  isTelemetryEnabled,
+} from '../../lib/telemetry/server';
+import { safeModel, safeSkills } from '../../lib/telemetry/schema';
+import type { GenerationSource } from '../../lib/telemetry/constants';
 
 /**
  * Playground generation API - Agent CLI Integration
@@ -44,6 +53,14 @@ let currentLogStream: fs.WriteStream | null = null;
 let isGenerating = false;
 let generationTimer: NodeJS.Timeout | null = null;
 
+// Telemetry lifecycle flags for the (single) running generation. Only event
+// metadata (durations, counts, enum categories) is recorded — never prompts,
+// code, or file contents. See TELEMETRY.md.
+let wasCancelled = false;
+let timedOut = false;
+let genFirstIterationAt: number | null = null;
+const currentIterationFiles = new Set<string>();
+
 // ---------------------------------------------------------------------------
 // File-watching event emitter for progressive iteration detection
 // ---------------------------------------------------------------------------
@@ -61,6 +78,9 @@ function startFileWatcher(htmlPageFolder?: string, jsxFile?: string) {
   try {
     fileWatcher = fs.watch(ITERATIONS_DIR, (eventType, filename) => {
       if (filename === 'tree.json' || (filename && filename.endsWith('.tsx'))) {
+        if (filename && filename.endsWith('.tsx')) {
+          currentIterationFiles.add(path.join(ITERATIONS_DIR, filename));
+        }
         // Debounce: the OS may fire multiple events for a single write
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
@@ -85,6 +105,7 @@ function startFileWatcher(htmlPageFolder?: string, jsxFile?: string) {
         const norm = filename.replace(/\\/g, '/');
         if (!norm.endsWith('.html')) return;
         if (!/iteration-\d+/.test(norm)) return;
+        currentIterationFiles.add(path.join(htmlDir, norm));
         if (htmlDebounceTimer) clearTimeout(htmlDebounceTimer);
         htmlDebounceTimer = setTimeout(() => {
           generationEvents.emit('iteration-added');
@@ -126,6 +147,7 @@ function startFileWatcher(htmlPageFolder?: string, jsxFile?: string) {
     try {
       jsxFileWatcher = fs.watch(canvasDir, (_eventType, filename) => {
         if (filename && CANVAS_ITERATION_FILENAME_PATTERN.test(filename)) {
+          currentIterationFiles.add(path.join(canvasDir, filename));
           if (jsxDebounceTimer) clearTimeout(jsxDebounceTimer);
           jsxDebounceTimer = setTimeout(() => {
             generationEvents.emit('iteration-added');
@@ -328,6 +350,7 @@ function startGenerationTimer() {
   clearGenerationTimer();
   generationTimer = setTimeout(() => {
     if (currentProcess && !currentProcess.killed) {
+      timedOut = true;
       currentLogStream?.write(`\n=== Generation timed out after ${GENERATION_TIMEOUT_MS / 60000} minutes at ${new Date().toISOString()} ===\n`);
       currentProcess.kill('SIGTERM');
       setTimeout(() => {
@@ -609,6 +632,36 @@ function formatAgentErrorMessage(
   return stderr.trim() || streamError || previewError || fallback;
 }
 
+/**
+ * Line/file totals of iteration files this generation wrote (numbers only —
+ * the paths never leave this function). New files are untracked, so they are
+ * invisible to `git diff --numstat`; this covers that gap.
+ */
+function readNewFileLineTotals(paths: Set<string>): { lines: number; files: number } {
+  let lines = 0;
+  let files = 0;
+  for (const filePath of paths) {
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      files += 1;
+      lines += content.split('\n').length;
+    } catch {
+      // moved/deleted mid-read — skip
+    }
+  }
+  return { lines, files };
+}
+
+/** Sum a numstat delta with new-file additions (null only if neither exists). */
+function combineLineStat(deltaValue: number | null, extra: number): number | null {
+  if (deltaValue === null && extra === 0) return null;
+  return (deltaValue ?? 0) + extra;
+}
+
+const GENERATION_SOURCE_VALUES: GenerationSource[] = [
+  'dialog', 'drag', 'chat', 'chat_edit', 'chat_freeform', 'new_page', 'adopt',
+];
+
 // ---------------------------------------------------------------------------
 // API handlers
 // ---------------------------------------------------------------------------
@@ -642,6 +695,10 @@ export async function POST(req: Request) {
       codexDetailedStdout?: boolean;
       htmlFolder?: string;
       jsxFile?: string;
+      /** Telemetry-only: how this generation was initiated (see TELEMETRY.md). */
+      source?: string;
+      /** Telemetry-only: skill ids in use (reported as builtin id or 'custom'). */
+      skillIds?: string[];
     } | null;
 
     if (!body || !body.prompt || !body.componentId) {
@@ -677,6 +734,31 @@ export async function POST(req: Request) {
     const componentId = clientComponentId.replace(/[^A-Za-z0-9-_]/g, '_').slice(0, 200) || 'component';
     const timestamp = Date.now();
     const generationId = `${componentId}-${timestamp}`;
+
+    // -- Telemetry (anonymous, content-free; never recorded for tunnel/guest
+    //    requests). Snapshot working-tree numstat totals so the completion
+    //    event can attribute the churn of THIS generation's writes.
+    const telemetryActive = isLocalRequest(req) && isTelemetryEnabled();
+    wasCancelled = false;
+    timedOut = false;
+    genFirstIterationAt = null;
+    currentIterationFiles.clear();
+    const diffBefore = telemetryActive ? await getGitDiffTotals() : null;
+    const genSource: GenerationSource = GENERATION_SOURCE_VALUES.includes(
+      body.source as GenerationSource,
+    )
+      ? (body.source as GenerationSource)
+      : 'unknown';
+    const genBaseProps = {
+      provider: providerId,
+      model: safeModel(model),
+      iteration_count: typeof body.iterationCount === 'number' ? body.iterationCount : 0,
+      source: genSource,
+      skills: safeSkills(body.skillIds),
+      render_mode: body.htmlFolder ? 'html' : body.jsxFile ? 'jsx' : 'react',
+      effort:
+        (providerId === 'codex' ? body.codexReasoningEffort : body.effort) || 'default',
+    };
 
     // Create chat log file
     ensureTempDir();
@@ -737,6 +819,14 @@ export async function POST(req: Request) {
 
         // Start generation timeout watchdog
         startGenerationTimer();
+
+        const onTelemetryIteration = () => {
+          if (genFirstIterationAt === null) genFirstIterationAt = Date.now();
+        };
+        if (telemetryActive) {
+          generationEvents.on('iteration-added', onTelemetryIteration);
+          capture('generation_started', genBaseProps);
+        }
 
         let stderr = '';
         const stdoutLinesForErrors: string[] = [];
@@ -832,11 +922,37 @@ export async function POST(req: Request) {
           removeLockfile();
           stopFileWatcher();
           generationEvents.emit('done');
+          generationEvents.removeListener('iteration-added', onTelemetryIteration);
 
           isGenerating = false;
           currentProcess = null;
 
           if (code === 0) {
+            if (telemetryActive) {
+              const firstIterationAt = genFirstIterationAt;
+              const newFiles = new Set(currentIterationFiles);
+              void (async () => {
+                const delta = diffTotalsDelta(diffBefore, await getGitDiffTotals());
+                const fileTotals = readNewFileLineTotals(newFiles);
+                const diffProps = {
+                  lines_added: combineLineStat(delta.lines_added, fileTotals.lines),
+                  lines_removed: delta.lines_removed,
+                  files_changed: combineLineStat(delta.files_changed, fileTotals.files),
+                };
+                capture('generation_completed', {
+                  ...genBaseProps,
+                  duration_ms: Date.now() - timestamp,
+                  time_to_first_iteration_ms: firstIterationAt
+                    ? firstIterationAt - timestamp
+                    : null,
+                  iterations_detected: newFiles.size,
+                  ...diffProps,
+                });
+                if (genSource === 'adopt') {
+                  capture('code_adopted', { kind: 'iteration', ...diffProps });
+                }
+              })();
+            }
             resolve(NextResponse.json({
               success: true,
               generationId,
@@ -856,6 +972,21 @@ export async function POST(req: Request) {
               code,
               providerName,
             );
+            if (telemetryActive) {
+              const authPattern =
+                /not\s+logged\s+in|unauthorized|authentication|auth\s+required|invalid\s+api\s+key|login/i;
+              capture('generation_failed', {
+                ...genBaseProps,
+                duration_ms: Date.now() - timestamp,
+                error_category: wasCancelled
+                  ? 'cancelled'
+                  : timedOut
+                    ? 'timeout'
+                    : authPattern.test(stderr) || authPattern.test(streamError ?? '')
+                      ? 'auth_error'
+                      : 'exit_nonzero',
+              });
+            }
             resolve(NextResponse.json(
               {
                 success: false,
@@ -902,6 +1033,17 @@ export async function POST(req: Request) {
           removeLockfile();
           stopFileWatcher();
           generationEvents.emit('done');
+          generationEvents.removeListener('iteration-added', onTelemetryIteration);
+
+          if (telemetryActive) {
+            capture('generation_failed', {
+              ...genBaseProps,
+              duration_ms: Date.now() - timestamp,
+              error_category: error.message.includes('ENOENT')
+                ? 'cli_not_found'
+                : 'spawn_error',
+            });
+          }
 
           isGenerating = false;
           currentProcess = null;
@@ -918,7 +1060,15 @@ export async function POST(req: Request) {
         removeLockfile();
         isGenerating = false;
         currentProcess = null;
-        
+
+        if (telemetryActive) {
+          capture('generation_failed', {
+            ...genBaseProps,
+            duration_ms: Date.now() - timestamp,
+            error_category: 'spawn_error',
+          });
+        }
+
         const message = spawnError instanceof Error ? spawnError.message : `Failed to spawn ${providerName} agent`;
         resolve(NextResponse.json(
           { success: false, error: message },
@@ -934,6 +1084,9 @@ export async function POST(req: Request) {
     isGenerating = false;
     const message = error instanceof Error ? error.message : 'Unknown error in generate route';
     console.error('[Playground][generate] POST error:', error);
+    if (isLocalRequest(req)) {
+      capture('error_occurred', { area: 'generate_route', category: 'route_exception' });
+    }
     return NextResponse.json(
       { success: false, error: message },
       { status: 500 }
@@ -950,6 +1103,8 @@ export async function DELETE() {
   }
 
   try {
+    // Mark for telemetry so the close handler reports 'cancelled', not failure.
+    wasCancelled = true;
     // Send SIGTERM to gracefully terminate
     currentProcess.kill('SIGTERM');
     

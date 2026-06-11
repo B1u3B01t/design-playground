@@ -12,10 +12,22 @@ import { getProviderFields } from './lib/generation-body';
 import { matchesAction } from './lib/keybindings';
 import {
   ADD_ALL_QUEUE_STORAGE_KEY,
+  ITERATION_PROMPT_COPIED_EVENT,
   OPEN_SKILLS_CATALOG_EVENT,
   SKILLS_CHANGED_EVENT,
   STORAGE_KEY,
 } from './lib/constants';
+import {
+  captureClient,
+  fetchTelemetryStatus,
+  setTelemetryEnabledClient,
+} from './lib/telemetry/client';
+import { startActivityTracking } from './lib/telemetry/activity';
+import {
+  TELEMETRY_DOCS_URL,
+  TELEMETRY_NOTICE_ACK_KEY,
+  TELEMETRY_SESSION_SENT_KEY,
+} from './lib/telemetry/constants';
 import { preloadAllComponents } from './registry';
 import { LiveblocksProvider, RoomProvider } from '@liveblocks/react';
 import { liveblocksAuth } from './liveblocks.config';
@@ -87,6 +99,58 @@ export default function PlaygroundClient({
     window.addEventListener(OPEN_SKILLS_CATALOG_EVENT, handler);
     return () => window.removeEventListener(OPEN_SKILLS_CATALOG_EVENT, handler);
   }, []);
+
+  // Anonymous dev telemetry: session start, time tracking, first-run notice.
+  // Guests (room link without host=1) are never recorded — they never saw a
+  // consent notice. Everything here is content-free; see TELEMETRY.md.
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+    if (roomId && !isHost) return;
+
+    if (!sessionStorage.getItem(TELEMETRY_SESSION_SENT_KEY)) {
+      sessionStorage.setItem(TELEMETRY_SESSION_SENT_KEY, '1');
+      captureClient('session_started', { multiplayer_enabled: !!roomId });
+      if (roomId && isHost) {
+        captureClient('feature_used', { feature: 'multiplayer_session_started' });
+      }
+    }
+
+    const stopActivityTracking = startActivityTracking();
+
+    const onPromptCopied = () => {
+      captureClient('feature_used', { feature: 'prompt_copied' });
+    };
+    window.addEventListener(ITERATION_PROMPT_COPIED_EVENT, onPromptCopied);
+
+    // One-time in-app notice (catches users who missed the terminal notice).
+    if (!localStorage.getItem(TELEMETRY_NOTICE_ACK_KEY)) {
+      void fetchTelemetryStatus().then((status) => {
+        if (!status?.enabled) return;
+        if (localStorage.getItem(TELEMETRY_NOTICE_ACK_KEY)) return;
+        localStorage.setItem(TELEMETRY_NOTICE_ACK_KEY, '1');
+        toast.info('Anonymous usage telemetry is enabled in dev', {
+          description:
+            'Counts and timings only — never prompts, code, or file names. See TELEMETRY.md.',
+          duration: 12000,
+          action: {
+            label: 'Disable',
+            onClick: () => {
+              void setTelemetryEnabledClient(false).then((ok) => {
+                if (ok) toast.success('Telemetry disabled on this machine');
+              });
+            },
+          },
+        });
+        // Surface the docs link for the curious without cluttering the toast.
+        console.info(`[playground] Telemetry details: ${TELEMETRY_DOCS_URL}`);
+      });
+    }
+
+    return () => {
+      stopActivityTracking();
+      window.removeEventListener(ITERATION_PROMPT_COPIED_EVENT, onPromptCopied);
+    };
+  }, [roomId, isHost]);
 
   // Auto-scan on first visit
   useEffect(() => {

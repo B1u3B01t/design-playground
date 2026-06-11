@@ -3,6 +3,7 @@ import { spawn, type ChildProcess } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { captureFromRequest } from '../../lib/telemetry/server';
 
 // ── PID file — survives HMR module reloads ──────────────────────────────────
 const PID_FILE = path.join(os.tmpdir(), 'aiverse-tunnel.pid');
@@ -148,6 +149,8 @@ export async function POST(req: Request) {
         tunnelUrl = match[1];
         // Persist PID + URL so they survive HMR
         if (proc.pid) writePidFiles(proc.pid, tunnelUrl, port);
+        // Telemetry: the fact a tunnel started — never the URL (see TELEMETRY.md).
+        captureFromRequest(req, 'feature_used', { feature: 'tunnel_started' });
         resolve(NextResponse.json({ url: tunnelUrl, port }));
       }
     };

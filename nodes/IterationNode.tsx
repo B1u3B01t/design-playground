@@ -404,6 +404,7 @@ function IterationNode({ id, data, selected = false }: IterationNodeProps) {
         body: JSON.stringify({
           prompt: adoptPrompt,
           componentId: `adopt-${componentId}`,
+          source: 'adopt',
           ...getProviderFields(),
           ...(isHtml ? { htmlFolder: data.htmlFolder } : {}),
         }),

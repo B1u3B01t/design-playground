@@ -9,10 +9,12 @@
  * Usage:  node src/app/playground/setup.mjs
  */
 
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { execSync } from 'child_process';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { homedir } from 'os';
+import { randomUUID } from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -41,8 +43,113 @@ function detectPackageManager(root) {
   return 'npm';
 }
 
+// ── Anonymous telemetry (content-free; see TELEMETRY.md) ───────────────────
+// This standalone script can't import the TS module in lib/telemetry/, so the
+// write-only key (PostHog EU project 199903) and gates are mirrored inline.
+// Keep the key in sync with lib/telemetry/server.ts on rotation.
+const POSTHOG_KEY = 'phc_zqGRtWzdvEqAf2UY2fyWJcogg5nM74V5BHtZhpxrKco8';
+const POSTHOG_HOST = 'https://eu.i.posthog.com';
+
+function telemetryConfigPath() {
+  const base =
+    process.platform === 'win32' && process.env.APPDATA
+      ? process.env.APPDATA
+      : process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
+  return join(base, 'design-playground', 'telemetry.json');
+}
+
+function telemetryDisabled() {
+  const truthy = (v) => v === '1' || v === 'true' || v === 'yes';
+  if (truthy(process.env.DO_NOT_TRACK)) return true;
+  if (truthy(process.env.PLAYGROUND_TELEMETRY_DISABLED)) return true;
+  const ciVars = [
+    'CI', 'CONTINUOUS_INTEGRATION', 'GITHUB_ACTIONS', 'GITLAB_CI', 'CIRCLECI',
+    'TRAVIS', 'BUILDKITE', 'JENKINS_URL', 'TEAMCITY_VERSION', 'APPVEYOR',
+    'CODEBUILD_BUILD_ID', 'VERCEL', 'NETLIFY',
+  ];
+  if (ciVars.some((n) => process.env[n] && process.env[n] !== 'false' && process.env[n] !== '0')) {
+    return true;
+  }
+  if (!POSTHOG_KEY.startsWith('phc_') || POSTHOG_KEY.includes('PLACEHOLDER')) return true;
+  return false;
+}
+
+function loadOrCreateAnonymousId() {
+  const file = telemetryConfigPath();
+  try {
+    const config = JSON.parse(readFileSync(file, 'utf-8'));
+    if (config.enabled === false) return null;
+    if (typeof config.anonymousId === 'string' && config.anonymousId.length >= 8) {
+      return config.anonymousId;
+    }
+  } catch { /* missing/corrupt — create below */ }
+  try {
+    const config = {
+      anonymousId: randomUUID(),
+      enabled: true,
+      notifiedAt: null,
+      schemaVersion: 1,
+    };
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+    return config.anonymousId;
+  } catch {
+    return null;
+  }
+}
+
+function hasBinary(bin) {
+  try {
+    execSync(`${process.platform === 'win32' ? 'where' : 'which'} ${bin}`, {
+      stdio: 'ignore',
+      timeout: 1500,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** One anonymous "installs" event (booleans + platform only) — never blocks setup. */
+async function sendSetupTelemetry() {
+  try {
+    if (telemetryDisabled() || typeof fetch !== 'function') return;
+    const anonymousId = loadOrCreateAnonymousId();
+    if (!anonymousId) return;
+    await fetch(`${POSTHOG_HOST}/capture/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: POSTHOG_KEY,
+        event: 'setup_completed',
+        distinct_id: anonymousId,
+        properties: {
+          $process_person_profile: false,
+          $geoip_disable: true,
+          $lib: 'design-playground',
+          schema_version: 1,
+          os: process.platform,
+          node_major: parseInt(process.versions.node, 10) || 0,
+          provider_cursor: hasBinary('cursor'),
+          provider_claude_code: hasBinary('claude'),
+          provider_codex: hasBinary('codex'),
+        },
+        timestamp: new Date().toISOString(),
+      }),
+      signal: AbortSignal.timeout(2000),
+    });
+  } catch { /* telemetry must never break setup */ }
+}
+
+function printTelemetryNote() {
+  console.log(dim('  Note: the playground collects anonymous usage telemetry in dev'));
+  console.log(dim('  (counts and timings only — never prompts, code, or file names).'));
+  console.log(dim('  Opt out: PLAYGROUND_TELEMETRY_DISABLED=1 · details in TELEMETRY.md'));
+  console.log('');
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────
-function main() {
+async function main() {
   console.log('');
   console.log(bold('  Playground Setup'));
   console.log(dim('  ─────────────────────────────────'));
@@ -139,6 +246,8 @@ function main() {
     console.log('');
     console.log(green('  Done! Start your dev server and visit /playground'));
     console.log('');
+    printTelemetryNote();
+    await sendSetupTelemetry();
     process.exit(0);
   }
 
@@ -174,6 +283,8 @@ function main() {
   console.log('');
   console.log(green('  Done! Start your dev server and visit /playground'));
   console.log('');
+  printTelemetryNote();
+  await sendSetupTelemetry();
 }
 
 main();

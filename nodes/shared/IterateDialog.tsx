@@ -705,6 +705,7 @@ export default function IterateDialog({
           componentId,
           iterationCount,
           model: selectedModel || undefined,
+          source: 'dialog',
           ...providerFields,
           ...(isJsxMode ? { jsxFile } : isHtmlMode ? { htmlFolder } : {}),
         }),

@@ -6,6 +6,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { resolvePlaygroundDir } from '../../lib/resolve-playground-dir';
 import { findFlowDescriptorById } from '../../lib/flows/registry';
+import { captureFromRequest } from '../../lib/telemetry/server';
 
 const execFileP = promisify(execFile);
 
@@ -100,6 +101,23 @@ export async function POST(req: Request) {
       combinedDiff,
       'utf-8',
     );
+  }
+
+  if (combinedDiff.trim()) {
+    // Telemetry: numeric diff stats of the flow adoption only (the diff text
+    // itself never leaves the machine — see TELEMETRY.md).
+    let linesAdded = 0;
+    let linesRemoved = 0;
+    for (const line of combinedDiff.split('\n')) {
+      if (line.startsWith('+') && !line.startsWith('+++')) linesAdded += 1;
+      else if (line.startsWith('-') && !line.startsWith('---')) linesRemoved += 1;
+    }
+    captureFromRequest(req, 'code_adopted', {
+      kind: 'flow',
+      lines_added: linesAdded,
+      lines_removed: linesRemoved,
+      files_changed: perStageDiffs.length,
+    });
   }
 
   return NextResponse.json({

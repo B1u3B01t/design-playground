@@ -7,6 +7,7 @@ import {
 import type { ProviderId } from '../../../lib/providers';
 import { designMdPath } from '../../../lib/design-md-helpers';
 import { runDesignMdCli } from '../../../lib/run-design-md-cli';
+import { captureFromRequest } from '../../../lib/telemetry/server';
 
 export const runtime = 'nodejs';
 
@@ -300,6 +301,7 @@ export async function POST(req: Request) {
       const filePath = designMdPath();
 
       if (exitCode === 0 && wrote) {
+        captureFromRequest(req, 'feature_used', { feature: 'design_system_generated' });
         log(`> Wrote ${path.relative(process.cwd(), filePath)} ✓`);
 
         // Auto-lint so the user immediately sees if the AI drifted from the spec.

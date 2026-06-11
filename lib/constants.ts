@@ -149,6 +149,9 @@ export const GENERATION_INFO_STORAGE_KEY = 'playground-generation-info';
 /** Key for persisting the add-all queue in sessionStorage */
 export const ADD_ALL_QUEUE_STORAGE_KEY = 'playground-add-all-queue';
 
+// Telemetry storage keys (notice ack, session dedupe) live with the rest of
+// the telemetry module — see ./telemetry/constants.ts and TELEMETRY.md.
+
 // ---------------------------------------------------------------------------
 // Timing Constants
 // ---------------------------------------------------------------------------

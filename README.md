@@ -165,6 +165,17 @@ app/playground/
 
 ---
 
+## Telemetry
+
+The playground collects **anonymous, content-free usage telemetry** in dev only
+(feature usage counts, generation durations, error categories — never prompts,
+code, file paths, or names; multiplayer guests are never recorded; production
+builds of your app send nothing). Disable anytime with
+`PLAYGROUND_TELEMETRY_DISABLED=1`, `DO_NOT_TRACK=1`, or the toggle in Model
+Settings. Full event list, guarantees, and audit pointers: [TELEMETRY.md](TELEMETRY.md).
+
+---
+
 ## Troubleshooting
 
 **"Provider not found" error**

@@ -2,6 +2,11 @@
 
 import { Component, ReactNode } from 'react';
 import { AlertCircle, RefreshCw } from 'lucide-react';
+import { captureClient } from '../lib/telemetry/client';
+
+// Throttle render-error telemetry: a crashing component can re-throw on every
+// retry/remount — report at most 3 per page load (counts only, never messages).
+let renderErrorsReported = 0;
 
 interface Props {
   children: ReactNode;
@@ -33,6 +38,13 @@ export default class ComponentErrorBoundary extends Component<Props, State> {
       error,
       info.componentStack,
     );
+    if (renderErrorsReported < 3) {
+      renderErrorsReported += 1;
+      captureClient('error_occurred', {
+        area: 'component_render',
+        category: 'render_error',
+      });
+    }
   }
 
   handleRetry = () => {
