@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import path from 'path';
 import { execFile } from 'child_process';
 
-type OpenInTarget = 'finder' | 'cursor' | 'antigravity' | 'github-desktop';
+type OpenInTarget = 'finder' | 'cursor' | 'antigravity' | 'codex' | 'github-desktop';
 
 interface OpenInBody {
   target?: OpenInTarget;
@@ -35,6 +35,10 @@ function getOpenArgs(target: OpenInTarget): string[] {
       return ['-a', 'Cursor', PROJECT_PATH];
     case 'antigravity':
       return ['-a', 'Antigravity', PROJECT_PATH];
+    case 'codex':
+      // `open -a Codex <path>` no longer selects the workspace; the documented
+      // deep link is codex://threads/new?path=<encoded-absolute-path>.
+      return ['-a', 'Codex', `codex://threads/new?path=${encodeURIComponent(PROJECT_PATH)}`];
     case 'github-desktop':
       return ['-a', 'GitHub Desktop', PROJECT_PATH];
     default:
@@ -63,9 +67,15 @@ export async function POST(req: Request) {
   }
 
   const target = body?.target;
-  if (target !== 'finder' && target !== 'cursor' && target !== 'antigravity' && target !== 'github-desktop') {
+  if (
+    target !== 'finder' &&
+    target !== 'cursor' &&
+    target !== 'antigravity' &&
+    target !== 'codex' &&
+    target !== 'github-desktop'
+  ) {
     return NextResponse.json(
-      { success: false, error: 'Invalid target. Expected finder, cursor, antigravity, or github-desktop.' },
+      { success: false, error: 'Invalid target. Expected finder, cursor, antigravity, codex, or github-desktop.' },
       { status: 400 },
     );
   }

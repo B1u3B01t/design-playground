@@ -36,6 +36,7 @@ import cursorIcon from './assets/cursor-icon.svg';
 import finderIcon from './assets/finder-icon.png';
 import githubDesktopIcon from './assets/github-desktop-icon.png';
 import antigravityIcon from './assets/antigravity-icon.png';
+import codexIcon from './assets/codex-icon.png';
 import {
   PLAYGROUND_AUTO_ARRANGE_EVENT,
   OPEN_SKILLS_CATALOG_EVENT,
@@ -86,7 +87,7 @@ interface PlaygroundHeaderProps {
   onToggleSidebar: () => void;
 }
 
-type OpenInTarget = 'finder' | 'cursor' | 'antigravity' | 'github-desktop';
+type OpenInTarget = 'finder' | 'cursor' | 'antigravity' | 'codex' | 'github-desktop';
 
 interface ProjectContext {
   projectName: string;
@@ -416,6 +417,13 @@ export default function PlaygroundHeader({
               >
                 <Image src={ICON_SRC(antigravityIcon)} alt="" width={16} height={16} className="rounded-sm" />
                 <span>Antigravity</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-mono text-stone-700 cursor-pointer"
+                onSelect={() => handleOpenTarget('codex')}
+              >
+                <Image src={ICON_SRC(codexIcon)} alt="" width={16} height={16} className="rounded-sm" />
+                <span>Codex</span>
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-mono text-stone-700 cursor-pointer"
