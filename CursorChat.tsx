@@ -176,7 +176,7 @@ function IterationCountDragger({ count, onChange }: { count: number; onChange: (
 // CursorChat Component
 // ---------------------------------------------------------------------------
 
-export default function CursorChat({ isGenerating, onSubmit, selectedElements, onRemoveElement, onClearElements, selectedNodes, onRemoveNode, onClearNodes }: CursorChatProps) {
+export default function CursorChat({ isGenerating: _isGenerating, onSubmit, selectedElements, onRemoveElement, onClearElements, selectedNodes, onRemoveNode, onClearNodes }: CursorChatProps) {
   const [segments, setSegments] = useState<Segment[]>([]);
   const [skills, setSkills] = useState<PlaygroundSkill[]>([]);
   const [iterationCount, setIterationCount] = useState(CURSOR_CHAT_DEFAULT_COUNT);
@@ -799,13 +799,6 @@ export default function CursorChat({ isGenerating, onSubmit, selectedElements, o
             </button>
           )}
         </div>
-
-        {/* Generating indicator */}
-        {isGenerating && (
-          <span className="text-[10px] text-amber-600 animate-pulse select-none mt-1">
-            Generating...
-          </span>
-        )}
 
         {/* Footer — placed mode with a selection only. In raw mode the send
             button is rendered inline next to the input above, so the footer

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
-import { LayoutGrid, Eraser, RefreshCw, X, SlidersVertical, Keyboard, ChevronDown, Copy, Sparkles } from 'lucide-react';
+import { Eraser, RefreshCw, X, SlidersVertical, Keyboard, ChevronDown, Copy, Toolbox } from 'lucide-react';
 import { useDevModeStore } from './lib/dev-mode-store';
 import { useFlowMocksStore } from './lib/flow-mocks-store';
 import {
@@ -38,7 +38,6 @@ import githubDesktopIcon from './assets/github-desktop-icon.png';
 import antigravityIcon from './assets/antigravity-icon.png';
 import codexIcon from './assets/codex-icon.png';
 import {
-  PLAYGROUND_AUTO_ARRANGE_EVENT,
   OPEN_SKILLS_CATALOG_EVENT,
   ITERATION_FETCH_EVENT,
   PLAYGROUND_CLEAR_EVENT,
@@ -49,11 +48,13 @@ import {
   GENERATION_AGENT_PREVIEW_EVENT,
   PAN_TO_POSITION_EVENT,
   FIT_COMPONENT_NODES_EVENT,
+  PRESENCE_BUBBLE_DISMISS_EVENT,
   PRESENCE_BUBBLES_STORAGE_KEY,
   type GenerationStartPayload,
   type GenerationErrorPayload,
   type GenerationQueuedPayload,
   type GenerationAgentPreviewPayload,
+  type PresenceBubbleDismissPayload,
 } from './lib/constants';
 import { cn } from './lib/utils';
 import { useMultiplayer } from './lib/multiplayer-context';
@@ -72,6 +73,7 @@ interface PresenceBubble {
   provider?: string;
   status: 'queued' | 'generating' | 'done';
   flowPosition: { x: number; y: number } | null;
+  targetNodeId?: string | null;
   /** Distinguishes adopt operations from normal generation */
   type?: 'iterate' | 'edit' | 'adopt';
   /** Live assistant text from Claude Code stream-json (not persisted) */
@@ -204,6 +206,7 @@ export default function PlaygroundHeader({
         provider: detail.provider,
         status: 'queued',
         flowPosition: detail.flowPosition ?? null,
+        targetNodeId: detail.targetNodeId ?? null,
       };
       setPresenceBubbles(prev => [...prev, bubble]);
     };
@@ -227,6 +230,7 @@ export default function PlaygroundHeader({
                   model: detail.model || b.model,
                   provider: detail.provider ?? b.provider,
                   flowPosition: detail.flowPosition ?? b.flowPosition,
+                  targetNodeId: detail.targetNodeId ?? detail.parentNodeId ?? b.targetNodeId ?? null,
                   type: bubbleType,
                   agentPreviewText: undefined,
                 }
@@ -243,6 +247,7 @@ export default function PlaygroundHeader({
           provider: detail.provider,
           status: 'generating',
           flowPosition: detail.flowPosition ?? null,
+          targetNodeId: detail.targetNodeId ?? detail.parentNodeId ?? null,
           type: bubbleType,
           agentPreviewText: undefined,
         };
@@ -301,11 +306,38 @@ export default function PlaygroundHeader({
     };
   }, []);
 
-  const handleBubbleClick = useCallback((bubble: PresenceBubble) => {
+  const dismissBubbleEverywhere = useCallback((bubble: PresenceBubble) => {
     window.dispatchEvent(
-      new CustomEvent(FIT_COMPONENT_NODES_EVENT, { detail: { componentId: bubble.componentId } })
+      new CustomEvent<PresenceBubbleDismissPayload>(PRESENCE_BUBBLE_DISMISS_EVENT, {
+        detail: {
+          componentId: bubble.componentId,
+          flowPosition: bubble.flowPosition,
+          targetNodeId: bubble.targetNodeId ?? null,
+        },
+      }),
     );
   }, []);
+
+  const handleBubbleClick = useCallback((bubble: PresenceBubble) => {
+    if (bubble.flowPosition || bubble.targetNodeId) {
+      window.dispatchEvent(
+        new CustomEvent(PAN_TO_POSITION_EVENT, {
+          detail: {
+            x: bubble.flowPosition?.x,
+            y: bubble.flowPosition?.y,
+            componentId: bubble.componentId,
+            targetNodeId: bubble.targetNodeId ?? null,
+          },
+        }),
+      );
+    } else {
+      window.dispatchEvent(
+        new CustomEvent(FIT_COMPONENT_NODES_EVENT, { detail: { componentId: bubble.componentId } }),
+      );
+    }
+    setPresenceBubbles((prev) => prev.filter((b) => b.id !== bubble.id));
+    dismissBubbleEverywhere(bubble);
+  }, [dismissBubbleEverywhere]);
 
   const handleRemoveBubble = useCallback((id: string) => {
     setPresenceBubbles(prev => prev.filter(b => b.id !== id));
@@ -315,10 +347,6 @@ export default function PlaygroundHeader({
       removeTimersRef.current.delete(id);
     }
   }, []);
-
-  const handleArrange = () => {
-    window.dispatchEvent(new CustomEvent(PLAYGROUND_AUTO_ARRANGE_EVENT, { detail: { fitView: true } }));
-  };
 
   const handleRefresh = () => {
     window.dispatchEvent(new CustomEvent(ITERATION_FETCH_EVENT));
@@ -453,7 +481,7 @@ export default function PlaygroundHeader({
                 className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
                 aria-label="Skills"
               >
-                <Sparkles className="w-[18px] h-[18px]" />
+                <Toolbox className="w-[18px] h-[18px]" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -497,21 +525,6 @@ export default function PlaygroundHeader({
             </TooltipTrigger>
             <TooltipContent side="bottom">
               <p>Model settings</p>
-            </TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={handleArrange}
-                className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
-                aria-label="Auto-arrange layout"
-              >
-                <LayoutGrid className="w-[18px] h-[18px]" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p>Auto-arrange layout</p>
             </TooltipContent>
           </Tooltip>
 
@@ -642,6 +655,7 @@ export default function PlaygroundHeader({
                   <TooltipTrigger asChild>
                 <div
                   className="presence-bubble group"
+                  data-status={bubble.status}
                   onClick={() => handleBubbleClick(bubble)}
                 >
                   {bubble.status === 'generating' && (
@@ -665,6 +679,7 @@ export default function PlaygroundHeader({
                         handleCancelGeneration();
                       }
                       handleRemoveBubble(bubble.id);
+                      dismissBubbleEverywhere(bubble);
                     }}
                     className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-white border border-stone-200 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                     aria-label={bubble.status === 'generating' ? 'Cancel generation' : bubble.status === 'queued' ? 'Remove from queue' : 'Dismiss'}
@@ -675,16 +690,16 @@ export default function PlaygroundHeader({
                   </TooltipTrigger>
                   <TooltipContent
                     side="bottom"
-                    sideOffset={6}
+                    sideOffset={12}
                     className={cn(
                       showAgentStreamTooltip
-                        ? 'max-w-[min(20rem,calc(100vw-2rem))] p-0 border border-stone-200/90 bg-white text-stone-800 shadow-lg pointer-events-auto overflow-hidden rounded-lg'
+                        ? 'w-[min(22rem,calc(100vw-2rem))] p-0 border border-stone-200/80 bg-[#fbfbfb] text-stone-800 shadow-[0_20px_48px_-22px_rgba(28,25,23,0.38)] pointer-events-auto overflow-hidden rounded-2xl'
                         : 'text-xs',
                     )}
                   >
                     {showAgentStreamTooltip ? (
                       <>
-                        <div className="border-b border-stone-100/90 px-3 py-2 text-[11px] font-medium text-stone-600 bg-gradient-to-b from-stone-50 to-stone-50/80">
+                        <div className="border-b border-stone-200/70 px-3.5 py-2.5 text-[11px] font-semibold tracking-[-0.01em] text-stone-600 bg-gradient-to-b from-white to-stone-50/80">
                           {bubble.status === 'done'
                             ? `${displayName} · done`
                             : bubble.type === 'adopt'
@@ -692,12 +707,12 @@ export default function PlaygroundHeader({
                               : displayName}
                         </div>
                         <div
-                          className="max-h-44 min-h-[2.75rem] overflow-y-auto overscroll-y-contain px-3 py-2 text-[11px] leading-relaxed font-mono text-stone-700 whitespace-pre-wrap break-words bg-white"
+                          className="max-h-48 min-h-[3.25rem] overflow-y-auto overscroll-y-contain px-3.5 py-3 text-[12px] leading-5 font-mono text-stone-700 whitespace-pre-wrap break-words bg-[#fbfbfb]"
                           onWheel={(e) => e.stopPropagation()}
                         >
                           {bubble.agentPreviewText?.trim()
                             ? bubble.agentPreviewText
-                            : 'Waiting for assistant text…'}
+                            : 'Waiting for assistant text...'}
                         </div>
                       </>
                     ) : (

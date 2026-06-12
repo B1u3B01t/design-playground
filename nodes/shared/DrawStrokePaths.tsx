@@ -10,6 +10,7 @@ interface DrawStrokePathsProps {
   height: number;
   normalized?: boolean;
   selectedStrokeId?: string | null;
+  selectedStrokeIds?: Set<string>;
   selectionEnabled?: boolean;
   onSelectStroke?: (strokeId: string) => void;
   /** Marks hit targets for canvas ink (used by pane click handling) */
@@ -22,6 +23,7 @@ export function DrawStrokePaths({
   height,
   normalized = false,
   selectedStrokeId = null,
+  selectedStrokeIds,
   selectionEnabled = false,
   onSelectStroke,
   canvasStrokePick = false,
@@ -30,7 +32,7 @@ export function DrawStrokePaths({
     <>
       {strokes.map((stroke) => {
         const d = pointsToSvgPath(stroke.points, width, height, !!normalized);
-        const isSelected = stroke.id === selectedStrokeId;
+        const isSelected = stroke.id === selectedStrokeId || (selectedStrokeIds?.has(stroke.id) ?? false);
         const hitWidth = Math.max(stroke.width + 14, 16);
         const strokeOpacity = isSelected ? 1 : getStrokeOpacity(stroke);
 

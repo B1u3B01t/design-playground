@@ -6,6 +6,7 @@ import * as React from "react"
 // it inherits parent transforms (e.g. canvas zoom), so the import is unused.
 
 import { cn } from "../lib/utils"
+import { getSkillBubbleStyle } from "../lib/skill-icons"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -128,11 +129,25 @@ function readSegmentsFromDOM(el: HTMLDivElement): Segment[] {
   return segments
 }
 
+function applyInlineStyles(
+  el: HTMLElement,
+  styles: React.CSSProperties
+) {
+  const definedStyles = Object.fromEntries(
+    Object.entries(styles)
+      .filter((entry): entry is [string, string | number] => entry[1] != null)
+      .map(([key, value]) => [key, String(value)])
+  )
+  Object.assign(el.style, definedStyles)
+}
+
 /** Create a pill DOM element for a reference segment. */
 function createPillElement(
   segment: ReferenceSegment,
   onDelete: () => void
 ): HTMLSpanElement {
+  const isSkill = segment.trigger === "/"
+
   const pill = document.createElement("span")
   pill.setAttribute(PILL_ATTR, "")
   pill.setAttribute(PILL_TRIGGER_ATTR, segment.trigger)
@@ -142,20 +157,39 @@ function createPillElement(
     pill.setAttribute(PILL_DATA_ATTR, JSON.stringify(segment.data))
   }
   pill.contentEditable = "false"
-  pill.className =
-    "inline-reference-pill inline-flex items-center gap-0.5 rounded-sm bg-accent/50 border border-accent px-1.5 py-0.5 align-baseline mx-0.5 select-all whitespace-nowrap"
+  pill.className = cn(
+    "inline-reference-pill inline-flex items-center select-all whitespace-nowrap",
+    isSkill
+      ? "inline-reference-pill--skill"
+      : "gap-0.5 rounded-sm bg-accent/50 border border-accent px-1.5 py-0.5 align-baseline mx-0.5"
+  )
+
+  if (isSkill) {
+    const avatar = document.createElement("span")
+    avatar.setAttribute("aria-hidden", "true")
+    avatar.className = "inline-reference-pill__avatar pointer-events-none inline-block shrink-0"
+    applyInlineStyles(avatar, getSkillBubbleStyle(segment.value, 18))
+    pill.appendChild(avatar)
+  }
 
   const labelSpan = document.createElement("span")
   labelSpan.textContent = segment.label
-  labelSpan.className = "pointer-events-none"
+  labelSpan.className = cn(
+    "pointer-events-none",
+    isSkill ? "inline-reference-pill__label" : undefined
+  )
   pill.appendChild(labelSpan)
 
   const deleteBtn = document.createElement("span")
   deleteBtn.role = "button"
   deleteBtn.tabIndex = -1
   deleteBtn.ariaLabel = `Remove ${segment.label}`
-  deleteBtn.className =
-    "inline-flex items-center justify-center size-3.5 rounded-sm opacity-50 hover:opacity-100 cursor-pointer hover:bg-accent transition-opacity ml-0.5"
+  deleteBtn.className = cn(
+    "inline-flex items-center justify-center cursor-pointer transition-colors",
+    isSkill
+      ? "inline-reference-pill__remove"
+      : "size-3.5 rounded-sm opacity-50 hover:opacity-100 hover:bg-accent ml-0.5"
+  )
   deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`
   deleteBtn.addEventListener("mousedown", (e) => {
     e.preventDefault()
