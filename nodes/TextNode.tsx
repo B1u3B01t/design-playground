@@ -13,6 +13,7 @@ function TextNodeInner({ id, data, selected }: { id: string; data: TextNodeData;
   const { setNodes, updateNodeData } = useReactFlow();
   const editorRef = useRef<HTMLDivElement>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [draftText, setDraftText] = useState(data.text || '');
 
   useEffect(() => {
     if (data.autofocus) {
@@ -34,6 +35,10 @@ function TextNodeInner({ id, data, selected }: { id: string; data: TextNodeData;
   }, [isEditing]);
 
   useEffect(() => {
+    if (!isEditing) setDraftText(data.text || '');
+  }, [data.text, isEditing]);
+
+  useEffect(() => {
     setNodes((nodes) =>
       nodes.map((node) =>
         node.id === id && node.type === 'text'
@@ -53,16 +58,23 @@ function TextNodeInner({ id, data, selected }: { id: string; data: TextNodeData;
   }, [id, setNodes]);
 
   const commitText = useCallback(() => {
-    const text = editorRef.current?.innerText.replace(/\n$/, '') ?? '';
+    const text = editorRef.current?.innerText.replace(/\n$/, '') ?? draftText;
+    setDraftText(text);
     updateNodeData(id, { text });
-  }, [id, updateNodeData]);
+  }, [draftText, id, updateNodeData]);
 
   const stopEditing = useCallback(() => {
     commitText();
     setIsEditing(false);
   }, [commitText]);
 
-  const text = data.text || '';
+  const handleInput = useCallback(() => {
+    const text = editorRef.current?.innerText.replace(/\n$/, '') ?? '';
+    setDraftText(text);
+    updateNodeData(id, { text });
+  }, [id, updateNodeData]);
+
+  const text = isEditing ? draftText : data.text || '';
   const showPlaceholder = text.length === 0 && !isEditing;
 
   return (
@@ -107,6 +119,7 @@ function TextNodeInner({ id, data, selected }: { id: string; data: TextNodeData;
           e.stopPropagation();
           setIsEditing(true);
         }}
+        onInput={handleInput}
         onBlur={stopEditing}
         onPointerDown={(e) => {
           if (isEditing) e.stopPropagation();

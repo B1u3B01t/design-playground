@@ -276,14 +276,6 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
     return () => window.removeEventListener(DESIGN_SYSTEM_GENERATED_EVENT, handler);
   }, [isDesignSystem]);
 
-  if (!isHtml && !isJsx && !isEmbed && !isDesignSystem && !registryItem) {
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4 min-w-[200px]">
-        <p className="text-red-600 text-sm">Unknown component: {componentId}</p>
-      </div>
-    );
-  }
-
   const embedUrlLabel = (() => {
     if (!isEmbed || !data.embedUrl) return 'Embed';
     const withoutScheme = data.embedUrl.replace(/^https?:\/\//i, '').trim();
@@ -396,6 +388,14 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
       });
     }
   }, [isRenamingHtml]);
+
+  if (!isHtml && !isJsx && !isEmbed && !isDesignSystem && !registryItem) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4 min-w-[200px]">
+        <p className="text-red-600 text-sm">Unknown component: {componentId}</p>
+      </div>
+    );
+  }
 
   return (
     <div

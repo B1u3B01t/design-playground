@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useEffect, useState, DragEvent, type CSSProperties } from 'react';
+import { useCallback, useRef, useEffect, useState, DragEvent, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react';
 import {
   ReactFlow,
   Controls,
@@ -391,11 +391,11 @@ export default function PlaygroundCanvas({
   }, []);
 
   const onNodeDragStop = useCallback(
-    (event: MouseEvent | TouchEvent, node: Node, _nodes: Node[]) => {
+    (event: ReactMouseEvent, node: Node, _nodes: Node[]) => {
       if (node.type !== 'pdf') return;
 
-      const clientX = 'clientX' in event ? event.clientX : (event.changedTouches[0]?.clientX ?? 0);
-      const clientY = 'clientY' in event ? event.clientY : (event.changedTouches[0]?.clientY ?? 0);
+      const clientX = event.clientX;
+      const clientY = event.clientY;
       const el = document.elementFromPoint(clientX, clientY);
       const dropTarget = el?.closest('[data-pdf-drop-target]') as HTMLElement | null;
       if (!dropTarget) return;
@@ -457,7 +457,7 @@ export default function PlaygroundCanvas({
   usePdfPageGlobalDrag(setNodes, getNode);
 
   const onNodeDragStart = useCallback(
-    (_event: MouseEvent | TouchEvent, node: Node, _nodes: Node[]) => {
+    (_event: ReactMouseEvent, node: Node, _nodes: Node[]) => {
       if (node.type !== 'pdf') return;
       const sourceData = node.data as unknown as PdfNodeData;
       if (typeof sourceData.extractedPage !== 'number') return;

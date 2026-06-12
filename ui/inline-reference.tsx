@@ -131,13 +131,14 @@ function readSegmentsFromDOM(el: HTMLDivElement): Segment[] {
 
 function applyInlineStyles(
   el: HTMLElement,
-  styles: Record<string, string | number | undefined>
+  styles: React.CSSProperties
 ) {
-  for (const [key, value] of Object.entries(styles)) {
-    if (value != null) {
-      ;(el.style as Record<string, string>)[key] = String(value)
-    }
-  }
+  const definedStyles = Object.fromEntries(
+    Object.entries(styles)
+      .filter((entry): entry is [string, string | number] => entry[1] != null)
+      .map(([key, value]) => [key, String(value)])
+  )
+  Object.assign(el.style, definedStyles)
 }
 
 /** Create a pill DOM element for a reference segment. */

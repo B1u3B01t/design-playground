@@ -33,6 +33,26 @@ function writeTreeManifest(manifest: TreeManifest) {
   fs.writeFileSync(TREE_PATH, JSON.stringify(manifest, null, 2), 'utf-8');
 }
 
+function normalizePageFolderName(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 100);
+}
+
+function isValidStoredPageFolder(value: string): boolean {
+  return value.length > 0 && value === normalizePageFolderName(value);
+}
+
+function resolvePageDir(folder: string): string | null {
+  if (!isValidStoredPageFolder(folder)) return null;
+  const resolved = path.resolve(PUBLIC_DIR, folder);
+  return resolved.startsWith(PUBLIC_DIR + path.sep) ? resolved : null;
+}
+
 function scanHtmlPages(): HtmlPageInfo[] {
   if (!fs.existsSync(PUBLIC_DIR)) return [];
 
@@ -94,13 +114,7 @@ export async function PUT(req: Request) {
       );
     }
 
-    // Sanitize: lowercase, alphanumeric + hyphens only
-    const name = body.name
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '')
-      .slice(0, 100);
+    const name = normalizePageFolderName(body.name);
 
     if (!name) {
       return NextResponse.json(
@@ -248,15 +262,10 @@ export async function PATCH(req: Request) {
       );
     }
 
-    const oldFolder = body.pageFolder;
-    const newFolder = body.newName
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '')
-      .slice(0, 100);
+    const oldFolder = body.pageFolder.trim();
+    const newFolder = normalizePageFolderName(body.newName);
 
-    if (!newFolder) {
+    if (!isValidStoredPageFolder(oldFolder) || !newFolder) {
       return NextResponse.json(
         { success: false, error: 'Invalid page name' },
         { status: 400 },
@@ -275,20 +284,15 @@ export async function PATCH(req: Request) {
       });
     }
 
-    const oldDirResolved = path.resolve(PUBLIC_DIR, oldFolder);
-    const newDirResolved = path.resolve(PUBLIC_DIR, newFolder);
-    if (
-      (!oldDirResolved.startsWith(PUBLIC_DIR + path.sep) && oldDirResolved !== PUBLIC_DIR) ||
-      (!newDirResolved.startsWith(PUBLIC_DIR + path.sep) && newDirResolved !== PUBLIC_DIR)
-    ) {
+    const oldDir = resolvePageDir(oldFolder);
+    const newDir = resolvePageDir(newFolder);
+    if (!oldDir || !newDir) {
       return NextResponse.json(
         { success: false, error: 'Invalid path' },
         { status: 400 },
       );
     }
 
-    const oldDir = path.join(PUBLIC_DIR, oldFolder);
-    const newDir = path.join(PUBLIC_DIR, newFolder);
     const oldIndex = path.join(oldDir, 'index.html');
     const newIndex = path.join(newDir, 'index.html');
 
@@ -369,10 +373,11 @@ export async function DELETE(req: Request) {
       );
     }
 
-    const { pageFolder, iterationFolder } = body;
+    const pageFolder = body.pageFolder.trim();
+    const { iterationFolder } = body;
 
-    const pageDirResolved = path.resolve(PUBLIC_DIR, pageFolder);
-    if (!pageDirResolved.startsWith(PUBLIC_DIR + path.sep) && pageDirResolved !== PUBLIC_DIR) {
+    const pageDir = resolvePageDir(pageFolder);
+    if (!pageDir) {
       return NextResponse.json(
         { success: false, error: 'Invalid path' },
         { status: 400 },
@@ -380,10 +385,10 @@ export async function DELETE(req: Request) {
     }
 
     if (iterationFolder) {
-      const iterDirResolved = path.resolve(pageDirResolved, iterationFolder);
+      const iterDirResolved = path.resolve(pageDir, iterationFolder);
       if (
-        !iterDirResolved.startsWith(pageDirResolved + path.sep) &&
-        iterDirResolved !== pageDirResolved
+        !iterDirResolved.startsWith(pageDir + path.sep) ||
+        path.basename(iterDirResolved) !== iterationFolder
       ) {
         return NextResponse.json(
           { success: false, error: 'Invalid path' },
@@ -392,7 +397,7 @@ export async function DELETE(req: Request) {
       }
 
       // Delete a single iteration
-      const iterDir = path.join(PUBLIC_DIR, pageFolder, iterationFolder);
+      const iterDir = path.join(pageDir, iterationFolder);
       if (fs.existsSync(iterDir)) {
         fs.rmSync(iterDir, { recursive: true });
       }
@@ -414,7 +419,6 @@ export async function DELETE(req: Request) {
       writeTreeManifest(manifest);
     } else {
       // Delete the entire page folder and all its iterations
-      const pageDir = path.join(PUBLIC_DIR, pageFolder);
       if (fs.existsSync(pageDir)) {
         fs.rmSync(pageDir, { recursive: true });
       }
