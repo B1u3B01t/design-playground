@@ -1,8 +1,9 @@
 'use client';
 
-import { memo, useState, useCallback, useRef, useEffect, type ComponentType } from 'react';
+import { memo, useState, useCallback, useRef, useEffect, type ComponentType, type MouseEvent } from 'react';
 import { useNodeId, useReactFlow, NodeResizeControl } from '@xyflow/react';
 import { Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { resolveRegistryItem } from '../registry';
 import { findFlowDescriptorForComponent } from '../lib/flows/registry';
@@ -200,6 +201,9 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   );
   const [isResizing, setIsResizing] = useState(false);
   const [isCustomResized, setIsCustomResized] = useState(!!data.customResized);
+  const [isRenamingHtml, setIsRenamingHtml] = useState(false);
+  const [htmlRenameValue, setHtmlRenameValue] = useState('');
+  const htmlRenameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const on  = () => setIsGlobalGenerating(true);
@@ -305,6 +309,94 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
   const isLargeComponent = isPreset || isFillMode;
   const displayDims = getDisplayDimensions(size);
 
+  const beginHtmlRename = useCallback((e: MouseEvent<HTMLSpanElement>) => {
+    if (!isHtml) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setHtmlRenameValue(data.htmlFolder || componentId);
+    setIsRenamingHtml(true);
+  }, [isHtml, data.htmlFolder, componentId]);
+
+  const cancelHtmlRename = useCallback(() => {
+    setIsRenamingHtml(false);
+    setHtmlRenameValue('');
+  }, []);
+
+  const commitHtmlRename = useCallback(async () => {
+    if (!isHtml) return;
+    const oldFolder = data.htmlFolder?.trim();
+    const nextName = htmlRenameValue.trim();
+    if (!oldFolder || !nextName) {
+      cancelHtmlRename();
+      return;
+    }
+    if (oldFolder.toLowerCase() === nextName.toLowerCase()) {
+      cancelHtmlRename();
+      return;
+    }
+
+    try {
+      const res = await fetch('/playground/api/html-pages', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pageFolder: oldFolder, newName: nextName }),
+      });
+      const result = await res.json().catch(() => ({ success: false }));
+      if (!res.ok || !result?.success || !result?.page?.folder) {
+        toast.error(result?.error || 'Failed to rename riff');
+        return;
+      }
+
+      const newFolder = result.page.folder as string;
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.type === 'component') {
+            const nodeData = n.data as ComponentNodeProps['data'];
+            if (nodeData.renderMode === 'html' && nodeData.htmlFolder === oldFolder) {
+              return {
+                ...n,
+                data: {
+                  ...nodeData,
+                  componentId: `html:${newFolder}`,
+                  htmlFolder: newFolder,
+                },
+              };
+            }
+            return n;
+          }
+
+          if (n.type === 'iteration') {
+            const nodeData = n.data as Record<string, unknown>;
+            if (nodeData.renderMode === 'html' && nodeData.htmlFolder === oldFolder) {
+              return {
+                ...n,
+                data: {
+                  ...nodeData,
+                  htmlFolder: newFolder,
+                  componentName: newFolder,
+                },
+              };
+            }
+          }
+          return n;
+        }),
+      );
+      window.dispatchEvent(new CustomEvent('playground:html-pages-updated'));
+      cancelHtmlRename();
+    } catch {
+      toast.error('Failed to rename riff');
+    }
+  }, [isHtml, data.htmlFolder, htmlRenameValue, setNodes, cancelHtmlRename]);
+
+  useEffect(() => {
+    if (isRenamingHtml) {
+      requestAnimationFrame(() => {
+        htmlRenameInputRef.current?.focus();
+        htmlRenameInputRef.current?.select();
+      });
+    }
+  }, [isRenamingHtml]);
+
   return (
     <div
       className={`flex flex-col ${isLargeComponent ? '' : 'min-w-[200px]'}`}
@@ -380,7 +472,38 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
             </Tooltip>
           )}
           <NodeLabel color={isHtml ? '#F97316' : isJsx ? '#7C3AED' : isEmbed ? '#0D9488' : isDesignSystem ? '#C026D3' : '#0B99FF'}>
-            {label}
+            {isHtml ? (
+              isRenamingHtml ? (
+                <input
+                  ref={htmlRenameInputRef}
+                  value={htmlRenameValue}
+                  onChange={(e) => setHtmlRenameValue(e.target.value)}
+                  onBlur={() => { void commitHtmlRename(); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void commitHtmlRename();
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      cancelHtmlRename();
+                    }
+                  }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className="nodrag rounded-sm border border-orange-300 bg-white/90 px-1 py-0 text-[11px] text-stone-700 outline-none focus:border-orange-400"
+                />
+              ) : (
+                <span
+                  className="nodrag"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onDoubleClick={beginHtmlRename}
+                  title="Double-click to rename riff"
+                >
+                  {label}
+                </span>
+              )
+            ) : (
+              label
+            )}
           </NodeLabel>
         </div>
 

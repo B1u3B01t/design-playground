@@ -49,6 +49,9 @@ export const PAN_TO_POSITION_EVENT = 'playground:pan-to-position';
 /** Fired to fit the viewport around all nodes for a given component */
 export const FIT_COMPONENT_NODES_EVENT = 'playground:fit-component-nodes';
 
+/** Fired to dismiss a generation presence bubble across header + canvas layers */
+export const PRESENCE_BUBBLE_DISMISS_EVENT = 'playground:presence-bubble-dismiss';
+
 /** Fired to trigger auto-arrange of canvas nodes */
 export const PLAYGROUND_AUTO_ARRANGE_EVENT = 'PLAYGROUND_AUTO_ARRANGE';
 
@@ -732,6 +735,8 @@ export interface GenerationStartPayload {
   provider?: import('./providers/types').ProviderId;
   /** Flow-space position where the generation was initiated */
   flowPosition?: { x: number; y: number };
+  /** Node the presence bubble is anchored to, when dropped on a frame */
+  targetNodeId?: string | null;
   /** Render mode for generated nodes */
   renderMode?: 'react' | 'html' | 'jsx';
   /** HTML page folder name (when renderMode is 'html') */
@@ -764,12 +769,21 @@ export interface GenerationQueuedPayload {
   model: string;
   provider?: import('./providers/types').ProviderId;
   flowPosition: { x: number; y: number } | null;
+  /** Node the queued presence bubble is anchored to, when dropped on a frame */
+  targetNodeId?: string | null;
 }
 
 /** Payload for GENERATION_AGENT_PREVIEW_EVENT (Claude Code stream-json assistant text) */
 export interface GenerationAgentPreviewPayload {
   componentId: string;
   text: string;
+}
+
+/** Payload for PRESENCE_BUBBLE_DISMISS_EVENT */
+export interface PresenceBubbleDismissPayload {
+  componentId: string;
+  flowPosition?: { x: number; y: number } | null;
+  targetNodeId?: string | null;
 }
 
 /** Payload for DRAG_ITERATE_EVENT */

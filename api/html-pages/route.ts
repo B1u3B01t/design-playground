@@ -231,6 +231,127 @@ export async function POST() {
 }
 
 // ---------------------------------------------------------------------------
+// PATCH — Rename an HTML page folder
+// ---------------------------------------------------------------------------
+
+export async function PATCH(req: Request) {
+  try {
+    const body = (await req.json().catch(() => null)) as {
+      pageFolder?: string;
+      newName?: string;
+    } | null;
+
+    if (!body?.pageFolder || !body?.newName) {
+      return NextResponse.json(
+        { success: false, error: 'Missing pageFolder or newName' },
+        { status: 400 },
+      );
+    }
+
+    const oldFolder = body.pageFolder;
+    const newFolder = body.newName
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 100);
+
+    if (!newFolder) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid page name' },
+        { status: 400 },
+      );
+    }
+
+    if (newFolder === oldFolder) {
+      return NextResponse.json({
+        success: true,
+        page: {
+          id: `html:${newFolder}`,
+          label: newFolder,
+          folder: newFolder,
+          iterations: [],
+        },
+      });
+    }
+
+    const oldDirResolved = path.resolve(PUBLIC_DIR, oldFolder);
+    const newDirResolved = path.resolve(PUBLIC_DIR, newFolder);
+    if (
+      (!oldDirResolved.startsWith(PUBLIC_DIR + path.sep) && oldDirResolved !== PUBLIC_DIR) ||
+      (!newDirResolved.startsWith(PUBLIC_DIR + path.sep) && newDirResolved !== PUBLIC_DIR)
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid path' },
+        { status: 400 },
+      );
+    }
+
+    const oldDir = path.join(PUBLIC_DIR, oldFolder);
+    const newDir = path.join(PUBLIC_DIR, newFolder);
+    const oldIndex = path.join(oldDir, 'index.html');
+    const newIndex = path.join(newDir, 'index.html');
+
+    if (!fs.existsSync(oldIndex)) {
+      return NextResponse.json(
+        { success: false, error: `Page "${oldFolder}" not found` },
+        { status: 404 },
+      );
+    }
+    if (fs.existsSync(newIndex)) {
+      return NextResponse.json(
+        { success: false, error: `Page "${newFolder}" already exists` },
+        { status: 409 },
+      );
+    }
+
+    fs.renameSync(oldDir, newDir);
+
+    // Rewrite manifest keys/parents that reference the old page folder.
+    const manifest = readTreeManifest();
+    const nextEntries: TreeManifest['entries'] = {};
+    for (const [key, value] of Object.entries(manifest.entries)) {
+      const nextKey =
+        key === oldFolder
+          ? newFolder
+          : key.startsWith(`${oldFolder}/`)
+            ? `${newFolder}${key.slice(oldFolder.length)}`
+            : key;
+
+      const nextParent =
+        value.parent === `html:${oldFolder}`
+          ? `html:${newFolder}`
+          : value.parent === oldFolder
+            ? newFolder
+            : value.parent.startsWith(`${oldFolder}/`)
+              ? `${newFolder}${value.parent.slice(oldFolder.length)}`
+              : value.parent;
+
+      nextEntries[nextKey] = { parent: nextParent };
+    }
+    writeTreeManifest({ version: manifest.version ?? 1, entries: nextEntries });
+
+    const pages = scanHtmlPages();
+    const page = pages.find((p) => p.folder === newFolder);
+    return NextResponse.json({
+      success: true,
+      page: page ?? {
+        id: `html:${newFolder}`,
+        label: newFolder,
+        folder: newFolder,
+        iterations: [],
+      },
+    });
+  } catch (error) {
+    console.error('[html-pages] PATCH error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to rename HTML page' },
+      { status: 500 },
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // DELETE — Remove an iteration folder
 // ---------------------------------------------------------------------------
 

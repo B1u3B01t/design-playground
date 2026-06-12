@@ -187,6 +187,27 @@ body:has(.playground-iteration-view) {
   background-color: #f5f5f4;
 }
 
+/* Canvas right-click menu — override global button colors for dark surface */
+.playground-main-view .playground-canvas-context-menu button {
+  color: rgb(245, 245, 244);
+  background-color: transparent;
+}
+
+.playground-main-view .playground-canvas-context-menu button:hover {
+  color: rgb(255, 255, 255);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.playground-main-view .playground-canvas-context-menu button svg,
+.playground-main-view .playground-canvas-context-menu button .lucide {
+  color: rgb(214, 211, 209);
+}
+
+.playground-main-view .playground-canvas-context-menu button:hover svg,
+.playground-main-view .playground-canvas-context-menu button:hover .lucide {
+  color: rgb(245, 245, 244);
+}
+
 :is(.playground-main-view, .playground-iteration-view) .font-louize { font-family: var(--font-louize), "Louize", serif; letter-spacing: -0.025em; }
 :is(.playground-main-view, .playground-iteration-view) .font-pixelify { font-family: var(--font-pixelify), monospace; }
 :is(.playground-main-view, .playground-iteration-view) .font-bricolage { font-family: var(--font-bricolage), sans-serif; }
@@ -492,6 +513,46 @@ body.cursor-chat-cursor-mode .playground-main-view .react-flow__nodesselection-r
   cursor: text;
 }
 
+.playground-main-view .react-flow__node-text {
+  width: max-content !important;
+  height: max-content !important;
+}
+
+.playground-main-view .react-flow__node-text.selected,
+.playground-main-view .react-flow__node-text:focus,
+.playground-main-view .react-flow__node-text:focus-visible {
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* Draw tool (P/H): scoped cursors for pen vs highlighter. */
+.playground-main-view .playground-draw-tool[data-draw-kind="pen"] .react-flow__pane,
+.playground-main-view .playground-draw-tool[data-draw-kind="pen"] .react-flow__pane.draggable,
+.playground-main-view .playground-draw-tool[data-draw-kind="pen"] .react-flow__pane.dragging,
+.playground-main-view .playground-draw-tool[data-draw-kind="pen"] .react-flow__pane.selection,
+.playground-main-view .playground-draw-tool[data-draw-kind="pen"] .react-flow__node,
+.playground-main-view .playground-draw-tool[data-draw-kind="pen"] .react-flow__node.selectable,
+.playground-main-view .playground-draw-tool[data-draw-kind="pen"] .react-flow__node.draggable,
+.playground-main-view .playground-draw-tool[data-draw-kind="pen"] .react-flow__node.draggable.dragging,
+.playground-main-view .playground-draw-tool[data-draw-kind="pen"] .react-flow__nodesselection-rect {
+  cursor:
+    url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%231c1917' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20l4.1-.8L19 8.3a1.6 1.6 0 0 0 0-2.2l-1.1-1.1a1.6 1.6 0 0 0-2.2 0L4.8 15.9z'/%3E%3Cpath d='M13.8 6.2l4 4'/%3E%3Cpath d='M4 20h5'/%3E%3C/svg%3E")
+    2 20,
+    crosshair;
+}
+
+.playground-main-view .playground-draw-tool[data-draw-kind="highlight"] .react-flow__pane,
+.playground-main-view .playground-draw-tool[data-draw-kind="highlight"] .react-flow__pane.draggable,
+.playground-main-view .playground-draw-tool[data-draw-kind="highlight"] .react-flow__pane.dragging,
+.playground-main-view .playground-draw-tool[data-draw-kind="highlight"] .react-flow__pane.selection,
+.playground-main-view .playground-draw-tool[data-draw-kind="highlight"] .react-flow__node,
+.playground-main-view .playground-draw-tool[data-draw-kind="highlight"] .react-flow__node.selectable,
+.playground-main-view .playground-draw-tool[data-draw-kind="highlight"] .react-flow__node.draggable,
+.playground-main-view .playground-draw-tool[data-draw-kind="highlight"] .react-flow__node.draggable.dragging,
+.playground-main-view .playground-draw-tool[data-draw-kind="highlight"] .react-flow__nodesselection-rect {
+  cursor: crosshair;
+}
+
 /* Once a node is double-clicked into "interactive" mode (Component/Iteration
    nodes set `data-interactive="true"` on their frame wrapper), hand the
    cursor back to the browser so the system arrow shows over content,
@@ -675,13 +736,13 @@ body.cursor-chat-cursor-mode .playground-main-view .react-flow__nodesselection-r
 
 .presence-bubble-dot {
   position: absolute;
-  bottom: 0px;
-  right: 0px;
-  width: 8px;
-  height: 8px;
+  left: 50%;
+  bottom: -12px;
+  width: 6px;
+  height: 6px;
+  transform: translateX(-50%);
   border-radius: 50%;
-  background: #22c55e;
-  border: 1.5px solid white;
+  background: #2f2f2f;
   z-index: 2;
 }
 
@@ -697,6 +758,40 @@ body.cursor-chat-cursor-mode .playground-main-view .react-flow__nodesselection-r
 /* Cursor Chat input — lighter placeholder */
 .cursor-chat-inline-input .inline-reference-input[data-empty]::before {
   color: rgb(185, 183, 181); /* stone-400 */
+}
+
+/* Skill pill — applied inline reference when a /skill is selected */
+.inline-reference-pill--skill {
+  gap: 8px;
+  margin: 0 3px;
+  padding: 6px 10px 6px 8px;
+  border-radius: 9999px;
+  vertical-align: middle;
+  background: rgb(248, 248, 248);
+  border: 1px solid rgb(231, 229, 228);
+  box-shadow: 0 1px 2px rgba(28, 25, 23, 0.04);
+}
+
+.inline-reference-pill--skill .inline-reference-pill__label {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  color: rgb(72, 67, 64);
+}
+
+.inline-reference-pill--skill .inline-reference-pill__remove {
+  width: 18px;
+  height: 18px;
+  margin-left: 2px;
+  border-radius: 9999px;
+  color: rgb(168, 162, 158);
+  opacity: 0.85;
+}
+
+.inline-reference-pill--skill .inline-reference-pill__remove:hover {
+  background: rgb(231, 229, 228);
+  color: rgb(87, 83, 78);
+  opacity: 1;
 }
 
 /* Prevent iframes from capturing mouse events during node drag */

@@ -1,8 +1,8 @@
 'use client';
 
-import { memo, useEffect, useRef } from 'react';
-import { NodeResizeControl, useReactFlow } from '@xyflow/react';
-import { RESIZE_MIN_WIDTH, RESIZE_MIN_HEIGHT } from '../lib/constants';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useReactFlow } from '@xyflow/react';
+import { cn } from '../lib/utils';
 
 export interface TextNodeData {
   text: string;
@@ -10,65 +10,117 @@ export interface TextNodeData {
 }
 
 function TextNodeInner({ id, data, selected }: { id: string; data: TextNodeData; selected?: boolean }) {
-  const { updateNodeData } = useReactFlow();
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { setNodes, updateNodeData } = useReactFlow();
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
-    if (data.autofocus && textareaRef.current) {
-      textareaRef.current.focus();
+    if (data.autofocus) {
+      setIsEditing(true);
       updateNodeData(id, { autofocus: false });
     }
   }, [data.autofocus, id, updateNodeData]);
 
+  useLayoutEffect(() => {
+    if (!isEditing || !editorRef.current) return;
+    const el = editorRef.current;
+    el.focus();
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }, [isEditing]);
+
+  useEffect(() => {
+    setNodes((nodes) =>
+      nodes.map((node) =>
+        node.id === id && node.type === 'text'
+          ? {
+              ...node,
+              style: {
+                ...node.style,
+                width: undefined,
+                height: undefined,
+                minWidth: undefined,
+                minHeight: undefined,
+              },
+            }
+          : node,
+      ),
+    );
+  }, [id, setNodes]);
+
+  const commitText = useCallback(() => {
+    const text = editorRef.current?.innerText.replace(/\n$/, '') ?? '';
+    updateNodeData(id, { text });
+  }, [id, updateNodeData]);
+
+  const stopEditing = useCallback(() => {
+    commitText();
+    setIsEditing(false);
+  }, [commitText]);
+
+  const text = data.text || '';
+  const showPlaceholder = text.length === 0 && !isEditing;
+
   return (
     <div
-      className="flex flex-col"
+      data-screenshot-target
+      className={cn(
+        'relative inline-flex max-w-[900px] align-top font-sans',
+        selected && 'outline outline-2 outline-[#1e9bff]',
+      )}
       style={{
-        minWidth: RESIZE_MIN_WIDTH,
-        minHeight: RESIZE_MIN_HEIGHT,
-        width: '100%',
-        height: '100%',
         fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif',
       }}
     >
-      {/* Resize handle — bottom-right corner, only when selected */}
-      <NodeResizeControl
-        position="bottom-right"
-        minWidth={RESIZE_MIN_WIDTH}
-        minHeight={RESIZE_MIN_HEIGHT}
-        style={{
-          background: 'transparent',
-          border: 'none',
-          width: 10,
-          height: 10,
-          bottom: 2,
-          right: 2,
-          opacity: selected ? 1 : 0,
-          pointerEvents: selected ? 'auto' : 'none',
-          cursor: 'nwse-resize',
-        }}
-      >
-        <svg width="10" height="10" viewBox="0 0 10 10" className="text-stone-300 hover:text-stone-500 transition-colors">
-          <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.2" />
-          <line x1="9" y1="4" x2="4" y2="9" stroke="currentColor" strokeWidth="1.2" />
-          <line x1="9" y1="7" x2="7" y2="9" stroke="currentColor" strokeWidth="1.2" />
-        </svg>
-      </NodeResizeControl>
+      {selected && (
+        <>
+          {['left-0 top-0 -translate-x-1/2 -translate-y-1/2', 'right-0 top-0 translate-x-1/2 -translate-y-1/2', 'left-0 bottom-0 -translate-x-1/2 translate-y-1/2', 'right-0 bottom-0 translate-x-1/2 translate-y-1/2'].map((position) => (
+            <span
+              key={position}
+              className={`pointer-events-none absolute h-3.5 w-3.5 border-2 border-[#1e9bff] bg-white ${position}`}
+            />
+          ))}
+        </>
+      )}
 
-      <textarea
-        ref={textareaRef}
-        data-screenshot-target
-        className="nodrag nowheel nopan w-full h-full p-3 bg-transparent outline-none resize-none text-stone-800 text-sm leading-relaxed placeholder:text-stone-400 rounded-xl transition-all"
+      <div
+        ref={editorRef}
+        className={cn(
+          'inline-block min-w-[0.35em] whitespace-pre-wrap break-words bg-transparent px-0.5 py-0 text-[20px] font-normal leading-[1.4] text-black outline-none',
+          !selected && !isEditing && 'hover:underline hover:decoration-[#1e9bff] hover:decoration-2 hover:underline-offset-4',
+          isEditing ? 'nodrag nopan nowheel cursor-text select-text' : 'cursor-move select-none',
+          showPlaceholder && 'text-stone-400',
+        )}
         style={{
           fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif',
-          border: '1px dashed',
-          borderColor: selected ? '#d6d3d1' : 'transparent',
+          WebkitUserSelect: isEditing ? 'text' : 'none',
+          userSelect: isEditing ? 'text' : 'none',
         }}
-        value={data.text}
-        placeholder="Type something..."
-        onChange={(e) => updateNodeData(id, { text: e.target.value })}
-        onKeyDown={(e) => e.stopPropagation()}
-      />
+        contentEditable={isEditing}
+        suppressContentEditableWarning
+        spellCheck={false}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          setIsEditing(true);
+        }}
+        onBlur={stopEditing}
+        onPointerDown={(e) => {
+          if (isEditing) e.stopPropagation();
+        }}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            stopEditing();
+          }
+        }}
+      >
+        {showPlaceholder ? 'Text' : text}
+      </div>
     </div>
   );
 }

@@ -13,9 +13,10 @@ import {
   Edge,
   SelectionMode,
   type NodeChange,
+  useViewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { TooltipProvider } from './ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,18 +28,20 @@ import {
   AlertDialogTitle,
 } from './ui/alert-dialog';
 import { getProviderFields } from './lib/generation-body';
+import { getProvider } from './lib/providers/registry';
 import { loadCanvasState, saveCanvasState, type GenerationInfo } from './lib/canvas-persistence';
 import { useCanvasFlow } from './lib/canvas-flow';
 import { useMultiplayer } from './lib/multiplayer-context';
 import { CanvasPresenceLayer } from './lib/presence';
 import { CommentsLayer } from './lib/comments';
 import { resolveAgentModel } from './lib/resolve-agent-model';
+import { getModelIconConfig } from './lib/model-icons';
 import type { ProviderId } from './lib/providers/types';
 import { captureClient } from './lib/telemetry/client';
 import PlaygroundCanvasDrawLayer from './PlaygroundCanvasDrawLayer';
 import { usePlaygroundDrawStore } from './lib/playground-draw-store';
 import { createNewStroke, type DrawPenKind, type DrawStroke } from './lib/draw-types';
-import { Highlighter, Pencil } from 'lucide-react';
+import { Highlighter, Pencil, LayoutGrid } from 'lucide-react';
 
 import ComponentNode from './nodes/ComponentNode';
 import IterationNode from './nodes/IterationNode';
@@ -145,6 +148,7 @@ import {
   PLAYGROUND_CLEAR_EVENT,
   PAN_TO_POSITION_EVENT,
   FIT_COMPONENT_NODES_EVENT,
+  PRESENCE_BUBBLE_DISMISS_EVENT,
   DRAG_GHOST_GAP,
   DEFAULT_EMPTY_ITERATION_INSTRUCTIONS,
   DEFAULT_STYLING_MODE,
@@ -159,6 +163,7 @@ import {
   type GenerationErrorPayload,
   type GenerationQueuedPayload,
   type GenerationAgentPreviewPayload,
+  type PresenceBubbleDismissPayload,
   type DragIteratePayload,
   type CursorChatSubmitPayload,
   type JsxComponentInfo,
@@ -173,6 +178,7 @@ import { useDynamicBackground } from './hooks/useDynamicBackground';
 import { toast } from 'sonner';
 import { wrapHtmlFragment, parsePastedHttpUrl } from './lib/html-utils';
 import { looksLikeJsx, wrapJsxComponent } from './lib/jsx-utils';
+import { cn } from './lib/utils';
 
 const nodeTypes = {
   component: ComponentNode,
@@ -225,6 +231,26 @@ interface IterationFile {
   sourceIteration: string | null;
 }
 
+interface CanvasPresenceBubble {
+  id: string;
+  componentId: string;
+  model: string;
+  provider?: ProviderId;
+  status: 'queued' | 'generating' | 'done';
+  flowPosition: { x: number; y: number } | null;
+  targetNodeId?: string | null;
+  nodeOffset?: { x: number; y: number } | null;
+  type?: 'iterate' | 'edit' | 'adopt';
+  agentPreviewText?: string;
+}
+
+function resolveCanvasBubbleDisplayName(model: string, provider: ProviderId): string {
+  if (provider === 'cursor') return model;
+  const config = getProvider(provider);
+  const modelLabel = model && model !== 'auto' ? model : 'default';
+  return `${config.displayName} (${modelLabel})`;
+}
+
 // CanvasState, loadCanvasState, saveCanvasState moved to ./lib/canvas-persistence
 
 // Re-export event names so existing imports keep working
@@ -236,11 +262,19 @@ import { ITERATION_PROMPT_COPIED_EVENT, ITERATION_FETCH_EVENT } from './lib/cons
 interface PlaygroundCanvasProps {
   sidebarVisible: boolean;
   onToggleSidebar: () => void;
+  onShowSidebar: () => void;
+  onHideSidebar: () => void;
   /** Stable per-project id used to scope persisted canvas state to this project. */
   projectId?: string;
 }
 
-export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, projectId }: PlaygroundCanvasProps) {
+export default function PlaygroundCanvas({
+  sidebarVisible,
+  onToggleSidebar,
+  onShowSidebar,
+  onHideSidebar,
+  projectId,
+}: PlaygroundCanvasProps) {
   const dynamicBg = useDynamicBackground();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
@@ -277,10 +311,6 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
   
   // Right-click context menu
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId?: string } | null>(null);
-  const [createHtmlDialog, setCreateHtmlDialog] = useState<{ screenX: number; screenY: number } | null>(null);
-  const [newHtmlPageName, setNewHtmlPageName] = useState('');
-  const [createHtmlError, setCreateHtmlError] = useState('');
-  const newHtmlInputRef = useRef<HTMLInputElement>(null);
 
   const [createPageDialog, setCreatePageDialog] = useState<{ screenX: number; screenY: number } | null>(null);
   const [newPageDescription, setNewPageDescription] = useState('');
@@ -342,6 +372,13 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
     isLoading: isFlowLoading,
   } = useCanvasFlow();
   const { screenToFlowPosition, fitView, setCenter, getViewport, setViewport, getNode } = useReactFlow();
+  const viewport = useViewport();
+  const [canvasPresenceBubbles, setCanvasPresenceBubbles] = useState<CanvasPresenceBubble[]>([]);
+  const canvasPresenceBubblesRef = useRef<CanvasPresenceBubble[]>([]);
+
+  useEffect(() => {
+    canvasPresenceBubblesRef.current = canvasPresenceBubbles;
+  }, [canvasPresenceBubbles]);
 
   const getPdfTotalPages = useCallback((pdfData: PdfNodeData): number => {
     if (pdfData.totalPages) return pdfData.totalPages;
@@ -586,8 +623,9 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
   }, [activeTool, setDrawToolActive, setStrokeSelectEnabled, setStrokeSelection]);
 
   const CANVAS_DRAW_EXTENT = 8000;
+  const clearAllStrokeSelection = usePlaygroundDrawStore((s) => s.clearAllStrokeSelection);
 
-  // Delete selected pen stroke with Backspace / Delete
+  // Delete selected pen stroke(s) with Backspace / Delete
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
@@ -598,7 +636,19 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
         if ((active as HTMLElement).isContentEditable) return;
         if (active.closest('[role="dialog"]') || active.closest('[data-radix-popper-content-wrapper]')) return;
       }
-      const sel = usePlaygroundDrawStore.getState().strokeSelection;
+      const store = usePlaygroundDrawStore.getState();
+      const sel = store.strokeSelection;
+      const multi = store.multiStrokeSelection;
+
+      if (multi.size > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        setCanvasDrawings((prev) => prev.filter((s) => !multi.has(s.id)));
+        clearAllStrokeSelection();
+        return;
+      }
+
       if (!sel) return;
       e.preventDefault();
       e.stopPropagation();
@@ -617,11 +667,11 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
           }),
         );
       }
-      setStrokeSelection(null);
+      clearAllStrokeSelection();
     };
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
-  }, [setNodes, setStrokeSelection]);
+  }, [setNodes, clearAllStrokeSelection]);
 
   // Select canvas ink strokes in select mode (complements path hit targets)
   useEffect(() => {
@@ -735,8 +785,9 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
     const wrapper = reactFlowWrapper.current;
     if (!wrapper) return;
 
-    let currentStroke: DrawStroke | null = null;
+    let currentStrokeId: string | null = null;
     let drawing = false;
+    let points: DrawStroke['points'] = [];
 
     const isPdfDrawTarget = (target: EventTarget | null) =>
       target instanceof Element && !!target.closest('[data-pdf-draw-layer]');
@@ -750,32 +801,43 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
       drawing = true;
       const pt = screenToFlowPosition({ x: e.clientX, y: e.clientY });
       const kind = usePlaygroundDrawStore.getState().drawPenKind;
-      currentStroke = createNewStroke(kind, pt);
+      const stroke = createNewStroke(kind, pt);
+      currentStrokeId = stroke.id;
+      points = stroke.points;
+      setCanvasDrawings((prev) => [...prev, stroke]);
     };
 
     const onPointerMove = (e: PointerEvent) => {
-      if (!drawing || !currentStroke) return;
+      if (!drawing || !currentStrokeId) return;
       const pt = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-      const last = currentStroke.points.at(-1);
+      const last = points.at(-1);
       if (last) {
         const dx = pt.x - last.x;
         const dy = pt.y - last.y;
         if (dx * dx + dy * dy < 4) return;
       }
-      currentStroke = { ...currentStroke, points: [...currentStroke.points, pt] };
+      points = [...points, pt];
+      const newPoints = points;
+      const id = currentStrokeId;
+      setCanvasDrawings((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, points: newPoints } : s)),
+      );
     };
 
     const onPointerUp = () => {
-      if (!drawing || !currentStroke) return;
-      if (currentStroke.points.length > 1) {
+      if (!drawing || !currentStrokeId) return;
+      if (points.length > 1) {
         if (!drawFeatureReported) {
           drawFeatureReported = true;
           captureClient('feature_used', { feature: 'draw' });
         }
-        setCanvasDrawings((prev) => [...prev, currentStroke!]);
+      } else {
+        const id = currentStrokeId;
+        setCanvasDrawings((prev) => prev.filter((s) => s.id !== id));
       }
       drawing = false;
-      currentStroke = null;
+      currentStrokeId = null;
+      points = [];
     };
 
     wrapper.addEventListener('pointerdown', onPointerDown);
@@ -2106,6 +2168,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
             model: resolveAgentModel(queueProvider, payload.model) ?? 'auto',
             provider: queuePf.provider as GenerationQueuedPayload['provider'],
             flowPosition: payload.canvasPosition ?? null,
+            targetNodeId: payload.targetNodeId ?? null,
           },
         }),
       );
@@ -2212,6 +2275,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
             model: editResolvedModel,
             provider: editPf.provider as GenerationStartPayload['provider'],
             flowPosition: payload.canvasPosition,
+            targetNodeId: payload.targetNodeId,
             editMode: true,
             ...(isHtmlEdit ? { renderMode: 'html' as const, htmlFolder: payload.htmlPageSlug } : {}),
             ...(isJsxEdit && payload.jsxFile
@@ -2537,6 +2601,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
             model: resolvedModel,
             provider: canvasGenPf.provider as GenerationStartPayload['provider'],
             flowPosition: payload.canvasPosition,
+            targetNodeId,
             ...(isHtmlTarget ? { renderMode: 'html' as const, htmlFolder: payload.htmlPageSlug } : {}),
             ...(isJsxTarget && payload.jsxFile
               ? { renderMode: 'jsx' as const, jsxFile: payload.jsxFile }
@@ -2703,17 +2768,229 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
 
   // Fullscreen fitView behavior is no longer used; nodes open in a new tab instead
 
+  // Canvas copy of generation presence bubbles (anchored to flowPosition).
+  // This mirrors the header indicators so users can see where they dropped chat.
+  useEffect(() => {
+    const nextBubbleId = (componentId: string, suffix: string) =>
+      `${componentId}-${suffix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+    const getNodeAnchor = (
+      targetNodeId: string | null | undefined,
+      flowPosition: { x: number; y: number } | null | undefined,
+    ) => {
+      if (!targetNodeId) return { targetNodeId: null, nodeOffset: null };
+      const targetNode = nodesRef.current.find((node) => node.id === targetNodeId);
+      if (!targetNode || !flowPosition) return { targetNodeId, nodeOffset: null };
+      return {
+        targetNodeId,
+        nodeOffset: {
+          x: flowPosition.x - targetNode.position.x,
+          y: flowPosition.y - targetNode.position.y,
+        },
+      };
+    };
+
+    const handleQueued = (e: Event) => {
+      const detail = (e as CustomEvent<GenerationQueuedPayload>).detail;
+      const anchor = getNodeAnchor(detail.targetNodeId, detail.flowPosition);
+      setCanvasPresenceBubbles((prev) => [
+        ...prev,
+        {
+          id: nextBubbleId(detail.componentId, 'queued'),
+          componentId: detail.componentId,
+          model: detail.model || 'auto',
+          provider: detail.provider,
+          status: 'queued',
+          flowPosition: detail.flowPosition ?? null,
+          targetNodeId: anchor.targetNodeId,
+          nodeOffset: anchor.nodeOffset,
+        },
+      ]);
+    };
+
+    const handleStart = (e: Event) => {
+      const detail = (e as CustomEvent<GenerationStartPayload>).detail;
+      const bubbleType = detail.adoptionMode ? 'adopt' as const : detail.editMode ? 'edit' as const : 'iterate' as const;
+      const targetNodeId = detail.targetNodeId ?? (detail.editMode ? detail.parentNodeId : null);
+      const anchor = getNodeAnchor(targetNodeId, detail.flowPosition ?? null);
+      setCanvasPresenceBubbles((prev) => {
+        const queuedIdx = prev.findIndex(
+          (bubble) => bubble.componentId === detail.componentId && bubble.status === 'queued',
+        );
+        if (queuedIdx !== -1) {
+          return prev.map((bubble, idx) =>
+            idx === queuedIdx
+              ? {
+                  ...bubble,
+                  status: 'generating' as const,
+                  model: detail.model || bubble.model,
+                  provider: detail.provider ?? bubble.provider,
+                  flowPosition: detail.flowPosition ?? bubble.flowPosition,
+                  targetNodeId: anchor.targetNodeId ?? bubble.targetNodeId ?? null,
+                  nodeOffset: anchor.nodeOffset ?? bubble.nodeOffset ?? null,
+                  type: bubbleType,
+                  agentPreviewText: undefined,
+                }
+              : bubble,
+          );
+        }
+
+        return [
+          ...prev,
+          {
+            id: nextBubbleId(detail.componentId, 'generating'),
+            componentId: detail.componentId,
+            model: detail.model || 'auto',
+            provider: detail.provider,
+            status: 'generating',
+            flowPosition: detail.flowPosition ?? null,
+            targetNodeId: anchor.targetNodeId,
+            nodeOffset: anchor.nodeOffset,
+            type: bubbleType,
+            agentPreviewText: undefined,
+          },
+        ];
+      });
+    };
+
+    const handleComplete = (e: Event) => {
+      const detail = (e as CustomEvent<GenerationCompletePayload>).detail;
+      setCanvasPresenceBubbles((prev) =>
+        prev.map((bubble) =>
+          bubble.componentId === detail.componentId && bubble.status === 'generating'
+            ? { ...bubble, status: 'done' as const }
+            : bubble,
+        ),
+      );
+    };
+
+    const handleError = (e: Event) => {
+      const detail = (e as CustomEvent<GenerationErrorPayload>).detail;
+      setCanvasPresenceBubbles((prev) =>
+        prev.filter(
+          (bubble) =>
+            !(
+              bubble.componentId === detail.componentId &&
+              (bubble.status === 'queued' || bubble.status === 'generating')
+            ),
+        ),
+      );
+    };
+
+    const handleAgentPreview = (e: Event) => {
+      const detail = (e as CustomEvent<GenerationAgentPreviewPayload>).detail;
+      setCanvasPresenceBubbles((prev) =>
+        prev.map((bubble) =>
+          bubble.componentId === detail.componentId &&
+          (bubble.status === 'generating' || bubble.status === 'done')
+            ? { ...bubble, agentPreviewText: detail.text }
+            : bubble,
+        ),
+      );
+    };
+
+    const handleDismiss = (e: Event) => {
+      const detail = (e as CustomEvent<PresenceBubbleDismissPayload>).detail;
+      if (!detail?.componentId) return;
+      setCanvasPresenceBubbles((prev) =>
+        prev.filter((bubble) => bubble.componentId !== detail.componentId),
+      );
+    };
+
+    window.addEventListener(GENERATION_QUEUED_EVENT, handleQueued);
+    window.addEventListener(GENERATION_START_EVENT, handleStart);
+    window.addEventListener(GENERATION_COMPLETE_EVENT, handleComplete);
+    window.addEventListener(GENERATION_ERROR_EVENT, handleError);
+    window.addEventListener(GENERATION_AGENT_PREVIEW_EVENT, handleAgentPreview);
+    window.addEventListener(PRESENCE_BUBBLE_DISMISS_EVENT, handleDismiss);
+    return () => {
+      window.removeEventListener(GENERATION_QUEUED_EVENT, handleQueued);
+      window.removeEventListener(GENERATION_START_EVENT, handleStart);
+      window.removeEventListener(GENERATION_COMPLETE_EVENT, handleComplete);
+      window.removeEventListener(GENERATION_ERROR_EVENT, handleError);
+      window.removeEventListener(GENERATION_AGENT_PREVIEW_EVENT, handleAgentPreview);
+      window.removeEventListener(PRESENCE_BUBBLE_DISMISS_EVENT, handleDismiss);
+    };
+  }, []);
+
+  const getCanvasPresenceBubblePosition = useCallback((
+    bubble: CanvasPresenceBubble,
+    sourceNodes: Node[] = nodesRef.current,
+  ): { x: number; y: number } | null => {
+    if (bubble.targetNodeId) {
+      const targetNode = sourceNodes.find((node) => node.id === bubble.targetNodeId);
+      if (targetNode) {
+        const fallbackOffset = {
+          x: (targetNode.measured?.width ?? DEFAULT_COMPONENT_NODE_WIDTH) / 2,
+          y: Math.min(48, (targetNode.measured?.height ?? DEFAULT_COMPONENT_NODE_HEIGHT) / 3),
+        };
+        const offset = bubble.nodeOffset ?? (
+          bubble.flowPosition
+            ? {
+                x: bubble.flowPosition.x - targetNode.position.x,
+                y: bubble.flowPosition.y - targetNode.position.y,
+              }
+            : fallbackOffset
+        );
+        return {
+          x: targetNode.position.x + offset.x,
+          y: targetNode.position.y + offset.y,
+        };
+      }
+    }
+    return bubble.flowPosition;
+  }, []);
+
+  const handleCanvasPresenceBubbleClick = useCallback((bubble: CanvasPresenceBubble) => {
+    const currentPosition = getCanvasPresenceBubblePosition(bubble);
+    if (currentPosition) {
+      setCenter(currentPosition.x, currentPosition.y, { duration: 400, zoom: 1 });
+    } else if (bubble.componentId) {
+      window.dispatchEvent(
+        new CustomEvent(FIT_COMPONENT_NODES_EVENT, { detail: { componentId: bubble.componentId } }),
+      );
+    }
+    window.dispatchEvent(
+      new CustomEvent<PresenceBubbleDismissPayload>(PRESENCE_BUBBLE_DISMISS_EVENT, {
+        detail: {
+          componentId: bubble.componentId,
+          flowPosition: currentPosition ?? bubble.flowPosition,
+          targetNodeId: bubble.targetNodeId ?? null,
+        },
+      }),
+    );
+  }, [getCanvasPresenceBubblePosition, setCenter]);
+
   // Pan-to-position event listener (for presence bubble clicks)
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ x: number; y: number }>).detail;
+      const detail = (e as CustomEvent<{ x?: number; y?: number; componentId?: string; targetNodeId?: string | null }>).detail;
+      const anchoredBubble = detail?.componentId
+        ? canvasPresenceBubblesRef.current.find((bubble) => bubble.componentId === detail.componentId)
+        : null;
+      if (anchoredBubble) {
+        const currentPosition = getCanvasPresenceBubblePosition(anchoredBubble);
+        if (currentPosition) {
+          setCenter(currentPosition.x, currentPosition.y, { duration: 400, zoom: 1 });
+          return;
+        }
+      }
+      if (detail?.targetNodeId) {
+        const targetNode = nodesRef.current.find((node) => node.id === detail.targetNodeId);
+        if (targetNode) {
+          const width = targetNode.measured?.width ?? DEFAULT_COMPONENT_NODE_WIDTH;
+          const height = targetNode.measured?.height ?? DEFAULT_COMPONENT_NODE_HEIGHT;
+          setCenter(targetNode.position.x + width / 2, targetNode.position.y + height / 2, { duration: 400, zoom: 1 });
+          return;
+        }
+      }
       if (detail?.x != null && detail?.y != null) {
         setCenter(detail.x, detail.y, { duration: 400, zoom: 1 });
       }
     };
     window.addEventListener(PAN_TO_POSITION_EVENT, handler);
     return () => window.removeEventListener(PAN_TO_POSITION_EVENT, handler);
-  }, [setCenter]);
+  }, [getCanvasPresenceBubblePosition, setCenter]);
 
   // Fit viewport around all nodes for a given component (presence bubble click)
   useEffect(() => {
@@ -3087,7 +3364,6 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
         id: getNodeId(),
         type: 'text' as const,
         position,
-        style: { width: 250, height: 150 },
         selected: true,
         data: { text: '', autofocus: true },
       };
@@ -3476,12 +3752,29 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
     return () => wrapper.removeEventListener('paste', handlePaste);
   }, [screenToFlowPosition, getNodeId, setNodes]);
 
-  // Create HTML page from context menu
-  const handleCreateHtmlPage = useCallback(async () => {
-    const name = newHtmlPageName.trim();
-    if (!name) return;
-    setCreateHtmlError('');
+  // Create HTML page from context menu using incremental Untitled-N naming.
+  const getNextUntitledRiffName = useCallback(async (): Promise<string> => {
     try {
+      const res = await fetch('/playground/api/html-pages');
+      if (!res.ok) return 'Untitled-1';
+      const data = await res.json() as { pages?: { folder: string }[] };
+      const pages = Array.isArray(data.pages) ? data.pages : [];
+      let max = 0;
+      for (const page of pages) {
+        const m = page.folder.match(/^untitled-(\d+)$/i);
+        if (!m) continue;
+        const n = Number(m[1]);
+        if (Number.isFinite(n) && n > max) max = n;
+      }
+      return `Untitled-${max + 1}`;
+    } catch {
+      return 'Untitled-1';
+    }
+  }, []);
+
+  const handleCreateHtmlPageAt = useCallback(async (screenX: number, screenY: number) => {
+    try {
+      const name = await getNextUntitledRiffName();
       const res = await fetch('/playground/api/html-pages', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -3489,15 +3782,11 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
       });
       const data = await res.json();
       if (!res.ok) {
-        setCreateHtmlError(data.error || 'Failed to create page');
+        toast.error(data?.error || 'Failed to create riff');
         return;
       }
 
-      // Place the new node where the user right-clicked
-      const position = screenToFlowPosition({
-        x: createHtmlDialog!.screenX,
-        y: createHtmlDialog!.screenY,
-      });
+      const position = screenToFlowPosition({ x: screenX, y: screenY });
       const pageId = data.page.id as string;
       const folder = data.page.folder as string;
       const newNode: Node = {
@@ -3510,11 +3799,8 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
           htmlFolder: folder,
         },
       };
-      const screenX = createHtmlDialog!.screenX;
-      const screenY = createHtmlDialog!.screenY;
       setNodes((nds) => nds.concat(newNode));
-      setCreateHtmlDialog(null);
-      setNewHtmlPageName('');
+      window.dispatchEvent(new CustomEvent('playground:html-pages-updated'));
 
       // Auto-open cursor chat in edit mode on the new node
       requestAnimationFrame(() => {
@@ -3537,17 +3823,9 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
         );
       });
     } catch {
-      setCreateHtmlError('Failed to create page');
+      toast.error('Failed to create riff');
     }
-  }, [newHtmlPageName, createHtmlDialog, screenToFlowPosition, getNodeId, setNodes]);
-
-  // Focus input when dialog opens
-  useEffect(() => {
-    if (createHtmlDialog && newHtmlInputRef.current) {
-      // Small delay to ensure the element is rendered
-      requestAnimationFrame(() => newHtmlInputRef.current?.focus());
-    }
-  }, [createHtmlDialog]);
+  }, [getNextUntitledRiffName, screenToFlowPosition, getNodeId, setNodes]);
 
   // Focus textarea when create-page dialog opens
   useEffect(() => {
@@ -4455,6 +4733,14 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
     [activeTool, drawPenKind, setDrawPenKind],
   );
 
+  const handleDrawToolButtonClick = useCallback(() => {
+    if (activeTool === 'draw') {
+      setDrawPenKind(drawPenKind === 'highlight' ? 'pen' : 'highlight');
+      return;
+    }
+    setActiveTool('draw');
+  }, [activeTool, drawPenKind, setDrawPenKind]);
+
   // Tool shortcuts: V select, P pen, H highlighter, Escape leaves draw/text
   useEffect(() => {
     const isTypingTarget = () => {
@@ -4497,6 +4783,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
       <div
         ref={reactFlowWrapper}
         className={`w-full h-full${activeTool === 'text' ? ' playground-text-tool' : ''}${activeTool === 'draw' ? ' playground-draw-tool' : ''}`}
+        data-draw-kind={activeTool === 'draw' ? drawPenKind : undefined}
       >
         {/* XY Flow reads pane fill from `--xy-background-color`; Tailwind bg-* often loses to `.react-flow` in the cascade. */}
         <ReactFlow
@@ -4535,7 +4822,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
           {/* <Controls
             className="!bg-white !border-stone-200 !rounded-lg !shadow-sm [&>button]:!bg-white [&>button]:!border-stone-200 [&>button]:!text-stone-600 [&>button:hover]:!bg-stone-50"
           /> */}
-        <PlaygroundCanvasDrawLayer strokes={canvasDrawings} />
+        <PlaygroundCanvasDrawLayer strokes={canvasDrawings} wrapperRef={reactFlowWrapper} />
         <Background
           variant={BackgroundVariant.Dots}
           gap={dynamicBg.gap}
@@ -4543,6 +4830,96 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
           bgColor={CANVAS_BACKGROUND_COLOR}
           color={BACKGROUND_COLOR}
         />
+        {canvasPresenceBubbles.length > 0 && (
+          <div className="pointer-events-none absolute inset-0 z-[7]">
+            {canvasPresenceBubbles.map((bubble) => {
+              const currentPosition = getCanvasPresenceBubblePosition(bubble, nodes);
+              if (!currentPosition) return null;
+              const screenX = currentPosition.x * viewport.zoom + viewport.x;
+              const screenY = currentPosition.y * viewport.zoom + viewport.y;
+              const provider = (bubble.provider ?? 'cursor') as ProviderId;
+              const iconConfig = getModelIconConfig(bubble.model, provider);
+              const displayName = resolveCanvasBubbleDisplayName(bubble.model, provider);
+              const tooltipText = bubble.status === 'queued'
+                ? 'Queued - will run after current generation'
+                : bubble.type === 'adopt'
+                  ? `Adopting - ${displayName}`
+                  : `${displayName} - ${bubble.status}`;
+              const showAgentStreamTooltip =
+                (provider === 'claude-code' || provider === 'codex') &&
+                (bubble.status === 'generating' ||
+                  (bubble.status === 'done' && Boolean(bubble.agentPreviewText?.trim())));
+              return (
+                <div
+                  key={bubble.id}
+                  className="absolute"
+                  style={{
+                    left: screenX,
+                    top: screenY,
+                    transform: 'translate(-50%, -50%)',
+                  }}
+                >
+                  <Tooltip delayDuration={showAgentStreamTooltip ? 280 : undefined}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="presence-bubble group pointer-events-auto border-0 bg-transparent p-0"
+                        data-status={bubble.status}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCanvasPresenceBubbleClick(bubble);
+                        }}
+                      >
+                        {bubble.status === 'generating' && (
+                          <div className={bubble.type === 'adopt' ? 'presence-bubble-spinner--adopt' : 'presence-bubble-spinner'} />
+                        )}
+                        <div
+                          className="presence-bubble-face"
+                          style={{
+                            backgroundColor: iconConfig.bg,
+                            backgroundImage: `url(${iconConfig.src})`,
+                          }}
+                        />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="bottom"
+                      sideOffset={12}
+                      className={cn(
+                        showAgentStreamTooltip
+                          ? 'w-[min(22rem,calc(100vw-2rem))] p-0 border border-stone-200/80 bg-[#fbfbfb] text-stone-800 shadow-[0_20px_48px_-22px_rgba(28,25,23,0.38)] pointer-events-auto overflow-hidden rounded-2xl'
+                          : 'text-xs',
+                      )}
+                    >
+                      {showAgentStreamTooltip ? (
+                        <>
+                          <div className="border-b border-stone-200/70 px-3.5 py-2.5 text-[11px] font-semibold tracking-[-0.01em] text-stone-600 bg-gradient-to-b from-white to-stone-50/80">
+                            {bubble.status === 'done'
+                              ? `${displayName} · done`
+                              : bubble.type === 'adopt'
+                                ? `Adopting - ${displayName}`
+                                : displayName}
+                          </div>
+                          <div
+                            className="max-h-48 min-h-[3.25rem] overflow-y-auto overscroll-y-contain px-3.5 py-3 text-[12px] leading-5 font-mono text-stone-700 whitespace-pre-wrap break-words bg-[#fbfbfb]"
+                            onWheel={(e) => e.stopPropagation()}
+                          >
+                            {bubble.agentPreviewText?.trim()
+                              ? bubble.agentPreviewText
+                              : 'Waiting for assistant text...'}
+                          </div>
+                        </>
+                      ) : (
+                        <p>{tooltipText}</p>
+                      )}
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+              );
+            })}
+          </div>
+        )}
         {multiplayer.enabled && <CanvasPresenceLayer />}
         {multiplayer.enabled && <CommentsLayer />}
       </ReactFlow>
@@ -4559,9 +4936,11 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
 
       {/* Match PlaygroundClient: left-6 (1.5rem); vertically centered */}
       <div className="absolute left-6 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-2 bg-white rounded-2xl border border-stone-200 shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-2">
-        {/* Sidebar toggle (hexagon) */}
+        {/* Sidebar toggle (hexagon) — hover instantly shows panel */}
         <button
           onClick={onToggleSidebar}
+          onMouseEnter={onShowSidebar}
+          onMouseLeave={onHideSidebar}
           className={`group flex items-center justify-center w-9 h-9 rounded-xl transition-colors ${
             sidebarVisible ? 'bg-stone-100 text-stone-900' : 'text-stone-500 hover:text-stone-800 hover:bg-stone-50'
           }`}
@@ -4602,9 +4981,9 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
           </svg>
         </button>
 
-        {/* Draw tool — icon shows pen vs highlighter; click toggles active kind off */}
+        {/* Draw tool — icon shows pen vs highlighter; repeated clicks swap kind */}
         <button
-          onClick={() => toggleDrawPenKind(drawPenKind)}
+          onClick={handleDrawToolButtonClick}
           className={`flex items-center justify-center w-9 h-9 rounded-xl transition-colors ${
             activeTool === 'draw'
               ? drawPenKind === 'highlight'
@@ -4617,8 +4996,8 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
           aria-label={drawPenKind === 'highlight' ? 'Highlighter' : 'Pen'}
           title={
             drawPenKind === 'highlight'
-              ? 'Highlighter (H) — click or H to toggle'
-              : 'Pen (P) — click or P to toggle'
+              ? 'Highlighter (H) - click to switch to pen'
+              : 'Pen (P) - click to switch to highlighter'
           }
         >
           {drawPenKind === 'highlight' ? (
@@ -4721,17 +5100,16 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
       {/* Right-click context menu */}
       {contextMenu && (
         <div
-          className="fixed z-50 min-w-[180px] bg-[#1C1C1E] rounded-2xl shadow-2xl py-2 animate-in fade-in-0 zoom-in-95 duration-100"
+          className="playground-canvas-context-menu fixed z-50 min-w-[180px] bg-[#1C1C1E] rounded-2xl shadow-2xl py-2 px-2 animate-in fade-in-0 zoom-in-95 duration-100"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
-            className="flex items-center gap-2.5 w-full px-3 py-1.5 text-[13px] text-stone-200 hover:bg-white/10 transition-colors text-left"
+            className="flex items-center gap-2.5 w-full px-2 py-1.5 text-[13px] text-stone-200 hover:bg-white/10 transition-colors text-left rounded-lg"
             onClick={(e) => {
               e.stopPropagation();
-              setCreateHtmlDialog({ screenX: contextMenu.x, screenY: contextMenu.y });
+              const { x, y } = contextMenu;
               setContextMenu(null);
-              setNewHtmlPageName('');
-              setCreateHtmlError('');
+              void handleCreateHtmlPageAt(x, y);
             }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500 shrink-0">
@@ -4741,7 +5119,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
             Start Riffing
           </button>
           <button
-            className="flex items-center gap-2.5 w-full px-3 py-1.5 text-[13px] text-stone-200 hover:bg-white/10 transition-colors text-left"
+            className="flex items-center gap-2.5 w-full px-2 py-1.5 text-[13px] text-stone-200 hover:bg-white/10 transition-colors text-left rounded-lg"
             onClick={(e) => {
               e.stopPropagation();
               setCreatePageDialog({ screenX: contextMenu.x, screenY: contextMenu.y });
@@ -4757,11 +5135,23 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
             </svg>
             Create a new Page
           </button>
+          <div className="my-1 h-px bg-white/10" />
+          <button
+            className="flex items-center gap-2.5 w-full px-2 py-1.5 text-[13px] text-stone-200 hover:bg-white/10 transition-colors text-left rounded-lg"
+            onClick={(e) => {
+              e.stopPropagation();
+              autoArrangeNodes(true);
+              setContextMenu(null);
+            }}
+          >
+            <LayoutGrid className="w-3.5 h-3.5 text-stone-500 shrink-0" strokeWidth={1.5} />
+            Organize canvas
+          </button>
           {(contextMenu.nodeId || nodes.some((n) => n.selected)) && (
             <>
-              <div className="my-1 mx-3 h-px bg-white/10" />
+              <div className="my-1 h-px bg-white/10" />
               <button
-                className="flex items-center gap-2.5 w-full px-3 py-1.5 text-[13px] text-stone-200 hover:bg-white/10 transition-colors text-left"
+                className="flex items-center gap-2.5 w-full px-2 py-1.5 text-[13px] text-stone-200 hover:bg-white/10 transition-colors text-left rounded-lg"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleZOrder('front');
@@ -4775,7 +5165,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
                 Bring to Front
               </button>
               <button
-                className="flex items-center gap-2.5 w-full px-3 py-1.5 text-[13px] text-stone-200 hover:bg-white/10 transition-colors text-left"
+                className="flex items-center gap-2.5 w-full px-2 py-1.5 text-[13px] text-stone-200 hover:bg-white/10 transition-colors text-left rounded-lg"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleZOrder('forward');
@@ -4789,7 +5179,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
                 Bring Forward
               </button>
               <button
-                className="flex items-center gap-2.5 w-full px-3 py-1.5 text-[13px] text-stone-200 hover:bg-white/10 transition-colors text-left"
+                className="flex items-center gap-2.5 w-full px-2 py-1.5 text-[13px] text-stone-200 hover:bg-white/10 transition-colors text-left rounded-lg"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleZOrder('backward');
@@ -4803,7 +5193,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
                 Send Backward
               </button>
               <button
-                className="flex items-center gap-2.5 w-full px-3 py-1.5 text-[13px] text-stone-200 hover:bg-white/10 transition-colors text-left"
+                className="flex items-center gap-2.5 w-full px-2 py-1.5 text-[13px] text-stone-200 hover:bg-white/10 transition-colors text-left rounded-lg"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleZOrder('back');
@@ -4873,49 +5263,6 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
                   {creatingPage ? 'Creating…' : 'Create'}
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Create HTML page dialog */}
-      {createHtmlDialog && (
-        <div className="fixed inset-0 z-50 flex items-start justify-start" onClick={() => { setCreateHtmlDialog(null); setNewHtmlPageName(''); setCreateHtmlError(''); }}>
-          <div
-            className="bg-white rounded-2xl border border-stone-200 shadow-xl p-4 w-[280px] animate-in fade-in-0 zoom-in-95 duration-150"
-            style={{ position: 'fixed', left: createHtmlDialog.screenX, top: createHtmlDialog.screenY }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-[13px] font-semibold text-stone-800 mb-3">Name your Riff</h3>
-            <input
-              ref={newHtmlInputRef}
-              type="text"
-              placeholder="Enter the name"
-              value={newHtmlPageName}
-              onChange={(e) => { setNewHtmlPageName(e.target.value); setCreateHtmlError(''); }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') { e.preventDefault(); handleCreateHtmlPage(); }
-                if (e.key === 'Escape') { setCreateHtmlDialog(null); setNewHtmlPageName(''); setCreateHtmlError(''); }
-              }}
-              className="w-full px-3 py-2 text-[13px] bg-stone-50 border border-stone-200 rounded-xl text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20 transition-colors"
-            />
-            {createHtmlError && (
-              <p className="text-[11px] text-red-500 mt-1.5">{createHtmlError}</p>
-            )}
-            <div className="flex justify-end gap-2 mt-3">
-              <button
-                onClick={() => { setCreateHtmlDialog(null); setNewHtmlPageName(''); setCreateHtmlError(''); }}
-                className="px-3 py-1.5 text-[12px] text-stone-500 hover:text-stone-700 rounded-xl hover:bg-stone-100 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateHtmlPage}
-                disabled={!newHtmlPageName.trim()}
-                className="px-3 py-1.5 text-[12px] bg-orange-500 text-white rounded-xl hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                Create
-              </button>
             </div>
           </div>
         </div>

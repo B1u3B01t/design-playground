@@ -4,7 +4,17 @@ import { useState, useEffect, useMemo, useCallback, useRef, DragEvent, MouseEven
 import { createPortal } from 'react-dom';
 import { ChevronRight, ChevronDown, ChevronLeft, Plus, Palette, Loader2, RefreshCw, RotateCcw, Frame, FileCode, Component, Trash2 } from 'lucide-react';
 import { registry, RegistryItem, RegistryLeafItem, isGroup, isLeaf } from './registry';
-import { DND_DATA_KEY, HTML_ID_PREFIX, FOCUS_NODE_EVENT, JSX_ID_PREFIX, DELETE_FRAME_EVENT, DESIGN_SYSTEM_SHOWCASE_ID, DESIGN_SYSTEM_GENERATED_EVENT } from './lib/constants';
+import {
+  DND_DATA_KEY,
+  HTML_ID_PREFIX,
+  FOCUS_NODE_EVENT,
+  JSX_ID_PREFIX,
+  DELETE_FRAME_EVENT,
+  DESIGN_SYSTEM_SHOWCASE_ID,
+  DESIGN_SYSTEM_GENERATED_EVENT,
+  GENERATION_COMPLETE_EVENT,
+  JSX_COMPONENT_ADDED_EVENT,
+} from './lib/constants';
 import type { HtmlPageInfo, JsxComponentInfo, ComponentSize } from './lib/constants';
 import type { PendingChild } from './PlaygroundClient';
 import ComponentErrorBoundary from './nodes/ComponentErrorBoundary';
@@ -414,6 +424,18 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
   }, []);
 
   useEffect(() => { fetchHtmlPages(); }, [fetchHtmlPages]);
+
+  useEffect(() => {
+    const refresh = () => { void fetchHtmlPages(); };
+    window.addEventListener('playground:html-pages-updated', refresh);
+    window.addEventListener(GENERATION_COMPLETE_EVENT, refresh as EventListener);
+    window.addEventListener(JSX_COMPONENT_ADDED_EVENT, refresh as EventListener);
+    return () => {
+      window.removeEventListener('playground:html-pages-updated', refresh);
+      window.removeEventListener(GENERATION_COMPLETE_EVENT, refresh as EventListener);
+      window.removeEventListener(JSX_COMPONENT_ADDED_EVENT, refresh as EventListener);
+    };
+  }, [fetchHtmlPages]);
 
   const fetchDesignSystem = useCallback(async () => {
     try {
