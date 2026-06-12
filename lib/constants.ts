@@ -210,6 +210,9 @@ export const ARRANGE_HORIZONTAL_GAP = 80;
 /** Padding around the decomposed stage cluster's dotted backdrop (px) */
 export const STAGE_GROUP_PADDING = 32;
 
+/** Height of the flow name + controls row above the stage group outline (px) */
+export const STAGE_GROUP_HEADER_HEIGHT = 28;
+
 /** Horizontal gap between tiles inside a bento cluster (px) */
 export const ARRANGE_BENTO_TILE_GAP_X = 48;
 

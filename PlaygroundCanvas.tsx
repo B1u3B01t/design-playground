@@ -52,10 +52,10 @@ import StageNode, {
   STAGE_NODE_HEADER_HEIGHT,
 } from './nodes/StageNode';
 import StageGroupNode from './nodes/StageGroupNode';
+import StageGroupControlsNode from './nodes/StageGroupControlsNode';
 import { findFlowDescriptorForComponent } from './lib/flows/registry';
 import { useFlowMocksStore } from './lib/flow-mocks-store';
 import { MockDataPanel } from './components/MockDataPanel';
-import { FlowSimulator } from './components/FlowSimulator';
 import { FlowAdoptModal } from './components/FlowAdoptModal';
 import type { StageNodeData } from './lib/flows/types';
 import { hitTestStrokes } from './lib/draw-hit-test';
@@ -108,6 +108,7 @@ import {
   ARRANGE_START_Y,
   ARRANGE_HORIZONTAL_GAP,
   STAGE_GROUP_PADDING,
+  STAGE_GROUP_HEADER_HEIGHT,
   ARRANGE_BENTO_TILE_GAP_X,
   ARRANGE_BENTO_TILE_GAP_Y,
   ARRANGE_BENTO_CLUSTER_MAX_WIDTH,
@@ -184,6 +185,7 @@ const nodeTypes = {
   text: TextNode,
   stage: StageNode,
   stageGroup: StageGroupNode,
+  stageGroupControls: StageGroupControlsNode,
 };
 
 const DEFAULT_SKILL_IDS = ['design-variations', 'frontend-design'] as const;
@@ -4149,12 +4151,20 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
 
       const flowId = `flow_${detail.parentNodeId}_${descriptor.id}`;
 
+      const hasLiveStages = nodesRef.current.some((n) => {
+        if (n.type !== 'stage') return false;
+        const stageData = n.data as unknown as StageNodeData | undefined;
+        return stageData?.flowId === flowId;
+      });
       const existing = useFlowMocksStore.getState().flows[flowId];
-      if (existing) {
+      if (existing && hasLiveStages) {
         toast.message('Already decomposed', {
           description: 'This component has already been split into stages.',
         });
         return;
+      }
+      if (existing && !hasLiveStages) {
+        useFlowMocksStore.getState().removeFlow(flowId);
       }
 
       const parentNode = nodesRef.current.find((n) => n.id === detail.parentNodeId);
@@ -4182,7 +4192,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
           x: startX - STAGE_GROUP_PADDING,
           y: stageY - STAGE_GROUP_PADDING,
         },
-        data: { flowId } as unknown as Record<string, unknown>,
+        data: { flowId, reveal: true } as unknown as Record<string, unknown>,
         style: {
           width: clusterWidth + STAGE_GROUP_PADDING * 2,
           height: clusterHeight + STAGE_GROUP_PADDING * 2,
@@ -4191,6 +4201,22 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
         selectable: false,
         focusable: false,
         zIndex: -1,
+      });
+
+      const groupWidth = clusterWidth + STAGE_GROUP_PADDING * 2;
+      newNodes.push({
+        id: `stage_group_controls_${flowId}`,
+        type: 'stageGroupControls',
+        position: {
+          x: startX - STAGE_GROUP_PADDING,
+          y: stageY - STAGE_GROUP_PADDING - STAGE_GROUP_HEADER_HEIGHT,
+        },
+        data: { flowId, descriptorId: descriptor.id } as unknown as Record<string, unknown>,
+        style: { width: groupWidth, height: STAGE_GROUP_HEADER_HEIGHT },
+        draggable: false,
+        selectable: false,
+        focusable: false,
+        zIndex: 10,
       });
 
       descriptor.stages.forEach((stage, idx) => {
@@ -4203,6 +4229,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
           componentId: stage.componentId,
           label: stage.label,
           synthetic: stage.synthetic,
+          revealIndex: idx,
         };
         newNodes.push({
           id: stageNodeId,
@@ -4281,7 +4308,7 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
     }
     const orphanedGroupIds = nodes
       .filter((n) => {
-        if (n.type !== 'stageGroup') return false;
+        if (n.type !== 'stageGroup' && n.type !== 'stageGroupControls') return false;
         const flowId = (n.data as { flowId?: string } | undefined)?.flowId;
         return !flowId || !liveFlowIds.has(flowId);
       })
@@ -4289,6 +4316,14 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
     if (orphanedGroupIds.length > 0) {
       const orphanSet = new Set(orphanedGroupIds);
       setNodes((nds) => nds.filter((n) => !orphanSet.has(n.id)));
+    }
+
+    const staleFlowIds = Object.keys(useFlowMocksStore.getState().flows).filter(
+      (flowId) => !liveFlowIds.has(flowId),
+    );
+    if (staleFlowIds.length > 0) {
+      const removeFlow = useFlowMocksStore.getState().removeFlow;
+      staleFlowIds.forEach((flowId) => removeFlow(flowId));
     }
   }, [nodes, setNodes]);
 
@@ -4950,7 +4985,6 @@ export default function PlaygroundCanvas({ sidebarVisible, onToggleSidebar, proj
 
       {/* Flow-mode UI: mock data editor + simulator modal + adopt diff modal */}
       <MockDataPanel />
-      <FlowSimulator />
       <FlowAdoptModal />
     </div>
     </TooltipProvider>

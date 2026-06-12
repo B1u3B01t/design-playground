@@ -2,7 +2,7 @@
 
 import { memo, useState, useCallback, useRef, useEffect, type ComponentType } from 'react';
 import { useNodeId, useReactFlow, NodeResizeControl } from '@xyflow/react';
-import { Loader2 } from 'lucide-react';
+import { GalleryHorizontalEnd, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { resolveRegistryItem } from '../registry';
 import { findFlowDescriptorForComponent } from '../lib/flows/registry';
@@ -536,19 +536,13 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                       <button
                         onClick={handleDecompose}
                         className="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-stone-200 text-stone-400 hover:text-purple-600 hover:border-purple-300 transition-colors"
-                        aria-label="Decompose into stages"
+                        aria-label="Expand flow"
                       >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="3" y="4" width="6" height="6" rx="1.5" />
-                          <rect x="15" y="4" width="6" height="6" rx="1.5" />
-                          <rect x="3" y="14" width="6" height="6" rx="1.5" />
-                          <rect x="15" y="14" width="6" height="6" rx="1.5" />
-                          <path d="M9 7h6M9 17h6M6 10v4M18 10v4" />
-                        </svg>
+                        <GalleryHorizontalEnd className="w-3.5 h-3.5 scale-x-[-1]" />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="right">
-                      <p>Decompose into {flowDescriptor.stages.length} stages</p>
+                      <p>expand flow</p>
                     </TooltipContent>
                   </Tooltip>
                 )}

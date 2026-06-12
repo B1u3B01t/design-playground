@@ -57,4 +57,6 @@ export interface StageNodeData {
   componentId: string;
   label: string;
   synthetic?: boolean;
+  /** Stagger index for the expand-flow reveal animation (set on decompose) */
+  revealIndex?: number;
 }

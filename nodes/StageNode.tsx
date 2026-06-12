@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useState, useMemo, useEffect, useCallback } from 'react';
+import { memo, useState, useMemo, useEffect, useCallback, type CSSProperties } from 'react';
 import { Handle, Position, useNodeId, useReactFlow } from '@xyflow/react';
 import { Star, Loader2 } from 'lucide-react';
 import { resolveRegistryItem } from '../registry';
@@ -133,12 +133,16 @@ function StageNode({ data, selected = false }: StageNodeProps) {
     height: STAGE_NODE_DEFAULT_HEIGHT,
   };
 
+  const revealDelay =
+    data.revealIndex != null ? `${data.revealIndex * 90}ms` : undefined;
+
   return (
     <div
-      className="flex flex-col"
+      className={`flex flex-col${data.revealIndex != null ? ' playground-stage-reveal' : ''}`}
       style={{
         width: displayDims.width,
         fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif',
+        ...(revealDelay ? { '--reveal-delay': revealDelay } as CSSProperties : {}),
       }}
     >
       <Handle type="target" position={Position.Left} style={{ background: '#A855F7' }} />

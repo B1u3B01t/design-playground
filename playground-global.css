@@ -718,4 +718,37 @@ body.cursor-chat-cursor-mode .playground-main-view .react-flow__nodesselection-r
   pointer-events: none !important;
 }
 
+/* Expand-flow reveal — stages slide in left-to-right with stagger */
+@keyframes playground-stage-reveal {
+  from {
+    opacity: 0;
+    transform: translateX(-40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.playground-stage-reveal {
+  animation: playground-stage-reveal 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--reveal-delay, 0ms);
+}
+
+@keyframes playground-stage-group-reveal {
+  from {
+    opacity: 0;
+    transform: scaleX(0.94);
+    transform-origin: left center;
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+.playground-stage-group-reveal {
+  animation: playground-stage-group-reveal 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 nextjs-portal { display: none !important; }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
-import { toast, Toaster } from 'sonner';
+import { toast } from 'sonner';
 import PlaygroundSidebar from './PlaygroundSidebar';
 import PlaygroundCanvas from './PlaygroundCanvas';
 import PlaygroundHeader from './PlaygroundHeader';
@@ -635,15 +635,10 @@ export default function PlaygroundClient({
     roomId: roomId ?? null,
   };
 
-  const toaster = <Toaster position="bottom-right" richColors closeButton />;
-
   // Single-player: no Liveblocks providers, just expose a (disabled) multiplayer context.
   if (!roomId) {
     return (
-      <>
-        {toaster}
-        <MultiplayerProvider value={multiplayer}>{body}</MultiplayerProvider>
-      </>
+      <MultiplayerProvider value={multiplayer}>{body}</MultiplayerProvider>
     );
   }
 
@@ -652,7 +647,6 @@ export default function PlaygroundClient({
   // non-suspense hooks everywhere, so no ClientSideSuspense boundary is required.
   return (
     <>
-      {toaster}
       <LiveblocksProvider authEndpoint={liveblocksAuth}>
         <RoomProvider
           id={roomId}

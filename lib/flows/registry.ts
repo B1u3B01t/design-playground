@@ -8,6 +8,8 @@ import { signupFlow } from '../../data/flows/signup';
  */
 export const flowsByComponentId: Record<string, FlowDescriptor> = {
   signup: signupFlow,
+  /** Registry id for the Signup page component on the canvas */
+  'signup-page': signupFlow,
 };
 
 export function findFlowDescriptorForComponent(
