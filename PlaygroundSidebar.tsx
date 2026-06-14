@@ -633,11 +633,6 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
             <Plus className="w-5 h-5" />
           </button>
           <button
-            type="button"
-            onPointerDown={(e) => {
-              e.preventDefault();
-              onCollapse();
-            }}
             onClick={onCollapse}
             className="flex items-center justify-center w-[24px] h-[24px] rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
             aria-label="Collapse sidebar"
@@ -799,32 +794,9 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
               />
             );
           })
-        ) : !search.trim() ? (
-          /* Empty state — no components discovered yet */
-          <div className="px-2 pt-1 pb-3">
-            {/* Skeleton preview cards */}
-            <div className="grid grid-cols-2 gap-x-4 gap-y-4 pt-2 pb-3 opacity-40 pointer-events-none select-none">
-              {[0, 1, 2, 3].map((i) => (
-                <div key={i} className="flex flex-col gap-1.5">
-                  <div className="w-full h-[96px] rounded-xl bg-stone-200 animate-pulse" />
-                  <div
-                    className="h-2 rounded-full bg-stone-200 animate-pulse"
-                    style={{ width: i % 2 === 0 ? '60%' : '75%' }}
-                  />
-                </div>
-              ))}
-            </div>
-            <button
-              onClick={onOpenDiscovery}
-              className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-stone-900 text-white text-[12px] font-medium hover:bg-stone-700 active:bg-stone-800 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add my components
-            </button>
-          </div>
-        ) : (
-          <p className="text-xs text-stone-400 text-center py-3 select-none">No results</p>
-        )}
+        ) : filteredHtmlPages.length === 0 ? (
+          <p className="text-xs text-stone-400 text-center py-3 select-none">No components found</p>
+        ) : null}
       </div>
 
       {/* Footer */}

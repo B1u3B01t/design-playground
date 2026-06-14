@@ -1,35 +1,4 @@
 {
   "version": 1,
-  "entries": {
-    "RedBgHero": {
-      "parent": null,
-      "iterations": [
-        {
-          "number": 1,
-          "filename": "RedBgHero.iteration-1.tsx",
-          "description": "Bold hero section with red background, large headline, and prominent CTA buttons"
-        }
-      ]
-    },
-    "BlueBgHero": {
-      "parent": null,
-      "iterations": [
-        {
-          "number": 1,
-          "filename": "BlueBgHero.iteration-1.tsx",
-          "description": "Bold hero section with blue background, large headline, and prominent CTA buttons"
-        }
-      ]
-    },
-    "GreenBgHero": {
-      "parent": null,
-      "iterations": [
-        {
-          "number": 1,
-          "filename": "GreenBgHero.iteration-1.tsx",
-          "description": "Bold hero section with green background, large headline, and prominent CTA buttons"
-        }
-      ]
-    }
-  }
+  "entries": {}
 }

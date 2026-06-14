@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Plus, Search, Wrench, Package, Link2, X, Trash2, ExternalLink, ArrowUpCircle } from 'lucide-react';
+import { Loader2, Plus, Search, Toolbox, Package, Link2, X, Trash2, ExternalLink, ArrowUpCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -340,7 +340,7 @@ export default function SkillsCatalogModal({
 
           {/* Tabs */}
           <div className="flex items-center gap-1 p-1 rounded-xl bg-stone-100 w-fit">
-            <TabButton active={tab === 'browse'} onClick={() => setTab('browse')} icon={Wrench}>
+            <TabButton active={tab === 'browse'} onClick={() => setTab('browse')} icon={Toolbox}>
               Browse
             </TabButton>
             <TabButton active={tab === 'installed'} onClick={() => setTab('installed')} icon={Package}>
@@ -472,7 +472,7 @@ function BrowseTab({
     <>
       {[...groups.entries()].map(([category, skills]) => (
         <div key={category}>
-          <SectionHeader icon={Wrench} label={category} count={skills.length} />
+          <SectionHeader icon={Toolbox} label={category} count={skills.length} />
           <div className="space-y-2">
             {skills.map((skill) => {
               const isInstalled = installedIds.has(skill.id);
@@ -573,7 +573,7 @@ function InstalledTab({
       )}
       {builtin.length > 0 && (
         <div>
-          <SectionHeader icon={Wrench} label="Built in" count={builtin.length} />
+          <SectionHeader icon={Toolbox} label="Built in" count={builtin.length} />
           <div className="space-y-2">
             {builtin.map((skill) => (
               <SkillRow

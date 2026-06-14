@@ -760,33 +760,38 @@ body.cursor-chat-cursor-mode .playground-main-view .react-flow__nodesselection-r
   color: rgb(185, 183, 181); /* stone-400 */
 }
 
-/* Skill pill — looks like normal inline text, just blue */
+/* Skill pill — applied inline reference when a /skill is selected */
 .inline-reference-pill--skill {
-  gap: 0;
-  margin: 0 1px;
-  padding: 1px 2px;
-  border-radius: 3px;
-  vertical-align: baseline;
-  background: transparent;
-  border: none;
-  box-shadow: none;
+  gap: 8px;
+  margin: 0 3px;
+  padding: 6px 10px 6px 8px;
+  border-radius: 9999px;
+  vertical-align: middle;
+  background: rgb(248, 248, 248);
+  border: 1px solid rgb(231, 229, 228);
+  box-shadow: 0 1px 2px rgba(28, 25, 23, 0.04);
 }
 
 .inline-reference-pill--skill .inline-reference-pill__label {
-  font-size: inherit;
+  font-size: 12px;
   font-weight: 500;
-  line-height: inherit;
-  color: rgb(59, 130, 246);
+  line-height: 1;
+  color: rgb(72, 67, 64);
 }
 
-/* First backspace: selection highlight before delete */
-.inline-reference-pill--skill[data-pending-delete] {
-  background: rgb(219, 234, 254);
-  border-radius: 3px;
+.inline-reference-pill--skill .inline-reference-pill__remove {
+  width: 18px;
+  height: 18px;
+  margin-left: 2px;
+  border-radius: 9999px;
+  color: rgb(168, 162, 158);
+  opacity: 0.85;
 }
 
-.inline-reference-pill--skill[data-pending-delete] .inline-reference-pill__label {
-  color: rgb(29, 78, 216);
+.inline-reference-pill--skill .inline-reference-pill__remove:hover {
+  background: rgb(231, 229, 228);
+  color: rgb(87, 83, 78);
+  opacity: 1;
 }
 
 /* Prevent iframes from capturing mouse events during node drag */

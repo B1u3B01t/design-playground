@@ -36,20 +36,6 @@ export interface PendingChild {
   status: 'pending' | 'analyzing' | 'done' | 'error';
 }
 
-function getSidebarVisibilityStorageKey(projectId?: string) {
-  return `${projectId ? `${STORAGE_KEY}:${projectId}` : STORAGE_KEY}:sidebar-visible`;
-}
-
-function loadSidebarVisibility(storageKey: string) {
-  if (typeof window === 'undefined') return true;
-  try {
-    const stored = window.localStorage.getItem(storageKey);
-    return stored == null ? true : stored === '1';
-  } catch {
-    return true;
-  }
-}
-
 export default function PlaygroundClient({
   projectId,
   roomId,
@@ -59,10 +45,13 @@ export default function PlaygroundClient({
   roomId?: string;
   isHost?: boolean;
 } = {}) {
-  const sidebarVisibilityStorageKey = getSidebarVisibilityStorageKey(projectId);
-  const [sidebarVisible, setSidebarVisible] = useState<boolean>(() =>
-    loadSidebarVisibility(sidebarVisibilityStorageKey),
-  );
+  const sidebarVisibilityStorageKey = `${projectId ? `${STORAGE_KEY}:${projectId}` : STORAGE_KEY}:sidebar-visible`;
+  const [sidebarVisible, setSidebarVisible] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const stored = window.localStorage.getItem(sidebarVisibilityStorageKey);
+    if (stored == null) return true;
+    return stored === '1';
+  });
   /** Whether sidebar was opened via hover (auto-hide) vs click (sticky). */
   const sidebarHoverRef = useRef(false);
   const sidebarHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -105,19 +94,23 @@ export default function PlaygroundClient({
     }, 120);
   }, [cancelSidebarHideTimer]);
 
-  const handleToggleSidebar = useCallback((forceOpen = false) => {
+  const handleToggleSidebar = useCallback(() => {
     cancelSidebarHideTimer();
     setSidebarVisible((visible) => {
-      if (forceOpen) {
-        sidebarHoverRef.current = false;
-        return true;
-      }
-
+      // If currently closed, open with hover-style intent so leaving the
+      // sidebar region auto-closes it.
       if (!visible) {
-        sidebarHoverRef.current = false;
+        sidebarHoverRef.current = true;
         return true;
       }
 
+      // If it was opened by hover and the user clicks the toggle, treat it as
+      // reaffirming "open" intent (don't immediately close on click).
+      if (sidebarHoverRef.current) {
+        return true;
+      }
+
+      // Sticky-open mode: allow explicit close.
       sidebarHoverRef.current = false;
       return false;
     });
