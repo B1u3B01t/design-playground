@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
-import { Eraser, RefreshCw, X, SlidersVertical, Keyboard, ChevronDown, Copy, Toolbox } from 'lucide-react';
+import { Eraser, RefreshCw, X, SlidersVertical, Keyboard, ChevronDown, Copy, Wrench } from 'lucide-react';
 import { useDevModeStore } from './lib/dev-mode-store';
 import { useFlowMocksStore } from './lib/flow-mocks-store';
 import {
@@ -99,6 +99,16 @@ interface ProjectContext {
 const ICON_SRC = (icon: unknown) =>
   (icon as { src?: string }).src ?? (icon as string);
 
+const OPEN_IN_DEFAULT_KEY = 'playground-open-in-default';
+
+const TARGET_LABELS: Record<OpenInTarget, string> = {
+  cursor: 'Cursor',
+  finder: 'Finder',
+  antigravity: 'Antigravity',
+  codex: 'Codex',
+  'github-desktop': 'GitHub Desktop',
+};
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -133,6 +143,11 @@ export default function PlaygroundHeader({
   });
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [pathCopied, setPathCopied] = useState(false);
+  const [defaultTarget, setDefaultTarget] = useState<OpenInTarget>(() => {
+    if (typeof window === 'undefined') return 'cursor';
+    const stored = localStorage.getItem(OPEN_IN_DEFAULT_KEY) as OpenInTarget | null;
+    return stored ?? 'cursor';
+  });
   const removeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const copyFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -344,6 +359,8 @@ export default function PlaygroundHeader({
         new CustomEvent(FIT_COMPONENT_NODES_EVENT, { detail: { componentId: bubble.componentId } }),
       );
     }
+    // Don't dismiss while the generation is still running or queued — only navigate to it.
+    if (bubble.status === 'generating' || bubble.status === 'queued') return;
     setPresenceBubbles((prev) => prev.filter((b) => b.id !== bubble.id));
     dismissBubbleEverywhere(bubble);
   }, [dismissBubbleEverywhere]);
@@ -376,7 +393,11 @@ export default function PlaygroundHeader({
     }
   };
 
-  const handleOpenTarget = useCallback(async (target: OpenInTarget) => {
+  const handleOpenTarget = useCallback(async (target: OpenInTarget, makeDefault = false) => {
+    if (makeDefault) {
+      setDefaultTarget(target);
+      try { localStorage.setItem(OPEN_IN_DEFAULT_KEY, target); } catch { /* ignore */ }
+    }
     try {
       await fetch('/playground/api/open-in', {
         method: 'POST',
@@ -412,72 +433,11 @@ export default function PlaygroundHeader({
           backgroundColor: CANVAS_BACKGROUND_COLOR,
         }}
       >
-        {/* Left: route label + open-in menu */}
-        <div className="flex items-center gap-2">
+        {/* Left: project name label */}
+        <div className="flex items-center">
           <span className="text-sm font-medium text-stone-500 tracking-tight select-none">
-            /playground
+            /{projectContext.projectName}
           </span>
-          <DropdownMenu open={projectMenuOpen} onOpenChange={setProjectMenuOpen}>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-mono text-stone-800 hover:bg-stone-200/60 transition-colors"
-                aria-label="Open project in external app"
-              >
-                <span className="truncate max-w-[220px]">{projectContext.projectName}</span>
-                <ChevronDown className="w-3.5 h-3.5 text-stone-500" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="start"
-              side="bottom"
-              sideOffset={6}
-              className="w-48 rounded-lg border border-stone-200 bg-white/95 p-1 shadow-[0_12px_24px_rgba(28,25,23,0.12)] backdrop-blur-sm"
-            >
-              <DropdownMenuItem
-                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-mono text-stone-700 cursor-pointer"
-                onSelect={() => handleOpenTarget('finder')}
-              >
-                <Image src={ICON_SRC(finderIcon)} alt="" width={16} height={16} className="rounded-sm" />
-                <span>Finder</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-mono text-stone-700 cursor-pointer"
-                onSelect={() => handleOpenTarget('cursor')}
-              >
-                <Image src={ICON_SRC(cursorIcon)} alt="" width={16} height={16} className="rounded-sm" />
-                <span>Cursor</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-mono text-stone-700 cursor-pointer"
-                onSelect={() => handleOpenTarget('antigravity')}
-              >
-                <Image src={ICON_SRC(antigravityIcon)} alt="" width={16} height={16} className="rounded-sm" />
-                <span>Antigravity</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-mono text-stone-700 cursor-pointer"
-                onSelect={() => handleOpenTarget('codex')}
-              >
-                <Image src={ICON_SRC(codexIcon)} alt="" width={16} height={16} className="rounded-sm" />
-                <span>Codex</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-mono text-stone-700 cursor-pointer"
-                onSelect={() => handleOpenTarget('github-desktop')}
-              >
-                <Image src={ICON_SRC(githubDesktopIcon)} alt="" width={16} height={16} className="rounded-sm" />
-                <span>GitHub Desktop</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-mono text-stone-700 cursor-pointer"
-                onSelect={handleCopyPath}
-              >
-                <Copy className="h-4 w-4 text-stone-500" />
-                <span>{pathCopied ? 'Copied!' : 'Copy path'}</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
 
         {/* Right: action icons + presence bubbles */}
@@ -490,7 +450,7 @@ export default function PlaygroundHeader({
                 className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
                 aria-label="Skills"
               >
-                <Toolbox className="w-[18px] h-[18px]" />
+                <Wrench className="w-[18px] h-[18px]" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -640,6 +600,92 @@ export default function PlaygroundHeader({
               </Tooltip>
             </>
           )}
+
+          {/* Split open-in button — far right */}
+          <div className="flex items-center ml-1.5">
+            <div className="flex items-center rounded-2xl border border-stone-200 bg-white overflow-hidden">
+              {/* Default app: click to open immediately */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenTarget(defaultTarget)}
+                    className="flex items-center justify-center w-9 h-9 hover:bg-stone-50 transition-colors"
+                    aria-label={`Open in ${TARGET_LABELS[defaultTarget]}`}
+                  >
+                    <Image
+                      src={
+                        defaultTarget === 'cursor' ? ICON_SRC(cursorIcon)
+                        : defaultTarget === 'finder' ? ICON_SRC(finderIcon)
+                        : defaultTarget === 'antigravity' ? ICON_SRC(antigravityIcon)
+                        : defaultTarget === 'codex' ? ICON_SRC(codexIcon)
+                        : ICON_SRC(githubDesktopIcon)
+                      }
+                      alt={TARGET_LABELS[defaultTarget]}
+                      width={18}
+                      height={18}
+                      className="rounded-sm"
+                    />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={8}>
+                  <p>Open in {TARGET_LABELS[defaultTarget]}</p>
+                </TooltipContent>
+              </Tooltip>
+
+              {/* Divider */}
+              <div className="w-px h-4 bg-stone-200 shrink-0" />
+
+              {/* Chevron: opens picker dropdown */}
+              <DropdownMenu open={projectMenuOpen} onOpenChange={setProjectMenuOpen}>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex items-center justify-center w-7 h-9 hover:bg-stone-50 transition-colors"
+                    aria-label="Choose app to open in"
+                  >
+                    <ChevronDown className="w-3.5 h-3.5 text-stone-500" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  side="bottom"
+                  sideOffset={6}
+                  className="w-48 rounded-2xl border border-stone-200 bg-white/95 p-1.5 shadow-[0_12px_24px_rgba(28,25,23,0.12)] backdrop-blur-sm"
+                >
+                  {(
+                    [
+                      { target: 'cursor' as const, icon: ICON_SRC(cursorIcon), label: 'Cursor' },
+                      { target: 'finder' as const, icon: ICON_SRC(finderIcon), label: 'Finder' },
+                      { target: 'antigravity' as const, icon: ICON_SRC(antigravityIcon), label: 'Antigravity' },
+                      { target: 'codex' as const, icon: ICON_SRC(codexIcon), label: 'Codex' },
+                      { target: 'github-desktop' as const, icon: ICON_SRC(githubDesktopIcon), label: 'GitHub Desktop' },
+                    ] satisfies { target: OpenInTarget; icon: string; label: string }[]
+                  ).map(({ target, icon, label }) => (
+                    <DropdownMenuItem
+                      key={target}
+                      className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-mono text-stone-700 cursor-pointer"
+                      onSelect={() => handleOpenTarget(target, true)}
+                    >
+                      <Image src={icon} alt="" width={16} height={16} className="rounded-sm" />
+                      <span className="flex-1">{label}</span>
+                      {defaultTarget === target && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-stone-400 shrink-0" />
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                  <div className="my-1 h-px bg-stone-100" />
+                  <DropdownMenuItem
+                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-mono text-stone-700 cursor-pointer"
+                    onSelect={handleCopyPath}
+                  >
+                    <Copy className="h-4 w-4 text-stone-400" />
+                    <span>{pathCopied ? 'Copied!' : 'Copy path'}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
 
           {/* Presence bubbles — stacked, active leftmost on top */}
           {presenceBubbles.length > 0 && (
