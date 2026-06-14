@@ -261,7 +261,7 @@ import { ITERATION_PROMPT_COPIED_EVENT, ITERATION_FETCH_EVENT } from './lib/cons
 
 interface PlaygroundCanvasProps {
   sidebarVisible: boolean;
-  onToggleSidebar: () => void;
+  onToggleSidebar: (forceOpen?: boolean) => void;
   onShowSidebar: () => void;
   onHideSidebar: () => void;
   /** Stable per-project id used to scope persisted canvas state to this project. */
@@ -278,6 +278,7 @@ export default function PlaygroundCanvas({
   const dynamicBg = useDynamicBackground();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
+  const sidebarOpenedByButtonHoverRef = useRef(false);
   // Scope canvas persistence to this project. localStorage is keyed by origin
   // (http://localhost:<port>), so without this two projects that reuse a port would
   // read back each other's frames. Falls back to the unscoped key when no id is given.
@@ -2950,6 +2951,8 @@ export default function PlaygroundCanvas({
         new CustomEvent(FIT_COMPONENT_NODES_EVENT, { detail: { componentId: bubble.componentId } }),
       );
     }
+    // Don't dismiss while the generation is still running or queued — only navigate to it.
+    if (bubble.status === 'generating' || bubble.status === 'queued') return;
     window.dispatchEvent(
       new CustomEvent<PresenceBubbleDismissPayload>(PRESENCE_BUBBLE_DISMISS_EVENT, {
         detail: {
@@ -4741,6 +4744,16 @@ export default function PlaygroundCanvas({
     setActiveTool('draw');
   }, [activeTool, drawPenKind, setDrawPenKind]);
 
+  const handleSidebarButtonMouseEnter = useCallback(() => {
+    sidebarOpenedByButtonHoverRef.current = !sidebarVisible;
+    onShowSidebar();
+  }, [onShowSidebar, sidebarVisible]);
+
+  const handleSidebarButtonClick = useCallback(() => {
+    onToggleSidebar(sidebarOpenedByButtonHoverRef.current);
+    sidebarOpenedByButtonHoverRef.current = false;
+  }, [onToggleSidebar]);
+
   // Tool shortcuts: V select, P pen, H highlighter, Escape leaves draw/text
   useEffect(() => {
     const isTypingTarget = () => {
@@ -4938,8 +4951,8 @@ export default function PlaygroundCanvas({
       <div className="absolute left-6 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-2 bg-white rounded-2xl border border-stone-200 shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-2">
         {/* Sidebar toggle (hexagon) — hover instantly shows panel */}
         <button
-          onClick={onToggleSidebar}
-          onMouseEnter={onShowSidebar}
+          onClick={handleSidebarButtonClick}
+          onMouseEnter={handleSidebarButtonMouseEnter}
           onMouseLeave={onHideSidebar}
           className={`group flex items-center justify-center w-9 h-9 rounded-xl transition-colors ${
             sidebarVisible ? 'bg-stone-100 text-stone-900' : 'text-stone-500 hover:text-stone-800 hover:bg-stone-50'

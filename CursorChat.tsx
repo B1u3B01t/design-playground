@@ -182,7 +182,7 @@ export default function CursorChat({ isGenerating: _isGenerating, onSubmit, sele
   const [iterationCount, setIterationCount] = useState(CURSOR_CHAT_DEFAULT_COUNT);
   // User-preferred mode between Edit and Explore. The effective mode (including
   // 'raw') is derived from this + selection context at render/submit time.
-  const [chatMode, setChatMode] = useState<'explore' | 'edit'>('explore');
+  const [chatMode, setChatMode] = useState<'explore' | 'edit'>('edit');
   const inlineRefContainerRef = useRef<HTMLDivElement | null>(null);
 
   const { models, isLoading: isLoadingModels } = useAvailableModels();
@@ -815,10 +815,10 @@ export default function CursorChat({ isGenerating: _isGenerating, onSubmit, sele
                       : 'text-stone-500 hover:text-stone-800'
                   }`}
                   aria-pressed={effectiveChatMode === 'edit'}
-                  title={`Edit (${formatKeyCombo(getCombo('cursor-chat.toggle-edit-mode'))})`}
-                >
+                  title={`Edit design (${formatKeyCombo(getCombo('cursor-chat.toggle-edit-mode'))})`}
+                  >
                   <EditIcon className="flex-shrink-0" />
-                  <span>Edit</span>
+                  <span>Edit design</span>
                 </button>
                 {/* Explore segment: text label + (when active) the iteration
                     count dragger sit side-by-side. The whole row is the active

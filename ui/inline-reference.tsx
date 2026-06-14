@@ -164,39 +164,29 @@ function createPillElement(
       : "gap-0.5 rounded-sm bg-accent/50 border border-accent px-1.5 py-0.5 align-baseline mx-0.5"
   )
 
-  if (isSkill) {
-    const avatar = document.createElement("span")
-    avatar.setAttribute("aria-hidden", "true")
-    avatar.className = "inline-reference-pill__avatar pointer-events-none inline-block shrink-0"
-    applyInlineStyles(avatar, getSkillBubbleStyle(segment.value, 18))
-    pill.appendChild(avatar)
-  }
-
   const labelSpan = document.createElement("span")
-  labelSpan.textContent = segment.label
+  labelSpan.textContent = isSkill ? `/${segment.label}` : segment.label
   labelSpan.className = cn(
     "pointer-events-none",
     isSkill ? "inline-reference-pill__label" : undefined
   )
   pill.appendChild(labelSpan)
 
-  const deleteBtn = document.createElement("span")
-  deleteBtn.role = "button"
-  deleteBtn.tabIndex = -1
-  deleteBtn.ariaLabel = `Remove ${segment.label}`
-  deleteBtn.className = cn(
-    "inline-flex items-center justify-center cursor-pointer transition-colors",
-    isSkill
-      ? "inline-reference-pill__remove"
-      : "size-3.5 rounded-sm opacity-50 hover:opacity-100 hover:bg-accent ml-0.5"
-  )
-  deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`
-  deleteBtn.addEventListener("mousedown", (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    onDelete()
-  })
-  pill.appendChild(deleteBtn)
+  // Skill pills use backspace-to-select-then-delete; non-skill pills get an × button.
+  if (!isSkill) {
+    const deleteBtn = document.createElement("span")
+    deleteBtn.role = "button"
+    deleteBtn.tabIndex = -1
+    deleteBtn.ariaLabel = `Remove ${segment.label}`
+    deleteBtn.className = "inline-flex items-center justify-center cursor-pointer transition-colors size-3.5 rounded-sm opacity-50 hover:opacity-100 hover:bg-accent ml-0.5"
+    deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`
+    deleteBtn.addEventListener("mousedown", (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      onDelete()
+    })
+    pill.appendChild(deleteBtn)
+  }
 
   return pill
 }
@@ -453,6 +443,16 @@ function InlineReferenceInput({
 
   const isComposing = React.useRef(false)
   const [isEmpty, setIsEmpty] = React.useState(true)
+  /** Skill pill currently marked as pending-delete (first backspace). */
+  const pendingDeletePillRef = React.useRef<HTMLElement | null>(null)
+
+  const clearPendingDelete = React.useCallback(() => {
+    const el = pendingDeletePillRef.current
+    if (el) {
+      el.removeAttribute("data-pending-delete")
+      pendingDeletePillRef.current = null
+    }
+  }, [])
 
   // Expose a way for InlineReferenceContent to register its filtered items
   // We use a global map on the context
@@ -482,6 +482,7 @@ function InlineReferenceInput({
     const el = inputRef.current
     if (!el) return
 
+    clearPendingDelete()
     checkEmpty()
 
     // Detect trigger
@@ -546,32 +547,48 @@ function InlineReferenceInput({
         const node = range.startContainer
         const cursorOffset = range.startOffset
 
-        // Check if cursor is right after a pill (in a text node with offset 0 or 1 for ZWS)
-        if (
-          node.nodeType === Node.TEXT_NODE &&
-          cursorOffset <= 1
-        ) {
-          const prev = node.previousSibling
-          if (prev && (prev as HTMLElement).hasAttribute?.(PILL_ATTR)) {
-            e.preventDefault()
-            prev.remove()
-            setSegments(readSegmentsFromDOM(el))
-            checkEmpty()
-            return
+        const getPillBefore = (): HTMLElement | null => {
+          // Cursor in a text node right after a pill (offset 0 or 1 for ZWS)
+          if (node.nodeType === Node.TEXT_NODE && cursorOffset <= 1) {
+            const prev = node.previousSibling
+            if (prev && (prev as HTMLElement).hasAttribute?.(PILL_ATTR)) {
+              return prev as HTMLElement
+            }
           }
+          // Cursor at element level right after a pill
+          if (node === el && cursorOffset > 0) {
+            const prev = el.childNodes[cursorOffset - 1]
+            if (prev && (prev as HTMLElement).hasAttribute?.(PILL_ATTR)) {
+              return prev as HTMLElement
+            }
+          }
+          return null
         }
 
-        // If cursor is at element level right after a pill
-        if (node === el && cursorOffset > 0) {
-          const prev = el.childNodes[cursorOffset - 1]
-          if (prev && (prev as HTMLElement).hasAttribute?.(PILL_ATTR)) {
-            e.preventDefault()
-            prev.remove()
+        const pill = getPillBefore()
+        if (pill) {
+          e.preventDefault()
+          const isSkillPill = pill.getAttribute(PILL_TRIGGER_ATTR) === "/"
+          if (isSkillPill && !pill.hasAttribute("data-pending-delete")) {
+            // First backspace on a skill pill — select (highlight) it
+            clearPendingDelete()
+            pill.setAttribute("data-pending-delete", "")
+            pendingDeletePillRef.current = pill
+          } else {
+            // Second backspace, or non-skill pill — delete immediately
+            clearPendingDelete()
+            pill.remove()
             setSegments(readSegmentsFromDOM(el))
             checkEmpty()
-            return
           }
+          return
         }
+
+        // Cursor is not adjacent to a pill — clear any pending state
+        clearPendingDelete()
+      } else if (e.key !== "Shift" && e.key !== "Meta" && e.key !== "Alt" && e.key !== "Control") {
+        // Any printable or navigating key clears the pending-delete highlight
+        clearPendingDelete()
       }
     },
     [
@@ -583,6 +600,7 @@ function InlineReferenceInput({
       setTriggerState,
       setSegments,
       checkEmpty,
+      clearPendingDelete,
     ]
   )
 
