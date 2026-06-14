@@ -391,11 +391,18 @@ export default function PlaygroundCanvas({
   }, []);
 
   const onNodeDragStop = useCallback(
-    (event: ReactMouseEvent, node: Node, _nodes: Node[]) => {
+    (event: MouseEvent | TouchEvent, node: Node, _nodes: Node[]) => {
       if (node.type !== 'pdf') return;
 
-      const clientX = event.clientX;
-      const clientY = event.clientY;
+      const point =
+        'clientX' in event
+          ? { clientX: event.clientX, clientY: event.clientY }
+          : (() => {
+              const touch = event.changedTouches[0] ?? event.touches[0];
+              return touch ? { clientX: touch.clientX, clientY: touch.clientY } : null;
+            })();
+      if (!point) return;
+      const { clientX, clientY } = point;
       const el = document.elementFromPoint(clientX, clientY);
       const dropTarget = el?.closest('[data-pdf-drop-target]') as HTMLElement | null;
       if (!dropTarget) return;
@@ -457,7 +464,7 @@ export default function PlaygroundCanvas({
   usePdfPageGlobalDrag(setNodes, getNode);
 
   const onNodeDragStart = useCallback(
-    (_event: ReactMouseEvent, node: Node, _nodes: Node[]) => {
+    (_event: MouseEvent | TouchEvent, node: Node, _nodes: Node[]) => {
       if (node.type !== 'pdf') return;
       const sourceData = node.data as unknown as PdfNodeData;
       if (typeof sourceData.extractedPage !== 'number') return;
@@ -4811,7 +4818,8 @@ export default function PlaygroundCanvas({
           panOnScroll
           zoomOnScroll={false}
           zoomOnPinch
-          panOnDrag={false}
+          panOnDrag={[1]}
+          panActivationKeyCode={null}
           selectionOnDrag={activeTool === 'select'}
           selectionMode={SelectionMode.Partial}
           nodesDraggable={activeTool !== 'draw'}

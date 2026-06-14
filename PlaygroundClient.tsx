@@ -17,17 +17,9 @@ import {
   SKILLS_CHANGED_EVENT,
   STORAGE_KEY,
 } from './lib/constants';
-import {
-  captureClient,
-  fetchTelemetryStatus,
-  setTelemetryEnabledClient,
-} from './lib/telemetry/client';
+import { captureClient } from './lib/telemetry/client';
 import { startActivityTracking } from './lib/telemetry/activity';
-import {
-  TELEMETRY_DOCS_URL,
-  TELEMETRY_NOTICE_ACK_KEY,
-  TELEMETRY_SESSION_SENT_KEY,
-} from './lib/telemetry/constants';
+import { TELEMETRY_SESSION_SENT_KEY } from './lib/telemetry/constants';
 import { preloadAllComponents } from './registry';
 import { LiveblocksProvider, RoomProvider } from '@liveblocks/react';
 import { liveblocksAuth } from './liveblocks.config';
@@ -164,9 +156,8 @@ export default function PlaygroundClient({
     return () => window.removeEventListener(OPEN_SKILLS_CATALOG_EVENT, handler);
   }, []);
 
-  // Anonymous dev telemetry: session start, time tracking, first-run notice.
-  // Guests (room link without host=1) are never recorded — they never saw a
-  // consent notice. Everything here is content-free; see TELEMETRY.md.
+  // Anonymous dev telemetry: session start and time tracking.
+  // Guests (room link without host=1) are never recorded. See TELEMETRY.md.
   useEffect(() => {
     if (process.env.NODE_ENV !== 'development') return;
     if (roomId && !isHost) return;
@@ -185,30 +176,6 @@ export default function PlaygroundClient({
       captureClient('feature_used', { feature: 'prompt_copied' });
     };
     window.addEventListener(ITERATION_PROMPT_COPIED_EVENT, onPromptCopied);
-
-    // One-time in-app notice (catches users who missed the terminal notice).
-    if (!localStorage.getItem(TELEMETRY_NOTICE_ACK_KEY)) {
-      void fetchTelemetryStatus().then((status) => {
-        if (!status?.enabled) return;
-        if (localStorage.getItem(TELEMETRY_NOTICE_ACK_KEY)) return;
-        localStorage.setItem(TELEMETRY_NOTICE_ACK_KEY, '1');
-        toast.info('Anonymous usage telemetry is enabled in dev', {
-          description:
-            'Counts and timings only — never prompts, code, or file names. See TELEMETRY.md.',
-          duration: 12000,
-          action: {
-            label: 'Disable',
-            onClick: () => {
-              void setTelemetryEnabledClient(false).then((ok) => {
-                if (ok) toast.success('Telemetry disabled on this machine');
-              });
-            },
-          },
-        });
-        // Surface the docs link for the curious without cluttering the toast.
-        console.info(`[playground] Telemetry details: ${TELEMETRY_DOCS_URL}`);
-      });
-    }
 
     return () => {
       stopActivityTracking();

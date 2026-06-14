@@ -3,6 +3,7 @@ import { execFile } from 'child_process';
 import { MODELS_CACHE_TTL_MS, type ModelOption } from '../../lib/constants';
 import type { ProviderId } from '../../lib/providers';
 import { getProvider } from '../../lib/providers';
+import { filterCursorModelsFromCli } from '../../lib/model-catalog';
 
 /**
  * Playground models API – returns available AI models for generation.
@@ -43,6 +44,13 @@ function fetchModelsFromCLI(binary: string, args: string[], parse: (stdout: stri
   });
 }
 
+function postProcessModels(providerId: ProviderId, models: ModelOption[]): ModelOption[] {
+  if (providerId === 'cursor') {
+    return filterCursorModelsFromCli(models);
+  }
+  return models;
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const providerId = (url.searchParams.get('provider') || 'cursor') as ProviderId;
@@ -72,11 +80,12 @@ export async function GET(req: Request) {
 
   // Fetch from CLI
   try {
-    const models = await fetchModelsFromCLI(
+    const rawModels = await fetchModelsFromCLI(
       config.binary,
       modelListArgs,
       config.parseModelOutput!,
     );
+    const models = postProcessModels(providerId, rawModels);
 
     modelCache.set(providerId, { models, timestamp: Date.now() });
 
@@ -88,9 +97,11 @@ export async function GET(req: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.warn(`[Playground][models] ${config.displayName} CLI fetch failed:`, message);
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 },
-    );
+    return NextResponse.json({
+      success: true,
+      models: config.fallbackModels,
+      source: 'fallback',
+      warning: message,
+    });
   }
 }

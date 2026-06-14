@@ -14,6 +14,11 @@ import {
 import { useModelSettingsStore } from '../../lib/model-settings-store';
 import { getProvider } from '../../lib/providers/registry';
 import { resolveAgentModel } from '../../lib/resolve-agent-model';
+import {
+  migrateModelId,
+  isModelEnabled,
+  normalizeAutoModelId,
+} from '../../lib/model-catalog';
 import type { ProviderId } from '../../lib/providers/types';
 
 // Re-export ModelOption for consumers
@@ -38,6 +43,9 @@ export function loadSelectedModel(): string {
       model = localStorage.getItem(SELECTED_MODEL_STORAGE_KEY) || '';
     }
 
+    const rawModel = model;
+    model = migrateModelId(activeProvider as ProviderId, model);
+
     // Validate the model belongs to the active provider's enabled models
     if (model) {
       const config = getProvider(activeProvider);
@@ -45,10 +53,13 @@ export function loadSelectedModel(): string {
       const enabledModels = ps?.enabledModels?.length
         ? ps.enabledModels
         : config.defaultEnabledModels;
-      if (!enabledModels.includes(model)) {
-        // Model doesn't belong to this provider — return first enabled model
-        return enabledModels[0] || '';
+      if (!isModelEnabled(activeProvider as ProviderId, model, enabledModels)) {
+        model = enabledModels[0] || '';
       }
+    }
+
+    if (model && model !== rawModel) {
+      saveSelectedModel(model);
     }
 
     return resolveAgentModel(activeProvider as ProviderId, model) ?? model;
@@ -91,8 +102,16 @@ export function useAvailableModels() {
   // Filter by enabled models — fall back to provider defaults if empty
   const config = getProvider(activeProvider);
   const models = enabledModels.length === 0
-    ? availableModels.filter((m) => config.defaultEnabledModels.includes(m.value))
-    : availableModels.filter((m) => enabledModels.includes(m.value));
+    ? availableModels.filter((m) =>
+        config.defaultEnabledModels.some((id) =>
+          activeProvider === 'cursor'
+            ? normalizeAutoModelId(id) === normalizeAutoModelId(m.value)
+            : id === m.value,
+        ),
+      )
+    : availableModels.filter((m) =>
+        isModelEnabled(activeProvider, m.value, enabledModels),
+      );
 
   return { models, allModels: availableModels, isLoading };
 }

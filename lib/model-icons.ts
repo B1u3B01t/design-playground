@@ -54,7 +54,10 @@ export function getModelIconConfig(modelValue: string, providerId?: string): Mod
     v.includes('claude') ||
     v.includes('opus') ||
     v.includes('sonnet') ||
-    v.includes('haiku')
+    v.includes('haiku') ||
+    v.includes('fable') ||
+    v === 'best' ||
+    v === 'opusplan'
   ) {
     return MODEL_ICON_CONFIGS.claude;
   }
@@ -73,6 +76,10 @@ export function getModelIconConfig(modelValue: string, providerId?: string): Mod
 
   // Gemini family
   if (v.includes('gemini')) return MODEL_ICON_CONFIGS.gemini;
+
+  // Unrecognized slug — use the active provider's brand icon
+  if (providerId === 'claude-code') return MODEL_ICON_CONFIGS.claude;
+  if (providerId === 'codex') return MODEL_ICON_CONFIGS.openai;
 
   // Anything else → generic Cursor icon
   return MODEL_ICON_CONFIGS.cursor;

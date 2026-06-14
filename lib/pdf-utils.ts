@@ -54,3 +54,26 @@ export function getPdfRenderPixelRatio(): number {
   const dpr = window.devicePixelRatio || 1;
   return Math.max(PDF_RENDER_SUPERSAMPLE, dpr * 2);
 }
+
+export function buildPdfViewerUrl(opts: {
+  pdfUrl: string;
+  name: string;
+  pages: number[];
+}): string {
+  const params = new URLSearchParams();
+  params.set('url', opts.pdfUrl);
+  params.set('name', opts.name);
+  if (opts.pages.length > 0) {
+    params.set('pages', opts.pages.join(','));
+  }
+  return `/playground/pdf?${params.toString()}`;
+}
+
+export function parsePdfViewerPages(raw: string | undefined): number[] | null {
+  if (!raw) return null;
+  const pages = raw
+    .split(',')
+    .map((s) => parseInt(s.trim(), 10))
+    .filter((n) => Number.isFinite(n) && n >= 1);
+  return pages.length > 0 ? pages : null;
+}

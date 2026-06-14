@@ -1,4 +1,5 @@
 import type { ProviderConfig, AgentSpawnOptions } from './types';
+import { CLAUDE_FALLBACK_MODELS, CLAUDE_FEATURED_MODEL_IDS } from '../model-catalog';
 
 function buildAgentArgs(opts: AgentSpawnOptions): string[] {
   const args = ['-p', '--dangerously-skip-permissions', '--verbose'];
@@ -22,19 +23,13 @@ export const claudeCodeProvider: ProviderConfig = {
   notFoundMessage:
     'Claude Code CLI not found. Install via: npm install -g @anthropic-ai/claude-code',
 
-  fallbackModels: [
-    { value: 'sonnet', label: 'Claude Sonnet (Latest)' },
-    { value: 'opus', label: 'Claude Opus (Latest)' },
-    { value: 'haiku', label: 'Claude Haiku (Fast)' },
-    { value: 'opusplan', label: 'Opus Plan + Sonnet Execute' },
-    { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-    { value: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
-  ],
+  // Claude Code has no `models` list subcommand — catalog from official docs.
+  fallbackModels: CLAUDE_FALLBACK_MODELS,
 
-  defaultEnabledModels: ['sonnet', 'opus', 'haiku'],
+  defaultEnabledModels: [...CLAUDE_FEATURED_MODEL_IDS],
 
   buildAgentArgs,
 
-  // Claude Code has no `models` subcommand — return null to use fallbackModels.
+  // No CLI model listing — /playground/api/models serves fallbackModels.
   buildModelListArgs: () => null,
 };

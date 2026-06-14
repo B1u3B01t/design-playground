@@ -11,6 +11,7 @@
 // ============================================================================
 
 import type { TelemetryEventName } from './constants';
+import { LEGACY_MODEL_ALIASES, normalizeAutoModelId } from '../model-catalog';
 
 type PropSpec =
   | { kind: 'boolean' }
@@ -39,7 +40,24 @@ const PROVIDERS = ['cursor', 'claude-code', 'codex'] as const;
 export const KNOWN_MODELS = [
   'auto',
   'default',
-  // cursor
+  // cursor — current generation
+  'composer-2.5',
+  'composer-2.5-fast',
+  'gpt-5.3-codex',
+  'gpt-5.3-codex-fast',
+  'gpt-5.3-codex-high',
+  'claude-opus-4-8-medium',
+  'claude-opus-4-8-high',
+  'claude-opus-4-8-thinking-high',
+  'claude-4.6-sonnet-medium',
+  'claude-4.6-sonnet-medium-thinking',
+  'gpt-5.5-medium',
+  'gpt-5.5-high',
+  'gemini-3.1-pro',
+  'gemini-3.5-flash',
+  'grok-4.3',
+  'grok-build-0.1',
+  // cursor — legacy (kept for historical telemetry)
   'opus-4.6-thinking',
   'opus-4.6',
   'sonnet-4.5',
@@ -48,17 +66,26 @@ export const KNOWN_MODELS = [
   'composer-1.5',
   'gpt-5.2',
   'gpt-5.2-codex',
-  'gpt-5.3-codex',
   'gemini-3-pro',
   'gemini-3-flash',
   'grok',
-  // claude-code
+  // claude-code — aliases
   'sonnet',
   'opus',
   'haiku',
+  'fable',
+  'best',
   'opusplan',
-  'claude-sonnet-4-6',
+  'sonnet[1m]',
+  'opus[1m]',
+  // claude-code — pinned
+  'claude-opus-4-8',
+  'claude-opus-4-8[1m]',
+  'claude-opus-4-7',
   'claude-opus-4-6',
+  'claude-sonnet-4-6',
+  'claude-haiku-4-5-20251001',
+  'claude-fable-5',
   // codex
   'gpt-5.5',
   'gpt-5.4',
@@ -292,7 +319,9 @@ export function sanitizeEvent(
 /** Map an arbitrary model string to a schema-safe value. */
 export function safeModel(model: string | undefined | null): string {
   if (!model) return 'default';
-  return (KNOWN_MODELS as readonly string[]).includes(model) ? model : 'custom';
+  const normalized = normalizeAutoModelId(model);
+  const migrated = LEGACY_MODEL_ALIASES[normalized] ?? normalized;
+  return (KNOWN_MODELS as readonly string[]).includes(migrated) ? migrated : 'custom';
 }
 
 /** Map arbitrary skill ids to schema-safe values (builtin id or 'custom'). */

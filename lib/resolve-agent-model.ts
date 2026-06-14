@@ -1,5 +1,6 @@
 import type { ProviderId } from './providers/types';
 import { getProvider } from './providers/registry';
+import { migrateModelId, normalizeAutoModelId } from './model-catalog';
 
 /**
  * Map client model selection to a value the active provider CLI accepts.
@@ -11,21 +12,22 @@ export function resolveAgentModel(
 ): string | undefined {
   const trimmed = model?.trim();
   const config = getProvider(providerId);
+  const migrated = trimmed ? migrateModelId(providerId, trimmed) : trimmed;
 
   if (providerId === 'claude-code') {
-    if (!trimmed || trimmed === 'auto') {
+    if (!migrated || migrated === 'auto') {
       return config.defaultEnabledModels[0];
     }
-    return trimmed;
+    return migrated;
   }
 
   if (providerId === 'codex') {
     // Empty string = CLI default; omit `-m`.
-    if (!trimmed || trimmed === 'auto') return undefined;
-    return trimmed;
+    if (!migrated || migrated === 'auto') return undefined;
+    return migrated;
   }
 
   // Cursor — `auto` is valid
-  if (!trimmed) return 'auto';
-  return trimmed;
+  if (!migrated) return 'auto';
+  return normalizeAutoModelId(migrated);
 }

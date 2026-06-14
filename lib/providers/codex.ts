@@ -42,7 +42,7 @@ export const codexProvider: ProviderConfig = {
     { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
   ],
 
-  defaultEnabledModels: ['', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini'],
+  defaultEnabledModels: ['', 'gpt-5.5', 'gpt-5.4'],
 
   buildAgentArgs,
 

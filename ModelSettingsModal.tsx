@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Check, RefreshCw, ChevronDown } from 'lucide-react';
 import {
   Dialog,
@@ -22,6 +22,7 @@ import {
   setTelemetryEnabledClient,
 } from './lib/telemetry/client';
 import { TELEMETRY_DOCS_URL } from './lib/telemetry/constants';
+import { partitionCursorModels, partitionClaudeModels } from './lib/model-catalog';
 
 // ---------------------------------------------------------------------------
 // Effort level options for Claude Code
@@ -69,7 +70,7 @@ interface ModelSettingsModalProps {
 }
 
 export default function ModelSettingsModal({ open, onOpenChange }: ModelSettingsModalProps) {
-  const { allModels: models, isLoading } = useAvailableModels();
+  const { allModels, isLoading } = useAvailableModels();
   const {
     activeProvider,
     setActiveProvider,
@@ -91,6 +92,7 @@ export default function ModelSettingsModal({ open, onOpenChange }: ModelSettings
   const [localClaudeOpts, setLocalClaudeOpts] = useState<ClaudeCodeOptions>(claudeCodeOptions);
   const [localCodexOpts, setLocalCodexOpts] = useState<CodexOptions>(codexOptions);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [tierModelsOpen, setTierModelsOpen] = useState(false);
   const [displayName, setDisplayNameState] = useState('');
   // null = status unknown/unavailable (e.g. production build) → section hidden
   const [telemetryEnabled, setTelemetryEnabled] = useState<boolean | null>(null);
@@ -129,16 +131,70 @@ export default function ModelSettingsModal({ open, onOpenChange }: ModelSettings
       setLocalClaudeOpts(claudeCodeOptions);
       setLocalCodexOpts(codexOptions);
     }
-  }, [open, enabledModels, models, activeProvider, claudeCodeOptions, codexOptions]);
+  }, [open, enabledModels, allModels, activeProvider, claudeCodeOptions, codexOptions]);
+
+  const { featuredModels, advancedModels, selectableModels } = useMemo(() => {
+    if (activeProvider === 'cursor') {
+      const { featured, advanced } = partitionCursorModels(allModels);
+      return {
+        featuredModels: featured,
+        advancedModels: advanced,
+        selectableModels: [...featured, ...advanced],
+      };
+    }
+    if (activeProvider === 'claude-code') {
+      const { featured, advanced } = partitionClaudeModels(allModels);
+      return {
+        featuredModels: featured,
+        advancedModels: advanced,
+        selectableModels: [...featured, ...advanced],
+      };
+    }
+    return {
+      featuredModels: allModels,
+      advancedModels: [] as ModelOption[],
+      selectableModels: allModels,
+    };
+  }, [activeProvider, allModels]);
 
   const providers = getAllProviders();
-  const allSelected = selected.size === models.length;
+  const allSelected = selected.size === selectableModels.length;
+
+  const renderModelRow = (m: ModelOption) => {
+    const checked = selected.has(m.value);
+    const iconConfig = getModelIconConfig(m.value, activeProvider);
+    return (
+      <button
+        key={m.value || '__auto__'}
+        onClick={() => toggleModel(m.value)}
+        className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-stone-50 transition-colors w-full"
+      >
+        <span
+          className={`flex items-center justify-center w-4 h-4 rounded border transition-colors flex-shrink-0 ${
+            checked
+              ? 'bg-stone-800 border-stone-800'
+              : 'border-stone-300'
+          }`}
+        >
+          {checked && <Check className="w-3 h-3 text-white" />}
+        </span>
+        <span className="text-xs text-stone-700 truncate flex-1 text-left">{m.label}</span>
+        <span
+          className="flex items-center justify-center w-5 h-5 rounded flex-shrink-0 bg-center bg-no-repeat bg-[length:70%] ml-auto"
+          style={{
+            backgroundColor: iconConfig.bg,
+            backgroundImage: `url(${iconConfig.src})`,
+          }}
+        />
+      </button>
+    );
+  };
 
   const toggleAll = () => {
     if (allSelected) {
-      setSelected(new Set(models.length > 0 ? [models[0].value] : []));
+      setSelected(new Set(selectableModels.length > 0 ? [selectableModels[0].value] : []));
     } else {
-      setSelected(new Set(models.map((m) => m.value)));
+      setSelected(new Set(selectableModels.map((m) => m.value)));
     }
   };
 
@@ -158,10 +214,11 @@ export default function ModelSettingsModal({ open, onOpenChange }: ModelSettings
   const handleTabChange = (id: ProviderId) => {
     setActiveProvider(id);
     setAdvancedOpen(false);
+    setTierModelsOpen(false);
   };
 
   const handleSave = () => {
-    if (selected.size === models.length) {
+    if (selected.size === selectableModels.length) {
       setEnabledModels([]);
     } else {
       setEnabledModels(Array.from(selected));
@@ -296,38 +353,41 @@ export default function ModelSettingsModal({ open, onOpenChange }: ModelSettings
             {isLoading ? (
               <span className="text-xs text-stone-400 px-2 py-2">Loading models...</span>
             ) : (
-              models.map((m: ModelOption) => {
-                const checked = selected.has(m.value);
-                const iconConfig = getModelIconConfig(m.value, activeProvider);
-                return (
-                  <button
-                    key={m.value}
-                    onClick={() => toggleModel(m.value)}
-                    className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-stone-50 transition-colors w-full"
-                  >
-                    <span
-                      className={`flex items-center justify-center w-4 h-4 rounded border transition-colors flex-shrink-0 ${
-                        checked
-                          ? 'bg-stone-800 border-stone-800'
-                          : 'border-stone-300'
-                      }`}
-                    >
-                      {checked && <Check className="w-3 h-3 text-white" />}
-                    </span>
-                    <span className="text-xs text-stone-700 truncate flex-1 text-left">{m.label}</span>
-                    <span
-                      className="flex items-center justify-center w-5 h-5 rounded flex-shrink-0 bg-center bg-no-repeat bg-[length:70%] ml-auto"
-                      style={{
-                        backgroundColor: iconConfig.bg,
-                        backgroundImage: `url(${iconConfig.src})`,
-                      }}
-                    />
-                  </button>
-                );
-              })
+              featuredModels.map(renderModelRow)
             )}
           </div>
+
+          {/* Tier variants / pinned model ids */}
+          {(activeProvider === 'cursor' || activeProvider === 'claude-code') &&
+            advancedModels.length > 0 && (
+            <div className="mt-1">
+              <button
+                onClick={() => setTierModelsOpen(!tierModelsOpen)}
+                className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-stone-500 hover:text-stone-700 transition-colors w-full"
+              >
+                <ChevronDown
+                  className={`w-3.5 h-3.5 transition-transform ${tierModelsOpen ? '' : '-rotate-90'}`}
+                />
+                <span className="font-medium">Advanced models</span>
+                <span className="text-stone-400 ml-auto">{advancedModels.length}</span>
+              </button>
+
+              {tierModelsOpen && (
+                <div className="max-h-40 overflow-y-auto flex flex-col gap-0.5 mt-0.5">
+                  {advancedModels.map(renderModelRow)}
+                </div>
+              )}
+            </div>
+          )}
         </div>
+
+        {/* Claude Code: CLI update hint */}
+        {activeProvider === 'claude-code' && (
+          <p className="text-[11px] text-stone-400 px-2 -mt-1">
+            Aliases track the latest release. Pinned models are under Advanced models.
+            Run <code className="text-stone-500">claude update</code> for Opus 4.8 (v2.1.154+) and Fable 5 (v2.1.170+).
+          </p>
+        )}
 
         {/* Codex Advanced Options */}
         {activeProvider === 'codex' && (

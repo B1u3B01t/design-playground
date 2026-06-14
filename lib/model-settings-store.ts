@@ -4,6 +4,7 @@ import type { ProviderId, ClaudeCodeOptions, CodexOptions } from './providers/ty
 import { DEFAULT_CLAUDE_CODE_OPTIONS, DEFAULT_CODEX_OPTIONS } from './providers/types';
 import { getProvider, DEFAULT_PROVIDER_ID, getAllProviderIds } from './providers/registry';
 import type { ModelOption } from './constants';
+import { migrateEnabledModels, isModelEnabled } from './model-catalog';
 
 // ---------------------------------------------------------------------------
 // Per-Provider State
@@ -226,7 +227,7 @@ export const useModelSettingsStore = create<ModelSettingsState>()(
     }),
     {
       name: STORE_KEY,
-      version: 2,
+      version: 3,
       onRehydrateStorage: () => () => {
         useModelSettingsStore.setState({ hasHydrated: true });
       },
@@ -262,6 +263,25 @@ export const useModelSettingsStore = create<ModelSettingsState>()(
               mergedProviderState[id] = defaultStates[id];
             }
           }
+
+          // v2 → v3: remap stale model slugs to current generation
+          if (version < 3) {
+            for (const id of getAllProviderIds()) {
+              const config = getProvider(id);
+              const ps = mergedProviderState[id];
+              mergedProviderState[id] = {
+                ...ps,
+                enabledModels: migrateEnabledModels(
+                  id,
+                  ps.enabledModels,
+                  config.defaultEnabledModels,
+                ),
+                availableModels: config.fallbackModels,
+                hasFetched: false,
+              };
+            }
+          }
+
           return {
             ...state,
             providerState: mergedProviderState,
@@ -288,11 +308,14 @@ export const useModelSettingsStore = create<ModelSettingsState>()(
  */
 export function filterEnabledModels(allModels: ModelOption[]): ModelOption[] {
   const state = useModelSettingsStore.getState();
-  const ps = state.providerState[state.activeProvider];
+  const providerId = state.activeProvider;
+  const ps = state.providerState[providerId];
   const enabledModels = ps?.enabledModels ?? [];
   if (enabledModels.length === 0) {
-    const config = getProvider(state.activeProvider);
-    return allModels.filter((m) => config.defaultEnabledModels.includes(m.value));
+    const config = getProvider(providerId);
+    return allModels.filter((m) =>
+      config.defaultEnabledModels.some((id) => isModelEnabled(providerId, m.value, [id])),
+    );
   }
-  return allModels.filter((m) => enabledModels.includes(m.value));
+  return allModels.filter((m) => isModelEnabled(providerId, m.value, enabledModels));
 }

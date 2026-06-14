@@ -7,9 +7,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { RESIZE_MIN_WIDTH, RESIZE_MIN_HEIGHT } from '../lib/constants';
 import { useScrollCapture } from '../hooks/useNodeShared';
 import { useInteractiveNodeStore, useIsInteractiveNode } from '../lib/interactive-node-store';
-import { NodeLabel } from './shared/NodeLabel';
+import { NodeLabel, useInverseZoom } from './shared/NodeLabel';
 import { useFrameHoverHint } from './shared/FrameHoverHint';
-import { loadPdfJs, getPdfRenderPixelRatio } from '../lib/pdf-utils';
+import { loadPdfJs, getPdfRenderPixelRatio, buildPdfViewerUrl } from '../lib/pdf-utils';
 import { usePlaygroundDrawStore } from '../lib/playground-draw-store';
 import type { DrawStroke, PdfDrawingsMap } from '../lib/draw-types';
 import { DrawSurface } from './shared/DrawSurface';
@@ -216,6 +216,8 @@ function PdfPageView({
 function PdfNodeInner({ id, data, selected }: { id: string; data: PdfNodeData; selected?: boolean }) {
   const { deleteElements, setNodes, getNode, updateNodeData } = useReactFlow();
   const nodeId = useNodeId();
+  const labelInvScale = useInverseZoom();
+  const hidePlayButton = labelInvScale * 14 > 14 + 6;
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const topBarRef = useRef<HTMLDivElement>(null);
@@ -397,6 +399,20 @@ function PdfNodeInner({ id, data, selected }: { id: string; data: PdfNodeData; s
     ? [data.extractedPage!]
     : getDisplayPages(data, pageCount);
 
+  const handleOpenInNewTab = useCallback(() => {
+    const pages = pagesToRender.length > 0
+      ? pagesToRender
+      : typeof data.extractedPage === 'number'
+        ? [data.extractedPage]
+        : [];
+    const url = buildPdfViewerUrl({
+      pdfUrl: data.pdfUrl,
+      name: label,
+      pages,
+    });
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, [data.pdfUrl, data.extractedPage, label, pagesToRender]);
+
   const pageDragEnabled = !drawToolActive;
 
   return (
@@ -438,6 +454,31 @@ function PdfNodeInner({ id, data, selected }: { id: string; data: PdfNodeData; s
         className={`flex items-center justify-between px-0.5 pb-1.5 cursor-grab transition-opacity ${selected ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
       >
         <div className="flex items-center gap-1.5 min-w-0">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={handleOpenInNewTab}
+                className="nodrag shrink-0 p-0 leading-none rounded-[5px] transition-colors"
+                style={{
+                  color: selected ? '#6366F1' : '#A8A29E',
+                  display: 'inline-block',
+                  transform: `scale(${labelInvScale})`,
+                  transformOrigin: 'left bottom',
+                  willChange: 'transform',
+                  visibility: hidePlayButton ? 'hidden' : 'visible',
+                  pointerEvents: hidePlayButton ? 'none' : undefined,
+                }}
+                aria-label="Open in new tab"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor" />
+                  <path d="M10 8 L16 12 L10 16 Z" fill="white" />
+                </svg>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent><p>Open in new tab</p></TooltipContent>
+          </Tooltip>
           <FileText className="w-3 h-3 text-indigo-500 shrink-0" />
           <NodeLabel color="#6366F1">{label}</NodeLabel>
         </div>

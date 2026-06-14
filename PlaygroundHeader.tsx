@@ -268,13 +268,22 @@ export default function PlaygroundHeader({
     };
 
     const handleError = (e: Event) => {
-      const detail = (e as CustomEvent<{ componentId: string }>).detail;
-      setPresenceBubbles(prev =>
-        prev.filter(b => !(
-          (b.status === 'generating' || b.status === 'queued') &&
-          b.id.startsWith(detail.componentId)
-        ))
-      );
+      const detail = (e as CustomEvent<{ componentId: string; error?: string }>).detail;
+      setPresenceBubbles((prev) => {
+        // Cancel uses an empty componentId — only drop the active generation bubble.
+        // startsWith('') would otherwise match every queued/generating bubble.
+        if (!detail.componentId && detail.error === 'Cancelled by user') {
+          return prev.filter((b) => b.status !== 'generating');
+        }
+        if (!detail.componentId) return prev;
+        return prev.filter(
+          (b) =>
+            !(
+              (b.status === 'generating' || b.status === 'queued') &&
+              b.id.startsWith(detail.componentId)
+            ),
+        );
+      });
     };
 
     const handleAgentPreview = (e: Event) => {

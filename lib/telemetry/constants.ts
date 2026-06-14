@@ -18,9 +18,6 @@ export const TELEMETRY_SCHEMA_VERSION = 1;
 /** Local route client events are forwarded through (never PostHog directly). */
 export const TELEMETRY_ROUTE = '/playground/api/telemetry';
 
-/** localStorage key marking that this browser has seen the first-run notice. */
-export const TELEMETRY_NOTICE_ACK_KEY = 'playground-telemetry-notice-ack';
-
 /** sessionStorage key deduping session_started per browser session. */
 export const TELEMETRY_SESSION_SENT_KEY = 'playground-telemetry-session-sent';
 

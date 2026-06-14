@@ -1,5 +1,10 @@
 import type { ModelOption } from '../constants';
 import type { ProviderConfig, AgentSpawnOptions } from './types';
+import {
+  CURSOR_FEATURED_MODEL_IDS,
+  CURSOR_FALLBACK_MODELS,
+  dedupeAutoInModelList,
+} from '../model-catalog';
 
 /**
  * Parse the output of `cursor agent models`.
@@ -8,13 +13,13 @@ import type { ProviderConfig, AgentSpawnOptions } from './types';
  *   Available models
  *
  *   auto - Auto
- *   opus-4.6-thinking - Claude 4.6 Opus (Thinking)  (default)
- *   grok - Grok
+ *   composer-2.5-fast - Composer 2.5 Fast  (default)
+ *   grok-4.3 - Grok 4.3 1M
  *
  *   Tip: use --model <id> ...
  */
 function parseModelOutput(stdout: string): ModelOption[] {
-  const models: ModelOption[] = [{ value: '', label: 'Auto (Default)' }];
+  const models: ModelOption[] = [];
 
   for (const line of stdout.split('\n')) {
     const trimmed = line.trim();
@@ -25,7 +30,7 @@ function parseModelOutput(stdout: string): ModelOption[] {
     }
   }
 
-  return models;
+  return dedupeAutoInModelList(models);
 }
 
 function buildAgentArgs(opts: AgentSpawnOptions): string[] {
@@ -42,28 +47,9 @@ export const cursorProvider: ProviderConfig = {
   notFoundMessage:
     'Cursor CLI not found. Make sure `cursor` is installed and in your PATH. Run `cursor agent login` if needed.',
 
-  fallbackModels: [
-    { value: 'auto', label: 'Auto (Default)' },
-    { value: 'opus-4.6-thinking', label: 'Claude 4.6 Opus (Thinking)' },
-    { value: 'opus-4.6', label: 'Claude 4.6 Opus' },
-    { value: 'sonnet-4.5', label: 'Claude 4.5 Sonnet' },
-    { value: 'gpt-5.2', label: 'GPT-5.2' },
-    { value: 'gpt-5.2-codex', label: 'GPT-5.2 Codex' },
-    { value: 'gemini-3-pro', label: 'Gemini 3 Pro' },
-    { value: 'grok', label: 'Grok' },
-  ],
+  fallbackModels: CURSOR_FALLBACK_MODELS,
 
-  defaultEnabledModels: [
-    'auto',
-    'composer-1.5',
-    'gpt-5.2',
-    'gpt-5.3-codex',
-    'sonnet-4.6',
-    'sonnet-4.6-thinking',
-    'opus-4.6',
-    'gemini-3-pro',
-    'gemini-3-flash',
-  ],
+  defaultEnabledModels: [...CURSOR_FEATURED_MODEL_IDS],
 
   buildAgentArgs,
   buildModelListArgs: () => ['agent', 'models'],
