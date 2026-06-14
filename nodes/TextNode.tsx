@@ -14,6 +14,8 @@ function TextNodeInner({ id, data, selected }: { id: string; data: TextNodeData;
   const editorRef = useRef<HTMLDivElement>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [draftText, setDraftText] = useState(data.text || '');
+  const draftTextRef = useRef(data.text || '');
+  const focusFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (data.autofocus) {
@@ -25,17 +27,37 @@ function TextNodeInner({ id, data, selected }: { id: string; data: TextNodeData;
   useLayoutEffect(() => {
     if (!isEditing || !editorRef.current) return;
     const el = editorRef.current;
-    el.focus();
-    const selection = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(el);
-    range.collapse(false);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
+
+    const focusAtEnd = () => {
+      const currentText = draftTextRef.current;
+      if (el.innerText.replace(/\n$/, '') !== currentText) {
+        el.textContent = currentText;
+      }
+      el.focus({ preventScroll: true });
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    };
+
+    focusAtEnd();
+    focusFrameRef.current = requestAnimationFrame(focusAtEnd);
+    return () => {
+      if (focusFrameRef.current !== null) {
+        cancelAnimationFrame(focusFrameRef.current);
+        focusFrameRef.current = null;
+      }
+    };
   }, [isEditing]);
 
   useEffect(() => {
-    if (!isEditing) setDraftText(data.text || '');
+    if (!isEditing) {
+      const nextText = data.text || '';
+      draftTextRef.current = nextText;
+      setDraftText(nextText);
+    }
   }, [data.text, isEditing]);
 
   useEffect(() => {
@@ -57,11 +79,16 @@ function TextNodeInner({ id, data, selected }: { id: string; data: TextNodeData;
     );
   }, [id, setNodes]);
 
+  const getEditorText = useCallback(() => {
+    return editorRef.current?.innerText.replace(/\n$/, '') ?? '';
+  }, []);
+
   const commitText = useCallback(() => {
-    const text = editorRef.current?.innerText.replace(/\n$/, '') ?? draftText;
+    const text = editorRef.current ? getEditorText() : draftText;
+    draftTextRef.current = text;
     setDraftText(text);
     updateNodeData(id, { text });
-  }, [draftText, id, updateNodeData]);
+  }, [draftText, getEditorText, id, updateNodeData]);
 
   const stopEditing = useCallback(() => {
     commitText();
@@ -69,10 +96,11 @@ function TextNodeInner({ id, data, selected }: { id: string; data: TextNodeData;
   }, [commitText]);
 
   const handleInput = useCallback(() => {
-    const text = editorRef.current?.innerText.replace(/\n$/, '') ?? '';
+    const text = getEditorText();
+    draftTextRef.current = text;
     setDraftText(text);
     updateNodeData(id, { text });
-  }, [id, updateNodeData]);
+  }, [getEditorText, id, updateNodeData]);
 
   const text = isEditing ? draftText : data.text || '';
   const showPlaceholder = text.length === 0 && !isEditing;
@@ -132,7 +160,7 @@ function TextNodeInner({ id, data, selected }: { id: string; data: TextNodeData;
           }
         }}
       >
-        {showPlaceholder ? 'Text' : text}
+        {!isEditing ? (showPlaceholder ? 'Text' : text) : null}
       </div>
     </div>
   );

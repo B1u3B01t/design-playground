@@ -62,10 +62,32 @@ export function isLeaf(item: RegistryItem): item is RegistryLeafItem {
 // Mock data imports
 // ---------------------------------------------------------------------------
 
+import { mockData as workshopBannerMockData } from './data/WorkshopBanner.mockData';
+import { mockData as patternBodyMockData } from './data/PatternBody.mockData';
+import { mockData as biteDetailCardMockData } from './data/BiteDetailCard.mockData';
+import { mockData as exitIntentModalMockData } from './data/ExitIntentModal.mockData';
+import { mockData as tableOfContentsMockData } from './data/TableOfContents.mockData';
+import { mockData as patternShareDropdownMockData } from './data/PatternShareDropdown.mockData';
+import { mockData as subscribeBannerMockData } from './data/SubscribeBanner.mockData';
+import { mockData as signupPageMockData } from './data/Signup.mockData';
+
 
 // ---------------------------------------------------------------------------
 // Dynamic component imports
 // ---------------------------------------------------------------------------
+
+const WorkshopBanner = dynamic(() => import('@/components/WorkshopBanner')) as ComponentType<Record<string, unknown>>;
+const PatternBody = dynamic(
+  () => import('@/app/patterns/[slug]/ui/components/PatternBody').then(m => m.PatternBody as unknown as ComponentType<Record<string, unknown>>),
+) as ComponentType<Record<string, unknown>>;
+const BiteDetailCard = dynamic(() => import('@/components/BiteDetailCard')) as ComponentType<Record<string, unknown>>;
+const ExitIntentModal = dynamic(() => import('@/components/ExitIntentModal')) as unknown as ComponentType<Record<string, unknown>>;
+const TableOfContents = dynamic(
+  () => import('@/app/patterns/[slug]/ui/components/TableOfContents').then(m => m.TableOfContents as unknown as ComponentType<Record<string, unknown>>),
+) as ComponentType<Record<string, unknown>>;
+const SubscribeBanner = dynamic(() => import('@/components/SubscribeBanner')) as ComponentType<Record<string, unknown>>;
+const PatternShareDropdown = dynamic(() => import('@/app/patterns/[slug]/ui/components/PatternShareDropdown')) as ComponentType<Record<string, unknown>>;
+const SignupPage = dynamic(() => import('@/app/signup/page')) as ComponentType<Record<string, unknown>>;
 
 
 // ---------------------------------------------------------------------------
@@ -81,7 +103,87 @@ export const registry: RegistryItem[] = [
   {
     id: 'components',
     label: 'Components',
-    children: [],
+    children: [
+      {
+        id: 'workshop-banner',
+        label: 'WorkshopBanner',
+        Component: WorkshopBanner as unknown as ComponentType<Record<string, unknown>>,
+        props: workshopBannerMockData as Record<string, unknown>,
+        sourcePath: 'src/components/WorkshopBanner.tsx',
+        size: 'default' as ComponentSize,
+        propsInterface: `{ inline?: boolean }`,
+        parentId: 'aiux-patterns-client',
+      },
+      {
+        id: 'pattern-body',
+        label: 'PatternBody',
+        Component: PatternBody as unknown as ComponentType<Record<string, unknown>>,
+        props: patternBodyMockData as Record<string, unknown>,
+        sourcePath: 'src/app/patterns/[slug]/ui/components/PatternBody.tsx',
+        size: 'default' as ComponentSize,
+        propsInterface: `{ content: string; isLocked?: boolean; ctaSubject?: string }`,
+        parentId: 'pattern-content-client',
+      },
+      {
+        id: 'bite-detail-card',
+        label: 'BiteDetailCard',
+        Component: BiteDetailCard as unknown as ComponentType<Record<string, unknown>>,
+        props: biteDetailCardMockData as Record<string, unknown>,
+        sourcePath: 'src/components/BiteDetailCard.tsx',
+        size: 'laptop' as ComponentSize,
+        propsInterface: `{ item: { id: number | string; slug?: string; title?: string; subtitle?: string; media_source?: string | null; date?: string; tags?: string[]; type?: string; description?: string; thumbnail_url?: string | null; url?: string | null; video?: string | null; videoId?: string | null; gif?: string | null; poster?: string | null; patterns?: string[] | null }; onClose: () => void; expanded?: boolean; showRelated?: boolean }`,
+        parentId: 'pattern-examples',
+      },
+      {
+        id: 'exit-intent-modal',
+        label: 'ExitIntentModal',
+        Component: ExitIntentModal as unknown as ComponentType<Record<string, unknown>>,
+        props: exitIntentModalMockData as Record<string, unknown>,
+        sourcePath: 'src/components/ExitIntentModal.tsx',
+        size: 'default' as ComponentSize,
+        propsInterface: `{ open: boolean; onOpenChange: (open: boolean) => void; inlinePreview?: boolean }`,
+        parentId: 'aiux-patterns-client',
+      },
+      {
+        id: 'table-of-contents',
+        label: 'TableOfContents',
+        Component: TableOfContents as unknown as ComponentType<Record<string, unknown>>,
+        props: tableOfContentsMockData as Record<string, unknown>,
+        sourcePath: 'src/app/patterns/[slug]/ui/components/TableOfContents.tsx',
+        size: 'default' as ComponentSize,
+        propsInterface: `{ content: string }`,
+        parentId: 'pattern-content-client',
+      },
+      {
+        id: 'subscribe-banner',
+        label: 'SubscribeBanner',
+        Component: SubscribeBanner as unknown as ComponentType<Record<string, unknown>>,
+        props: subscribeBannerMockData as Record<string, unknown>,
+        sourcePath: 'src/components/SubscribeBanner.tsx',
+        size: 'default' as ComponentSize,
+        propsInterface: `{ variant?: "full" | "sidebar" | "homepage" | "newsletter"; disableAutoFill?: boolean; title?: string; pillText?: string; subtitle?: string; footnote?: string; }`,
+        parentId: 'pattern-content-client',
+      },
+      {
+        id: 'pattern-share-dropdown',
+        label: 'PatternShareDropdown',
+        Component: PatternShareDropdown as unknown as ComponentType<Record<string, unknown>>,
+        props: patternShareDropdownMockData as Record<string, unknown>,
+        sourcePath: 'src/app/patterns/[slug]/ui/components/PatternShareDropdown.tsx',
+        size: 'default' as ComponentSize,
+        propsInterface: `{ title: string; description: string; overview?: string; markdownBody: string; slug: string }`,
+        parentId: 'pattern-content-client',
+      },
+      {
+        id: 'signup-page',
+        label: 'Signup',
+        Component: SignupPage as unknown as ComponentType<Record<string, unknown>>,
+        props: signupPageMockData as Record<string, unknown>,
+        sourcePath: 'src/app/signup/page.tsx',
+        size: 'laptop' as ComponentSize,
+        propsInterface: `{}`,
+      },
+    ],
   },
 ];
 
