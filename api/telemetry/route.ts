@@ -1,8 +1,7 @@
 // ============================================================================
 // Local telemetry route — the ONLY thing browser code talks to (the browser
 // never reaches PostHog). Validates every client event against the schema
-// allowlist, enriches session_started server-side, and exposes the status /
-// opt-out toggle for the settings UI.
+// allowlist, enriches session_started server-side, and exposes status.
 //
 // Dev-only: every handler 404s in production builds. Docs: ../../TELEMETRY.md
 // ============================================================================

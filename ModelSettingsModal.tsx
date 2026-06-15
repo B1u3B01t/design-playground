@@ -16,13 +16,9 @@ import { type ModelOption } from './lib/constants';
 import type { ProviderId, ClaudeCodeOptions, CodexOptions } from './lib/providers/types';
 import { getAllProviders, getProvider } from './lib/providers/registry';
 import { getDisplayName, setDisplayName } from './liveblocks.config';
-import {
-  fetchTelemetryStatus,
-  isGuestSession,
-  setTelemetryEnabledClient,
-} from './lib/telemetry/client';
-import { TELEMETRY_DOCS_URL } from './lib/telemetry/constants';
 import { partitionCursorModels, partitionClaudeModels } from './lib/model-catalog';
+import ConnectCursorPanel from './ConnectCursorPanel';
+import { useCursorAuth } from './hooks/useCursorAuth';
 
 // ---------------------------------------------------------------------------
 // Effort level options for Claude Code
@@ -82,6 +78,8 @@ export default function ModelSettingsModal({ open, onOpenChange }: ModelSettings
     setCodexOptions,
   } = useModelSettingsStore();
 
+  const { authenticated: cursorAuthenticated, refresh: refreshCursorAuth } = useCursorAuth();
+
   // Read enabledModels from the store's provider state directly
   const enabledModels = useModelSettingsStore(
     (s) => s.providerState[s.activeProvider]?.enabledModels ?? [],
@@ -94,30 +92,17 @@ export default function ModelSettingsModal({ open, onOpenChange }: ModelSettings
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [tierModelsOpen, setTierModelsOpen] = useState(false);
   const [displayName, setDisplayNameState] = useState('');
-  // null = status unknown/unavailable (e.g. production build) → section hidden
-  const [telemetryEnabled, setTelemetryEnabled] = useState<boolean | null>(null);
 
   // Load the saved display name when the modal opens.
   useEffect(() => {
     if (open) setDisplayNameState(getDisplayName());
   }, [open]);
 
-  // Load telemetry status when the modal opens (dev-only; hidden for guests).
   useEffect(() => {
-    if (!open || isGuestSession()) return;
-    void fetchTelemetryStatus().then((status) => {
-      setTelemetryEnabled(status ? status.enabled : null);
-    });
-  }, [open]);
-
-  const handleTelemetryToggle = () => {
-    if (telemetryEnabled === null) return;
-    const next = !telemetryEnabled;
-    setTelemetryEnabled(next); // optimistic
-    void setTelemetryEnabledClient(next).then((ok) => {
-      if (!ok) setTelemetryEnabled(!next);
-    });
-  };
+    if (open && activeProvider === 'cursor') {
+      void refreshCursorAuth();
+    }
+  }, [open, activeProvider, refreshCursorAuth]);
 
   // Sync from store when modal opens or provider changes
   useEffect(() => {
@@ -265,39 +250,8 @@ export default function ModelSettingsModal({ open, onOpenChange }: ModelSettings
           </p>
         </div>
 
-        {/* Anonymous telemetry opt-out (dev-only; hidden when unavailable) */}
-        {telemetryEnabled !== null && (
-          <div className="space-y-1.5">
-            <button
-              type="button"
-              onClick={handleTelemetryToggle}
-              className="flex w-full items-center justify-between text-xs font-medium text-stone-700"
-            >
-              <span>Anonymous telemetry</span>
-              <span
-                className={`relative inline-flex h-[16px] w-[28px] items-center rounded-full transition-colors ${
-                  telemetryEnabled ? 'bg-stone-800' : 'bg-stone-300'
-                }`}
-              >
-                <span
-                  className={`inline-block h-[12px] w-[12px] rounded-full bg-white shadow transition-transform ${
-                    telemetryEnabled ? 'translate-x-[14px]' : 'translate-x-[2px]'
-                  }`}
-                />
-              </span>
-            </button>
-            <p className="text-[11px] text-stone-400">
-              Content-free usage counts in dev — never prompts, code, or file names.{' '}
-              <a
-                href={TELEMETRY_DOCS_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="underline hover:text-stone-600"
-              >
-                Learn more
-              </a>
-            </p>
-          </div>
+        {activeProvider === 'cursor' && cursorAuthenticated !== true && (
+          <ConnectCursorPanel active={open} />
         )}
 
         {/* Provider segment control */}

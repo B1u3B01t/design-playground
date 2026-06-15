@@ -28,6 +28,9 @@ import {
   AlertDialogTitle,
 } from './ui/alert-dialog';
 import { getProviderFields } from './lib/generation-body';
+import { requireCursorAuthIfNeeded } from './lib/require-cursor-auth';
+import { isCursorAuthError } from './lib/cursor-auth-client';
+import { showCursorAuthToast } from './lib/cursor-auth-toast';
 import { getProvider } from './lib/providers/registry';
 import { loadCanvasState, saveCanvasState, type GenerationInfo } from './lib/canvas-persistence';
 import { useCanvasFlow } from './lib/canvas-flow';
@@ -1871,7 +1874,11 @@ export default function PlaygroundCanvas({
         console.info('[Playground] Generation already in progress.', logPayload);
       } else {
         console.error('[Playground] Generation error:', errorMessage, logPayload);
-        toast.error(errorMessage, { duration: 6000 });
+        if (isCursorAuthError(errorMessage)) {
+          showCursorAuthToast(errorMessage);
+        } else {
+          toast.error(errorMessage, { duration: 6000 });
+        }
       }
       
       // Remove skeleton nodes
@@ -1919,6 +1926,8 @@ export default function PlaygroundCanvas({
       } = e.detail;
       const isDragHtml = dragRenderMode === 'html' && !!dragHtmlFolder;
       const isDragJsx = dragRenderMode === 'jsx' && !!dragJsxFile;
+
+      if (!(await requireCursorAuthIfNeeded())) return;
 
       // Build the prompt
       let prompt: string;
@@ -2197,6 +2206,8 @@ export default function PlaygroundCanvas({
     }
 
     if (isRawMode && !rawPrompt) return;
+
+    if (!(await requireCursorAuthIfNeeded())) return;
 
     // ── Edit Mode: modify file in-place, no iterations ──
     if (chatMode === 'edit' && payload.targetNodeId) {
@@ -3882,6 +3893,9 @@ export default function PlaygroundCanvas({
     const componentId = 'cursor-chat-new-page';
     const pf = getProviderFields();
     const toastId = `create-page-${Date.now()}`;
+
+    if (!(await requireCursorAuthIfNeeded())) return;
+
     toast.loading('Creating new page…', { id: toastId, duration: Infinity });
 
     window.dispatchEvent(

@@ -45,7 +45,7 @@ export const cursorProvider: ProviderConfig = {
   binary: 'cursor',
   versionFlag: '--version',
   notFoundMessage:
-    'Cursor CLI not found. Make sure `cursor` is installed and in your PATH. Run `cursor agent login` if needed.',
+    'Cursor CLI not found. Install it from cursor.com/docs/cli/installation, then connect in Model Settings.',
 
   fallbackModels: CURSOR_FALLBACK_MODELS,
 

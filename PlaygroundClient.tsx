@@ -17,9 +17,14 @@ import {
   SKILLS_CHANGED_EVENT,
   STORAGE_KEY,
 } from './lib/constants';
-import { captureClient } from './lib/telemetry/client';
+import { captureClient, fetchTelemetryStatus } from './lib/telemetry/client';
 import { startActivityTracking } from './lib/telemetry/activity';
-import { TELEMETRY_SESSION_SENT_KEY } from './lib/telemetry/constants';
+import {
+  TELEMETRY_DOCS_URL,
+  TELEMETRY_NOTICE_SHOWN_KEY,
+  TELEMETRY_NOTICE_TOAST_MS,
+  TELEMETRY_SESSION_SENT_KEY,
+} from './lib/telemetry/constants';
 import { preloadAllComponents } from './registry';
 import { LiveblocksProvider, RoomProvider } from '@liveblocks/react';
 import { liveblocksAuth } from './liveblocks.config';
@@ -28,6 +33,7 @@ import { CanvasFlowProvider } from './lib/canvas-flow';
 import { GenerationPresenceBridge } from './lib/presence';
 import './lib/ngrok-headers';
 import { LiveblocksSetupGuard } from './lib/liveblocks-setup';
+import { requireCursorAuthForProvider } from './lib/require-cursor-auth';
 
 export interface PendingChild {
   id: string;
@@ -163,11 +169,34 @@ export default function PlaygroundClient({
     return () => window.removeEventListener(OPEN_SKILLS_CATALOG_EVENT, handler);
   }, []);
 
-  // Anonymous dev telemetry: session start and time tracking.
+  // Anonymous dev telemetry: session start, notice toast, and time tracking.
   // Guests (room link without host=1) are never recorded. See TELEMETRY.md.
   useEffect(() => {
     if (process.env.NODE_ENV !== 'development') return;
     if (roomId && !isHost) return;
+
+    if (!sessionStorage.getItem(TELEMETRY_NOTICE_SHOWN_KEY)) {
+      void fetchTelemetryStatus().then((status) => {
+        if (!status?.enabled) return;
+        sessionStorage.setItem(TELEMETRY_NOTICE_SHOWN_KEY, '1');
+        toast('Anonymous telemetry is collected in dev.', {
+          description: (
+            <span>
+              No code, prompts, or files ever.{' '}
+              <a
+                href={TELEMETRY_DOCS_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="underline hover:opacity-80"
+              >
+                Details
+              </a>
+            </span>
+          ),
+          duration: TELEMETRY_NOTICE_TOAST_MS,
+        });
+      });
+    }
 
     if (!sessionStorage.getItem(TELEMETRY_SESSION_SENT_KEY)) {
       sessionStorage.setItem(TELEMETRY_SESSION_SENT_KEY, '1');
@@ -201,6 +230,11 @@ export default function PlaygroundClient({
         const data = await res.json();
 
         if (data.status === 'not_scanned') {
+          const providerFields = getProviderFields();
+          if (!(await requireCursorAuthForProvider(providerFields.provider))) {
+            return;
+          }
+
           const scanToastId = toast.loading('Scanning your project for components…', {
             duration: Infinity,
             closeButton: true,
@@ -293,6 +327,10 @@ export default function PlaygroundClient({
     children: { id: string; name: string; path: string }[],
   ) => {
     if (children.length === 0) return;
+
+    if (!(await requireCursorAuthForProvider(getProviderFields().provider))) {
+      return;
+    }
 
     const initialPending: PendingChild[] = children.map((c) => ({
       id: c.id,
@@ -436,6 +474,14 @@ export default function PlaygroundClient({
         const queue: AddAllQueue = JSON.parse(raw);
         const { entries, currentIndex, successCount, failCount } = queue;
 
+        if (currentIndex === 0) {
+          if (!(await requireCursorAuthForProvider(getProviderFields().provider))) {
+            sessionStorage.removeItem(ADD_ALL_QUEUE_STORAGE_KEY);
+            toast.dismiss('add-all-progress');
+            return;
+          }
+        }
+
         if (currentIndex >= entries.length) {
           // Done — show summary toast and clean up
           sessionStorage.removeItem(ADD_ALL_QUEUE_STORAGE_KEY);
@@ -552,6 +598,10 @@ export default function PlaygroundClient({
 
   // Add a component — runs at the PlaygroundClient level so it persists across modal open/close
   const handleAddComponent = useCallback(async (entry: DiscoveryEntry) => {
+    if (!(await requireCursorAuthForProvider(getProviderFields().provider))) {
+      return;
+    }
+
     setAddingIds((prev) => new Set(prev).add(entry.id));
 
     const toastId = toast.loading(`Setting up "${entry.name}"…`, {

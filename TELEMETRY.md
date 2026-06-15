@@ -89,7 +89,6 @@ Any one of these works:
 
 | Method | Scope |
 |---|---|
-| Toggle "Anonymous telemetry" off in **Model Settings** | this machine, persistent |
 | `PLAYGROUND_TELEMETRY_DISABLED=1` | wherever the env var is set |
 | `DO_NOT_TRACK=1` ([consoledonottrack.com](https://consoledonottrack.com)) | wherever the env var is set |
 | Edit `~/.config/design-playground/telemetry.json` → `"enabled": false` | this machine, persistent |

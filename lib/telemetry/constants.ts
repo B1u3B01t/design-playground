@@ -21,6 +21,12 @@ export const TELEMETRY_ROUTE = '/playground/api/telemetry';
 /** sessionStorage key deduping session_started per browser session. */
 export const TELEMETRY_SESSION_SENT_KEY = 'playground-telemetry-session-sent';
 
+/** sessionStorage key deduping the one-time dev telemetry notice toast. */
+export const TELEMETRY_NOTICE_SHOWN_KEY = 'playground-telemetry-notice-shown';
+
+/** Auto-dismiss duration for the telemetry notice toast (ms). */
+export const TELEMETRY_NOTICE_TOAST_MS = 4_000;
+
 /** Where the full telemetry documentation lives. */
 export const TELEMETRY_DOCS_URL =
   'https://github.com/B1u3B01t/design-playground/blob/master/TELEMETRY.md';

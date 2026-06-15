@@ -12,6 +12,7 @@ import {
   DialogDescription,
 } from './ui/dialog';
 import { getProviderFields } from './lib/generation-body';
+import { requireCursorAuthForProvider } from './lib/require-cursor-auth';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -261,6 +262,11 @@ export default function DiscoveryModal({
     setIsRefreshing(true);
     setError(null);
     try {
+      const providerFields = getProviderFields();
+      if (!(await requireCursorAuthForProvider(providerFields.provider))) {
+        return;
+      }
+
       const res = await fetch('/playground/api/discover', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

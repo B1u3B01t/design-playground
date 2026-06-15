@@ -28,6 +28,10 @@ import {
 } from '../../lib/telemetry/server';
 import { safeModel, safeSkills } from '../../lib/telemetry/schema';
 import type { GenerationSource } from '../../lib/telemetry/constants';
+import {
+  CURSOR_AUTH_ERROR_PATTERN,
+  CURSOR_AUTH_USER_MESSAGE,
+} from '../../lib/cursor-auth-constants';
 
 /**
  * Playground generation API - Agent CLI Integration
@@ -625,6 +629,14 @@ function formatAgentErrorMessage(
     const authPattern = /not\s+logged\s+in|login|unauthorized|authentication|auth\s+required|invalid\s+api\s+key/i;
     if (authPattern.test(base) || authPattern.test(stderr)) {
       return `${base}\n\nRun \`codex login\` to authenticate the Codex CLI.`;
+    }
+    return base;
+  }
+
+  if (providerId === 'cursor') {
+    base = stderr.trim() || streamError || previewError || fallback;
+    if (CURSOR_AUTH_ERROR_PATTERN.test(base) || CURSOR_AUTH_ERROR_PATTERN.test(stderr)) {
+      return CURSOR_AUTH_USER_MESSAGE;
     }
     return base;
   }

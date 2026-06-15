@@ -60,18 +60,3 @@ export async function fetchTelemetryStatus(): Promise<{
     return null;
   }
 }
-
-/** Persist the UI toggle (machine-wide, via the server config file). */
-export async function setTelemetryEnabledClient(enabled: boolean): Promise<boolean> {
-  try {
-    const res = await fetch(TELEMETRY_ROUTE, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled }),
-    });
-    if (res.ok) cachedEnabled = enabled;
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
