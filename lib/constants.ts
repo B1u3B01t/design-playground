@@ -727,6 +727,8 @@ export interface GenerationStartPayload {
   componentName: string;
   parentNodeId: string;
   iterationCount: number;
+  /** First iteration number in this batch (e.g. 9 when iterations 1–8 already exist) */
+  startNumber?: number;
   /** When set, skeleton nodes are placed in a grid matching drag-to-iterate ghost positions */
   gridLayout?: {
     rows: number;

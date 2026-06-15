@@ -14,6 +14,8 @@ export interface GenerationInfo {
   componentName: string;
   parentNodeId: string;
   iterationCount: number;
+  /** First iteration number in this batch */
+  startNumber?: number;
   skeletonNodeIds: string[];
   startTime: number; // Timestamp when generation started
   /** Skeleton positions for post-generation repositioning (always set) */
@@ -42,6 +44,37 @@ export interface CanvasState {
   viewport?: { x: number; y: number; zoom: number };
   /** Freehand strokes in flow coordinates on the canvas */
   canvasDrawings?: DrawStroke[];
+}
+
+/** Map an iteration node to its dedup key (html path, jsx file, or react filename). */
+export function getIterationKeyFromNode(n: Node): string | null {
+  if (n.type !== 'iteration') return null;
+  if (n.data.renderMode === 'html' && n.data.htmlFolder && n.data.htmlIterationFolder) {
+    return `${n.data.htmlFolder}/${n.data.htmlIterationFolder}`;
+  }
+  if (n.data.renderMode === 'jsx' && n.data.jsxFile) {
+    return n.data.jsxFile as string;
+  }
+  if (n.data.filename) {
+    return n.data.filename as string;
+  }
+  return null;
+}
+
+/** Keys for iteration nodes currently on the canvas. */
+export function getIterationKeysOnCanvas(nodes: Node[]): Set<string> {
+  const keys = new Set<string>();
+  for (const n of nodes) {
+    const key = getIterationKeyFromNode(n);
+    if (key) keys.add(key);
+  }
+  return keys;
+}
+
+/** Drop knownIterations entries that have no matching canvas node. */
+export function pruneKnownIterations(knownIterations: string[], nodes: Node[]): string[] {
+  const onCanvas = getIterationKeysOnCanvas(nodes);
+  return knownIterations.filter((k) => onCanvas.has(k));
 }
 
 export function loadCanvasState(storageKey: string = STORAGE_KEY): CanvasState | null {
@@ -73,6 +106,9 @@ export function loadCanvasState(storageKey: string = STORAGE_KEY): CanvasState |
           e => !skeletonIds.has(e.source) && !skeletonIds.has(e.target),
         );
         state.generationInfo = null;
+      }
+      if (state.knownIterations?.length) {
+        state.knownIterations = pruneKnownIterations(state.knownIterations, state.nodes);
       }
       return state;
     }
