@@ -3768,7 +3768,7 @@ export default function PlaygroundCanvas({
   }, [screenToFlowPosition, getNodeId, setNodes]);
 
   // Create HTML page from context menu using incremental Untitled-N naming.
-  const getNextUntitledRiffName = useCallback(async (): Promise<string> => {
+  const getNextUntitledDesignName = useCallback(async (): Promise<string> => {
     try {
       const res = await fetch('/playground/api/html-pages');
       if (!res.ok) return 'Untitled-1';
@@ -3789,7 +3789,7 @@ export default function PlaygroundCanvas({
 
   const handleCreateHtmlPageAt = useCallback(async (screenX: number, screenY: number) => {
     try {
-      const name = await getNextUntitledRiffName();
+      const name = await getNextUntitledDesignName();
       const res = await fetch('/playground/api/html-pages', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -3797,7 +3797,7 @@ export default function PlaygroundCanvas({
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data?.error || 'Failed to create riff');
+        toast.error(data?.error || 'Failed to create design');
         return;
       }
 
@@ -3838,9 +3838,9 @@ export default function PlaygroundCanvas({
         );
       });
     } catch {
-      toast.error('Failed to create riff');
+      toast.error('Failed to create design');
     }
-  }, [getNextUntitledRiffName, screenToFlowPosition, getNodeId, setNodes]);
+  }, [getNextUntitledDesignName, screenToFlowPosition, getNodeId, setNodes]);
 
   useEffect(() => {
     const handleCreateDesign = () => {

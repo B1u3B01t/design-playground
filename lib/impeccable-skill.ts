@@ -35,11 +35,11 @@ export const IMPECCABLE_COMMANDS: ImpeccableCommand[] = [
 ];
 
 /** Skill prompt injected into the generation prompt when an impeccable command is selected. */
-export function buildImpeccableSkillPrompt(command: string): string {
+export function buildImpeccableSkillPrompt(command: string, skillSkillPath?: string): string {
+  const root = skillSkillPath?.replace(/\/SKILL\.md$/i, '') ?? 'skills/impeccable';
   return `IMPECCABLE SKILL
-After creating each iteration file, run the following impeccable command on it:
-  /impeccable ${command}
-Apply all suggestions from the command output directly to the iteration file before moving to the next one.`;
+Read ${root}/SKILL.md and ${root}/reference/${command}.md.
+After creating each iteration file, follow the "${command}" command flow from those files and apply the result directly to the iteration file before moving to the next one.`;
 }
 
 /** Synthetic InlineReferenceItemData for the parent impeccable picker entry. */
@@ -64,9 +64,12 @@ export function buildImpeccableCommandItems(query: string): InlineReferenceItemD
 }
 
 /** Extract impeccable skill prompt text from a reference segment, if applicable. */
-export function impeccablePromptFromSegment(segment: Segment): string | undefined {
+export function impeccablePromptFromSegment(
+  segment: Segment,
+  impeccableSkillPath?: string,
+): string | undefined {
   if (segment.type !== 'reference') return undefined;
   const impeccableCmd = (segment.data as Record<string, unknown> | undefined)
     ?.impeccableCommand as string | undefined;
-  return impeccableCmd ? buildImpeccableSkillPrompt(impeccableCmd) : undefined;
+  return impeccableCmd ? buildImpeccableSkillPrompt(impeccableCmd, impeccableSkillPath) : undefined;
 }

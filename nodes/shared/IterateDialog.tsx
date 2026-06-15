@@ -439,7 +439,10 @@ export default function IterateDialog({
             textParts.push(trimmed);
           }
         } else if (segment.type === 'reference') {
-          const impeccablePrompt = impeccablePromptFromSegment(segment);
+          const impeccablePrompt = impeccablePromptFromSegment(
+            segment,
+            skillsById.get('impeccable')?.skillPath,
+          );
           if (impeccablePrompt) {
             skillSections.push(impeccablePrompt);
           } else {

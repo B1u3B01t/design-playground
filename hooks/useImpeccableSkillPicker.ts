@@ -22,13 +22,14 @@ export function useImpeccableSkillPicker(skills: PlaygroundSkill[]) {
     if (impeccableSubMenuOpen) {
       return buildImpeccableCommandItems('');
     }
-    const regularItems = skills.map((s) => ({
+    const regularItems = skills
+      .filter((s) => s.id !== IMPECCABLE_ITEM_ID)
+      .map((s) => ({
       id: s.id,
       label: s.label,
       description: s.description,
     }));
-    const alreadyHas = regularItems.some((i) => i.id === IMPECCABLE_ITEM_ID);
-    return alreadyHas ? regularItems : [IMPECCABLE_PARENT_ITEM, ...regularItems];
+    return [IMPECCABLE_PARENT_ITEM, ...regularItems];
   }, [impeccableSubMenuOpen, skills]);
 
   const skillPickerFilterFn = useCallback(

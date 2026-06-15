@@ -335,7 +335,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
       });
       const result = await res.json().catch(() => ({ success: false }));
       if (!res.ok || !result?.success || !result?.page?.folder) {
-        toast.error(result?.error || 'Failed to rename riff');
+        toast.error(result?.error || 'Failed to rename design');
         return;
       }
 
@@ -376,7 +376,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
       window.dispatchEvent(new CustomEvent('playground:html-pages-updated'));
       cancelHtmlRename();
     } catch {
-      toast.error('Failed to rename riff');
+      toast.error('Failed to rename design');
     }
   }, [isHtml, data.htmlFolder, htmlRenameValue, setNodes, cancelHtmlRename]);
 
@@ -496,7 +496,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                   className="nodrag"
                   onPointerDown={(e) => e.stopPropagation()}
                   onDoubleClick={beginHtmlRename}
-                  title="Double-click to rename riff"
+                  title="Double-click to rename design"
                 >
                   {label}
                 </span>

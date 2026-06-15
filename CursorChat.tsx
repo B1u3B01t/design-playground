@@ -331,7 +331,10 @@ export default function CursorChat({ isGenerating: _isGenerating, onSubmit, sele
         if (trimmed) textParts.push(trimmed);
       } else if (segment.type === 'reference') {
         skillIds.push(segment.value);
-        const impeccablePrompt = impeccablePromptFromSegment(segment);
+        const impeccablePrompt = impeccablePromptFromSegment(
+          segment,
+          skillsById.get('impeccable')?.skillPath,
+        );
         if (impeccablePrompt) {
           skillPrompts.push(impeccablePrompt);
         } else {

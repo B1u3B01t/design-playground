@@ -98,6 +98,7 @@ const MODEL_VALUES = [...KNOWN_MODELS, 'custom'] as const;
 export const BUILTIN_SKILLS = [
   'design-variations',
   'frontend-design',
+  'impeccable',
   'make-interfaces-feel-better',
   'no-bound-explore',
   'nothing-design',
