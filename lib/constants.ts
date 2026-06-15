@@ -591,6 +591,9 @@ export const FOCUS_NODE_EVENT = 'playground:focus-node';
 /** Fired to delete a frame and its canvas nodes */
 export const DELETE_FRAME_EVENT = 'playground:delete-frame';
 
+/** Fired to create a new untitled HTML design (same as canvas right-click → Create a new design) */
+export const CREATE_DESIGN_EVENT = 'playground:create-design';
+
 // ---------------------------------------------------------------------------
 // Edit Mode Constants
 // ---------------------------------------------------------------------------

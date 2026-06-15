@@ -1,21 +1,21 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, useMemo, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import {
   InlineReference,
   InlineReferenceInput,
   InlineReferenceContent,
-  InlineReferenceList,
-  InlineReferenceItem,
-  InlineReferenceEmpty,
-  InlineReferenceGroup,
   type Segment,
+  type InlineReferenceHandle,
 } from './ui/inline-reference';
 import type { PlaygroundSkill } from './skills';
+import { ImpeccableSkillPicker } from './ui/impeccable-skill-picker';
+import { ImpeccableDemoteMenu } from './ui/impeccable-demote-menu';
+import { useImpeccableSkillPicker } from './hooks/useImpeccableSkillPicker';
+import { impeccablePromptFromSegment } from './lib/impeccable-skill';
 import { useAvailableModels } from './nodes/shared/IterateDialogParts';
 import { useCursorChat } from './hooks/useCursorChat';
 import { getModelIconConfig } from './lib/model-icons';
-import { getSkillBubbleStyle } from './lib/skill-icons';
 import { ITERATION_COUNT_OPTIONS, CURSOR_CHAT_DEFAULT_COUNT, CURSOR_CHAT_OPEN_EVENT, type CursorChatSubmitPayload, type CursorChatOpenPayload } from './lib/constants';
 import { matchesAction, formatKeyCombo, getCombo } from './lib/keybindings';
 import type { SelectedElement } from './lib/element-context';
@@ -180,10 +180,21 @@ export default function CursorChat({ isGenerating: _isGenerating, onSubmit, sele
   const [segments, setSegments] = useState<Segment[]>([]);
   const [skills, setSkills] = useState<PlaygroundSkill[]>([]);
   const [iterationCount, setIterationCount] = useState(CURSOR_CHAT_DEFAULT_COUNT);
-  // User-preferred mode between Edit and Explore. The effective mode (including
-  // 'raw') is derived from this + selection context at render/submit time.
   const [chatMode, setChatMode] = useState<'explore' | 'edit'>('edit');
   const inlineRefContainerRef = useRef<HTMLDivElement | null>(null);
+  const inlineRefHandle = useRef<InlineReferenceHandle | null>(null);
+
+  const {
+    impeccableSubMenuOpen,
+    setImpeccableSubMenuOpen,
+    demoteState,
+    skillPickerItems,
+    skillPickerFilterFn,
+    handleSelectItem,
+    handleImpeccableCommandCleared,
+    closeDemoteMenu,
+    resetImpeccablePicker,
+  } = useImpeccableSkillPicker(skills);
 
   const { models, isLoading: isLoadingModels } = useAvailableModels();
 
@@ -224,17 +235,7 @@ export default function CursorChat({ isGenerating: _isGenerating, onSubmit, sele
     return () => { cancelled = true; };
   }, []);
 
-  // Build skill items for InlineReference
-  const skillItems = useMemo(
-    () =>
-      skills.map((skill) => ({
-        id: skill.id,
-        label: skill.label,
-        description: skill.description,
-      })),
-    [skills],
-  );
-
+  // Build skills lookup
   const skillsById = useMemo(() => {
     const map = new Map<string, PlaygroundSkill>();
     for (const skill of skills) map.set(skill.id, skill);
@@ -330,9 +331,14 @@ export default function CursorChat({ isGenerating: _isGenerating, onSubmit, sele
         if (trimmed) textParts.push(trimmed);
       } else if (segment.type === 'reference') {
         skillIds.push(segment.value);
-        const skill = skillsById.get(segment.value);
-        const p = skill?.skillPath?.trim();
-        if (p) skillPrompts.push(p);
+        const impeccablePrompt = impeccablePromptFromSegment(segment);
+        if (impeccablePrompt) {
+          skillPrompts.push(impeccablePrompt);
+        } else {
+          const skill = skillsById.get(segment.value);
+          const p = skill?.skillPath?.trim();
+          if (p) skillPrompts.push(p);
+        }
       }
     }
 
@@ -408,10 +414,11 @@ export default function CursorChat({ isGenerating: _isGenerating, onSubmit, sele
     if (el) el.textContent = '';
     onClearElements?.();
     onClearNodes?.();
+    resetImpeccablePicker();
     deactivate();
 
     await onSubmit(payload);
-  }, [extractPayload, model, iterationCount, targetNode, flowPosition, chatMode, deactivate, onSubmit, getInputEl, selectedElements, onClearElements, selectedNodes, onClearNodes]);
+  }, [extractPayload, model, iterationCount, targetNode, flowPosition, chatMode, deactivate, onSubmit, getInputEl, selectedElements, onClearElements, selectedNodes, onClearNodes, resetImpeccablePicker]);
 
   // Keyboard handling
   useEffect(() => {
@@ -454,7 +461,8 @@ export default function CursorChat({ isGenerating: _isGenerating, onSubmit, sele
 
       // Enter: submit
       if (e.key === 'Enter' && !e.shiftKey) {
-        const pickerOpen = document.querySelector('[data-slot="inline-reference-content"]');
+        const pickerOpen = document.querySelector('[data-slot="inline-reference-content"]')
+          || document.querySelector('[data-slot="impeccable-demote-menu"]');
         if (pickerOpen) return;
         e.preventDefault();
         handleSubmit();
@@ -715,8 +723,14 @@ export default function CursorChat({ isGenerating: _isGenerating, onSubmit, sele
           className={`flex gap-2 ${effectiveChatMode === 'raw' ? 'items-end' : 'items-start'}`}
         >
           <InlineReference
+            ref={inlineRefHandle}
             value={segments}
             onValueChange={setSegments}
+            onSelectItem={handleSelectItem}
+            onImpeccableCommandCleared={(pillEl) => {
+              handleImpeccableCommandCleared(pillEl, inlineRefContainerRef.current);
+            }}
+            onSkillPillPendingDelete={() => closeDemoteMenu()}
             className="w-full cursor-chat-inline-input"
           >
             <InlineReferenceInput
@@ -734,32 +748,31 @@ export default function CursorChat({ isGenerating: _isGenerating, onSubmit, sele
                 boxShadow: 'none',
                 color: 'rgb(41, 37, 36)',
                 caretColor: 'rgb(87, 83, 78)',
-                // minHeight: '52px',
               }}
             />
             <InlineReferenceContent
               trigger="/"
-              items={skillItems}
+              items={skillPickerItems}
+              filterFn={skillPickerFilterFn}
               className="rounded-xl border border-stone-200 shadow-lg"
             >
-              <InlineReferenceGroup heading="Skills">
-                <InlineReferenceList className="max-h-[256px]">
-                  {(item) => (
-                    <InlineReferenceItem
-                      key={item.id}
-                      value={item}
-                      className="gap-2.5 rounded-lg px-2 py-1.5 data-[selected=true]:bg-stone-100 data-[selected=true]:text-stone-900"
-                    >
-                      <span style={getSkillBubbleStyle(item.id, 24)} />
-                      <span className="text-[13px] font-medium text-stone-800 truncate">
-                        {item.label}
-                      </span>
-                    </InlineReferenceItem>
-                  )}
-                </InlineReferenceList>
-                <InlineReferenceEmpty>No skills found</InlineReferenceEmpty>
-              </InlineReferenceGroup>
+              <ImpeccableSkillPicker
+                impeccableSubMenuOpen={impeccableSubMenuOpen}
+                onBackFromSubMenu={() => setImpeccableSubMenuOpen(false)}
+                showAddSkillButton={false}
+              />
             </InlineReferenceContent>
+
+            {demoteState && (
+              <ImpeccableDemoteMenu
+                demoteState={demoteState}
+                onSelect={(command) => {
+                  inlineRefHandle.current?.updateImpeccablePill(demoteState.pillEl, command);
+                  closeDemoteMenu();
+                }}
+                onClose={closeDemoteMenu}
+              />
+            )}
           </InlineReference>
 
           {/* Inline send button — shown whenever there's no selection (peek

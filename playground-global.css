@@ -789,6 +789,32 @@ body.cursor-chat-cursor-mode .playground-main-view .react-flow__nodesselection-r
   color: rgb(29, 78, 216);
 }
 
+/* Impeccable pill: command cleared state (stage 1 of 3-stage deletion). */
+.inline-reference-pill--skill[data-command-cleared] {
+  background: rgb(254, 243, 199);
+  border-radius: 3px;
+}
+
+.inline-reference-pill--skill[data-command-cleared] .inline-reference-pill__label {
+  color: rgb(146, 64, 14);
+}
+
+/* Impeccable command category badge in the sub-menu dropdown */
+.impeccable-cmd-category {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  background: rgb(243, 244, 246);
+  color: rgb(107, 114, 128);
+  line-height: 1.4;
+}
+
 /* Prevent iframes from capturing mouse events during node drag */
 .react-flow__node.dragging iframe,
 .react-flow__node.dragging [data-screenshot-target] iframe {

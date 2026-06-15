@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef, DragEvent, MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronRight, ChevronDown, ChevronLeft, Plus, Palette, Loader2, RefreshCw, RotateCcw, Frame, FileCode, Component, Trash2 } from 'lucide-react';
+import { ProjectBoxIcon, PageDocumentIcon } from './ui/playground-nav-icons';
 import { registry, RegistryItem, RegistryLeafItem, isGroup, isLeaf } from './registry';
 import {
   DND_DATA_KEY,
@@ -10,6 +11,7 @@ import {
   FOCUS_NODE_EVENT,
   JSX_ID_PREFIX,
   DELETE_FRAME_EVENT,
+  CREATE_DESIGN_EVENT,
   DESIGN_SYSTEM_SHOWCASE_ID,
   DESIGN_SYSTEM_GENERATED_EVENT,
   GENERATION_COMPLETE_EVENT,
@@ -287,6 +289,8 @@ function TreeNode({ item, depth = 0, childrenMap, pendingChildren, parentGroupId
     const activePending = pending.filter((p) => p.status !== 'done' && !registryChildIds.has(p.id));
     const hasChildren = registryChildren.length > 0 || activePending.length > 0;
 
+    const isPageEntry = parentGroupId === 'pages' || /^src\/app\/[^/]+\/page\.tsx$/.test(item.sourcePath);
+
     if (hasChildren) {
       return (
         <div>
@@ -301,7 +305,11 @@ function TreeNode({ item, depth = 0, childrenMap, pendingChildren, parentGroupId
               onDoubleClick={() => focusNodeOnCanvas(item.id)}
               className="flex items-center gap-1.5 flex-1 min-w-0 cursor-grab active:cursor-grabbing"
             >
-              <Component className="w-3.5 h-3.5 shrink-0" />
+              {isPageEntry ? (
+                <PageDocumentIcon className="shrink-0 text-stone-500" size={14} />
+              ) : (
+                <Component className="w-3.5 h-3.5 shrink-0" />
+              )}
               <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{item.label}</span>
               <button
               onClick={() => setExpanded(!expanded)}
@@ -351,17 +359,11 @@ function TreeNode({ item, depth = 0, childrenMap, pendingChildren, parentGroupId
         className="flex items-center gap-1.5 px-2 py-1.5 text-[13px] text-stone-700 hover:text-stone-900 hover:bg-stone-100 rounded-2xl cursor-grab active:cursor-grabbing transition-colors group select-none"
         style={{ paddingLeft: `${depth * 10 + 8}px` }}
       >
-        {/* {item.parentId ?
-          <>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-stone-400 shrink-0">
-              <path fill-rule="evenodd" clip-rule="evenodd" d="M9.87737 12H9.9H11.5C11.7761 12 12 11.7761 12 11.5C12 11.2239 11.7761 11 11.5 11H9.9C8.77164 11 7.95545 10.9996 7.31352 10.9472C6.67744 10.8952 6.25662 10.7946 5.91103 10.6185C5.25247 10.283 4.71703 9.74753 4.38148 9.08897C4.20539 8.74338 4.10481 8.32256 4.05284 7.68648C4.00039 7.04455 4 6.22836 4 5.1V3.5C4 3.22386 3.77614 3 3.5 3C3.22386 3 3 3.22386 3 3.5V5.1V5.12263C3 6.22359 3 7.08052 3.05616 7.76791C3.11318 8.46584 3.23058 9.0329 3.49047 9.54296C3.9219 10.3897 4.61031 11.0781 5.45704 11.5095C5.9671 11.7694 6.53416 11.8868 7.23209 11.9438C7.91948 12 8.77641 12 9.87737 12Z" fill="currentColor"/>
-            </svg>
-            <Component className="w-3.5 h-3.5 shrink-0" />
-          </>
-        :
+        {isPage ? (
+          <PageDocumentIcon className="shrink-0 text-stone-500" size={14} />
+        ) : (
           <Component className="w-3.5 h-3.5 shrink-0" />
-        } */}
-        <Component className="w-3.5 h-3.5 shrink-0" />
+        )}
         <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{item.label}</span>
       </div>
     );
@@ -610,9 +612,7 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
       {/* Header */}
       <div className="flex items-center justify-between px-3 pt-3 pb-2 flex-shrink-0">
         <div className="flex items-center gap-2">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-stone-400 shrink-0">
-            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-          </svg>
+          <ProjectBoxIcon className="text-stone-400 shrink-0" size={13} />
           <span className="text-[10px] font-semibold tracking-[0.08em] uppercase text-stone-400 select-none">
             Project
           </span>
@@ -626,11 +626,12 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
             <Palette className="w-[14px] h-[14px]" />
           </button>
           <button
-            onClick={onOpenDiscovery}
-            className="flex items-center justify-center w-[24px] h-[24px] rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
-            aria-label="Add components"
+            onClick={fetchHtmlPages}
+            disabled={isRefreshingHtml}
+            className="flex items-center justify-center w-[24px] h-[24px] rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors disabled:opacity-50"
+            aria-label="Refresh designs"
           >
-            <Plus className="w-5 h-5" />
+            <RefreshCw className={`w-[14px] h-[14px] ${isRefreshingHtml ? 'animate-spin' : ''}`} />
           </button>
           <button
             type="button"
@@ -706,7 +707,7 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
         )}
 
         {/* Frames section — HTML pages and on-canvas JSX components */}
-        {filteredFrames.length > 0 && (
+        {(!search.trim() || filteredFrames.length > 0) && (
           <div className="mb-1">
             <div className="flex items-center justify-between">
               <button
@@ -718,15 +719,14 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
                 ) : (
                   <ChevronRight className="w-3.5 h-3.5 shrink-0" />
                 )}
-                <span className="uppercase tracking-[0.08em] text-[10px]">Riffs</span>
+                <span className="uppercase tracking-[0.08em] text-[10px]">Design</span>
               </button>
               <button
-                onClick={fetchHtmlPages}
-                disabled={isRefreshingHtml}
-                className="p-1 rounded text-stone-400 hover:text-stone-600 transition-colors"
-                aria-label="Refresh frames"
+                onClick={() => window.dispatchEvent(new CustomEvent(CREATE_DESIGN_EVENT))}
+                className="flex items-center justify-center w-[24px] h-[24px] rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors shrink-0 mr-1"
+                aria-label="Create a new design"
               >
-                <RefreshCw className={`w-3 h-3 ${isRefreshingHtml ? 'animate-spin' : ''}`} />
+                <Plus className="w-[14px] h-[14px]" />
               </button>
             </div>
             {htmlExpanded && filteredFrames.map(frame => (
@@ -761,18 +761,28 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
               const expanded = isGroupExpanded(item.id);
               return (
                 <div key={item.id} className="mb-2">
-                  <button
-                    onClick={() => toggleGroup(item.id)}
-                    className="flex items-center gap-1.5 w-full px-2 py-2 text-left text-[11px] font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-2xl transition-colors"
-                  >
-                    {expanded ? (
-                      <ChevronDown className="w-3.5 h-3.5 shrink-0" />
-                    ) : (
-                      <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => toggleGroup(item.id)}
+                      className="flex items-center gap-1.5 px-2 py-2 text-left text-[11px] font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-2xl transition-colors flex-1"
+                    >
+                      {expanded ? (
+                        <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                      ) : (
+                        <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                      )}
+                      <span className="uppercase tracking-[0.08em] text-[10px]">{item.label}</span>
+                    </button>
+                    {item.id === 'pages' && (
+                      <button
+                        onClick={onOpenDiscovery}
+                        className="flex items-center justify-center w-[24px] h-[24px] rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors shrink-0 mr-1"
+                        aria-label="Add pages"
+                      >
+                        <Plus className="w-[14px] h-[14px]" />
+                      </button>
                     )}
-                    <span className="uppercase tracking-[0.08em] text-[10px]">{item.label}</span>
-                    <span className="ml-auto text-[10px] text-stone-400">{leaves.length}</span>
-                  </button>
+                  </div>
                   {expanded && (
                     <div className="grid grid-cols-2 gap-x-4 gap-y-4 px-2 pt-2 pb-4">
                       {leaves.map((leaf) => (
@@ -819,7 +829,7 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
               className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-stone-900 text-white text-[12px] font-medium hover:bg-stone-700 active:bg-stone-800 transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
-              Add my components
+              Add my pages
             </button>
           </div>
         ) : (
