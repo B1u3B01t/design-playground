@@ -79,8 +79,8 @@ export const registry: RegistryItem[] = [
   // To add a new component, run discovery → analyze in the playground UI.
   // ---------------------------------------------------------------------------
   {
-    id: 'components',
-    label: 'Components',
+    id: 'pages',
+    label: 'Pages',
     children: [],
   },
 ];
