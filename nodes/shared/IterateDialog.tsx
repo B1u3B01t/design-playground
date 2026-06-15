@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Check, Loader2, Plus, Zap } from 'lucide-react';
+import { Check, Loader2, Zap } from 'lucide-react';
 import { useReactFlow } from '@xyflow/react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../ui/tooltip';
 import { generateIterationPrompt, generateIterationFromIterationPrompt } from '../../registry';
@@ -12,14 +12,14 @@ import {
   InlineReference,
   InlineReferenceInput,
   InlineReferenceContent,
-  InlineReferenceList,
-  InlineReferenceItem,
-  InlineReferenceEmpty,
-  InlineReferenceGroup,
   type Segment,
+  type InlineReferenceHandle,
 } from '../../ui/inline-reference';
 import type { PlaygroundSkill } from '../../skills';
-import { getSkillBubbleStyle } from '../../lib/skill-icons';
+import { ImpeccableSkillPicker } from '../../ui/impeccable-skill-picker';
+import { ImpeccableDemoteMenu } from '../../ui/impeccable-demote-menu';
+import { useImpeccableSkillPicker } from '../../hooks/useImpeccableSkillPicker';
+import { impeccablePromptFromSegment } from '../../lib/impeccable-skill';
 import { matchesAction } from '../../lib/keybindings';
 import { getProviderFields } from '../../lib/generation-body';
 import {
@@ -268,7 +268,21 @@ export default function IterateDialog({
 
   const isFromIteration = !!sourceFilename;
   const panelRef = useRef<HTMLDivElement>(null);
+  const inlineRefContainerRef = useRef<HTMLDivElement>(null);
+  const inlineRefHandle = useRef<InlineReferenceHandle | null>(null);
   const previousIterationCountBeforeDragRef = useRef(iterationCount);
+
+  const {
+    impeccableSubMenuOpen,
+    setImpeccableSubMenuOpen,
+    demoteState,
+    skillPickerItems,
+    skillPickerFilterFn,
+    handleSelectItem,
+    handleImpeccableCommandCleared,
+    closeDemoteMenu,
+    resetImpeccablePicker,
+  } = useImpeccableSkillPicker(skills);
 
   const { models, isLoading: isLoadingModels } = useAvailableModels();
   const { getNode, setNodes, flowToScreenPosition, screenToFlowPosition } = useReactFlow();
@@ -345,7 +359,8 @@ export default function IterateDialog({
     }
     setOpen(false);
     setPendingDragGrid(null);
-  }, [pendingDragGrid, removeGhostNodes]);
+    resetImpeccablePicker();
+  }, [pendingDragGrid, removeGhostNodes, resetImpeccablePicker]);
 
   // When the provider changes, auto-select the first enabled model if the
   // current selection isn't valid for the new provider.
@@ -424,9 +439,17 @@ export default function IterateDialog({
             textParts.push(trimmed);
           }
         } else if (segment.type === 'reference') {
-          const skill = skillsById.get(segment.value);
-          const p = skill?.skillPath?.trim();
-          if (p) skillSections.push(p);
+          const impeccablePrompt = impeccablePromptFromSegment(
+            segment,
+            skillsById.get('impeccable')?.skillPath,
+          );
+          if (impeccablePrompt) {
+            skillSections.push(impeccablePrompt);
+          } else {
+            const skill = skillsById.get(segment.value);
+            const p = skill?.skillPath?.trim();
+            if (p) skillSections.push(p);
+          }
         }
       }
     }
@@ -910,8 +933,9 @@ export default function IterateDialog({
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
 
-      // Keep dialog open when interacting with inline reference dropdown
-      if (target?.closest('[data-slot="inline-reference-content"]')) {
+      // Keep dialog open when interacting with inline reference dropdown or demote menu
+      if (target?.closest('[data-slot="inline-reference-content"]')
+        || target?.closest('[data-slot="impeccable-demote-menu"]')) {
         return;
       }
 
@@ -986,63 +1010,52 @@ export default function IterateDialog({
               )}
 
               {/* Inline reference input for instructions + skills */}
-              <InlineReference
-                value={segments}
-                onValueChange={setSegments}
-                className="w-full cursor-chat-inline-input"
-              >
-                <InlineReferenceInput
-                  autoFocus
-                  placeholder={pendingDragGrid ? 'Add context for these variations' : 'Explore variations'}
-                  className="min-h-[54px] rounded-none border-none bg-transparent px-2 py-2 text-[16px] font-normal leading-[1.18] text-stone-800 shadow-none outline-none ring-0 focus-visible:border-none focus-visible:ring-0"
-                  style={{
-                    caretColor: 'rgb(87, 83, 78)',
+              <div ref={inlineRefContainerRef}>
+                <InlineReference
+                  ref={inlineRefHandle}
+                  value={segments}
+                  onValueChange={setSegments}
+                  onSelectItem={handleSelectItem}
+                  onImpeccableCommandCleared={(pillEl) => {
+                    handleImpeccableCommandCleared(pillEl, inlineRefContainerRef.current);
                   }}
-                />
-
-                <InlineReferenceContent
-                  trigger="/"
-                  items={skills.map((skill) => ({
-                    id: skill.id,
-                    label: skill.label,
-                    description: skill.description,
-                  }))}
-                  className="rounded-xl border border-stone-200 shadow-lg"
+                  onSkillPillPendingDelete={() => closeDemoteMenu()}
+                  className="w-full cursor-chat-inline-input"
                 >
-                  <InlineReferenceGroup heading="Skills">
-                    <InlineReferenceList className="max-h-[256px]">
-                      {(item) => (
-                        <InlineReferenceItem
-                          key={item.id}
-                          value={item}
-                          className="gap-2.5 rounded-lg px-2 py-1.5 data-[selected=true]:bg-stone-100 data-[selected=true]:text-stone-900"
-                        >
-                          <span style={getSkillBubbleStyle(item.id, 24)} />
-                          <span className="text-[13px] font-medium text-stone-800 truncate">
-                            {item.label}
-                          </span>
-                        </InlineReferenceItem>
-                      )}
-                    </InlineReferenceList>
-                    <InlineReferenceEmpty>
-                      {isLoadingSkills
-                        ? 'Loading skills…'
-                        : 'No skills available.'}
-                    </InlineReferenceEmpty>
-                    <button
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        window.dispatchEvent(new CustomEvent(OPEN_SKILLS_CATALOG_EVENT));
+                  <InlineReferenceInput
+                    autoFocus
+                    placeholder={pendingDragGrid ? 'Add context for these variations' : 'Explore variations'}
+                    className="min-h-[54px] rounded-none border-none bg-transparent px-2 py-2 text-[16px] font-normal leading-[1.18] text-stone-800 shadow-none outline-none ring-0 focus-visible:border-none focus-visible:ring-0"
+                    style={{
+                      caretColor: 'rgb(87, 83, 78)',
+                    }}
+                  />
+
+                  <InlineReferenceContent
+                    trigger="/"
+                    items={skillPickerItems}
+                    filterFn={skillPickerFilterFn}
+                    className="rounded-xl border border-stone-200 shadow-lg"
+                  >
+                    <ImpeccableSkillPicker
+                      impeccableSubMenuOpen={impeccableSubMenuOpen}
+                      onBackFromSubMenu={() => setImpeccableSubMenuOpen(false)}
+                      isLoadingSkills={isLoadingSkills}
+                    />
+                  </InlineReferenceContent>
+
+                  {demoteState && (
+                    <ImpeccableDemoteMenu
+                      demoteState={demoteState}
+                      onSelect={(command) => {
+                        inlineRefHandle.current?.updateImpeccablePill(demoteState.pillEl, command);
+                        closeDemoteMenu();
                       }}
-                      className="mt-1 flex w-full items-center gap-2 rounded-lg border-t border-stone-100 px-2 py-2 text-[12px] font-medium text-stone-500 hover:bg-stone-50 hover:text-stone-800 transition-colors"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Add a skill…
-                    </button>
-                  </InlineReferenceGroup>
-                </InlineReferenceContent>
-              </InlineReference>
+                      onClose={closeDemoteMenu}
+                    />
+                  )}
+                </InlineReference>
+              </div>
 
               {/* Controls + circular CTA */}
               <div className="mt-5 flex items-center justify-between gap-3">

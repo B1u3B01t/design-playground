@@ -12,14 +12,14 @@ export interface TextNodeData {
 function TextNodeInner({ id, data, selected }: { id: string; data: TextNodeData; selected?: boolean }) {
   const { setNodes, updateNodeData } = useReactFlow();
   const editorRef = useRef<HTMLDivElement>(null);
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(() => Boolean(data.autofocus));
   const [draftText, setDraftText] = useState(data.text || '');
   const draftTextRef = useRef(data.text || '');
   const focusFrameRef = useRef<number | null>(null);
+  const ignoreBlurRef = useRef(false);
 
   useEffect(() => {
     if (data.autofocus) {
-      setIsEditing(true);
       updateNodeData(id, { autofocus: false });
     }
   }, [data.autofocus, id, updateNodeData]);
@@ -27,6 +27,7 @@ function TextNodeInner({ id, data, selected }: { id: string; data: TextNodeData;
   useLayoutEffect(() => {
     if (!isEditing || !editorRef.current) return;
     const el = editorRef.current;
+    ignoreBlurRef.current = true;
 
     const focusAtEnd = () => {
       const currentText = draftTextRef.current;
@@ -43,12 +44,20 @@ function TextNodeInner({ id, data, selected }: { id: string; data: TextNodeData;
     };
 
     focusAtEnd();
-    focusFrameRef.current = requestAnimationFrame(focusAtEnd);
+    focusFrameRef.current = requestAnimationFrame(() => {
+      focusAtEnd();
+      focusFrameRef.current = requestAnimationFrame(focusAtEnd);
+    });
+    const blurTimer = window.setTimeout(() => {
+      ignoreBlurRef.current = false;
+    }, 150);
     return () => {
       if (focusFrameRef.current !== null) {
         cancelAnimationFrame(focusFrameRef.current);
         focusFrameRef.current = null;
       }
+      window.clearTimeout(blurTimer);
+      ignoreBlurRef.current = false;
     };
   }, [isEditing]);
 
@@ -148,7 +157,10 @@ function TextNodeInner({ id, data, selected }: { id: string; data: TextNodeData;
           setIsEditing(true);
         }}
         onInput={handleInput}
-        onBlur={stopEditing}
+        onBlur={() => {
+          if (ignoreBlurRef.current) return;
+          stopEditing();
+        }}
         onPointerDown={(e) => {
           if (isEditing) e.stopPropagation();
         }}

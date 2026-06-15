@@ -120,7 +120,7 @@ const <ComponentName> = dynamic(
 ) as ComponentType<Record<string, unknown>>;
 \`\`\`
 
-### 3b — add the entry inside the \`components\` group's \`children\` array
+### 3b — add the entry inside the \`pages\` group's \`children\` array
 
 \`\`\`ts
 {

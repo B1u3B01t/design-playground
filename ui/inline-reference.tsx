@@ -1,12 +1,8 @@
 "use client"
 
 import * as React from "react"
-// FloatingPortal was used previously to render the dropdown at the document
-// level. The dropdown now renders inside the inline-reference container so
-// it inherits parent transforms (e.g. canvas zoom), so the import is unused.
 
 import { cn } from "../lib/utils"
-import { getSkillBubbleStyle } from "../lib/skill-icons"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -36,13 +32,19 @@ type InlineReferenceItemData = {
 type TriggerState = {
   trigger: string
   query: string
-  /** Pixel rect of the trigger character for popup positioning */
   rect: DOMRect | null
 } | null
 
-// ---------------------------------------------------------------------------
-// Context
-// ---------------------------------------------------------------------------
+/**
+ * Callback fired before an item is selected. Return value controls what happens:
+ * - `{ preventDefault: true }` — cancels the normal pill insertion
+ * - `{ overrideItem: item }` — inserts `item` instead of the originally-selected one
+ * - `undefined` / `{}` — normal insertion
+ */
+export type OnSelectItemResult = {
+  preventDefault?: boolean
+  overrideItem?: InlineReferenceItemData
+} | void
 
 type InlineReferenceContextValue = {
   segments: Segment[]
@@ -57,6 +59,8 @@ type InlineReferenceContextValue = {
   registerTrigger: (trigger: string) => void
   unregisterTrigger: (trigger: string) => void
   listId: string
+  onImpeccableCommandCleared?: (pillEl: HTMLElement) => void
+  onSkillPillPendingDelete?: (pillEl: HTMLElement) => void
 }
 
 const InlineReferenceContext =
@@ -82,6 +86,8 @@ const PILL_TRIGGER_ATTR = "data-inline-ref-trigger"
 const PILL_VALUE_ATTR = "data-inline-ref-value"
 const PILL_LABEL_ATTR = "data-inline-ref-label"
 const PILL_DATA_ATTR = "data-inline-ref-data"
+const PILL_IMPECCABLE_CMD_ATTR = "data-impeccable-command"
+const PILL_IMPECCABLE_CLEARED_ATTR = "data-command-cleared"
 
 /** Read segments from the contenteditable DOM. */
 function readSegmentsFromDOM(el: HTMLDivElement): Segment[] {
@@ -93,7 +99,6 @@ function readSegmentsFromDOM(el: HTMLDivElement): Segment[] {
 
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent ?? ""
-      // Filter out lone zero-width spaces
       if (text && text !== ZERO_WIDTH_SPACE) {
         const cleaned = text.replace(new RegExp(ZERO_WIDTH_SPACE, "g"), "")
         if (cleaned) {
@@ -117,7 +122,6 @@ function readSegmentsFromDOM(el: HTMLDivElement): Segment[] {
         }
         segments.push({ type: "reference", trigger, value, label, data })
       } else {
-        // For any other element (e.g. <br>), read text content
         const text = element.textContent ?? ""
         if (text && text !== ZERO_WIDTH_SPACE) {
           segments.push({ type: "text", value: text })
@@ -127,18 +131,6 @@ function readSegmentsFromDOM(el: HTMLDivElement): Segment[] {
   }
 
   return segments
-}
-
-function applyInlineStyles(
-  el: HTMLElement,
-  styles: React.CSSProperties
-) {
-  const definedStyles = Object.fromEntries(
-    Object.entries(styles)
-      .filter((entry): entry is [string, string | number] => entry[1] != null)
-      .map(([key, value]) => [key, String(value)])
-  )
-  Object.assign(el.style, definedStyles)
 }
 
 /** Create a pill DOM element for a reference segment. */
@@ -156,6 +148,13 @@ function createPillElement(
   if (segment.data) {
     pill.setAttribute(PILL_DATA_ATTR, JSON.stringify(segment.data))
   }
+
+  const impeccableCommand = (segment.data as Record<string, unknown> | undefined)
+    ?.impeccableCommand as string | undefined
+  if (impeccableCommand) {
+    pill.setAttribute(PILL_IMPECCABLE_CMD_ATTR, impeccableCommand)
+  }
+
   pill.contentEditable = "false"
   pill.className = cn(
     "inline-reference-pill inline-flex items-center select-all whitespace-nowrap",
@@ -172,7 +171,6 @@ function createPillElement(
   )
   pill.appendChild(labelSpan)
 
-  // Skill pills use backspace-to-select-then-delete; non-skill pills get an × button.
   if (!isSkill) {
     const deleteBtn = document.createElement("span")
     deleteBtn.role = "button"
@@ -191,6 +189,23 @@ function createPillElement(
   return pill
 }
 
+function updateImpeccablePillElement(pillEl: HTMLElement, command: string, inputEl: HTMLDivElement) {
+  pillEl.setAttribute(PILL_IMPECCABLE_CMD_ATTR, command)
+  pillEl.removeAttribute(PILL_IMPECCABLE_CLEARED_ATTR)
+  pillEl.removeAttribute("data-pending-delete")
+  pillEl.setAttribute(PILL_LABEL_ATTR, `impeccable ${command}`)
+
+  const dataStr = pillEl.getAttribute(PILL_DATA_ATTR)
+  const data: Record<string, unknown> = dataStr ? (JSON.parse(dataStr) as Record<string, unknown>) : {}
+  data.impeccableCommand = command
+  pillEl.setAttribute(PILL_DATA_ATTR, JSON.stringify(data))
+
+  const labelEl = pillEl.querySelector(".inline-reference-pill__label")
+  if (labelEl) labelEl.textContent = `/impeccable ${command}`
+
+  return readSegmentsFromDOM(inputEl)
+}
+
 /** Detect if there's an active trigger behind the cursor. */
 function detectTrigger(
   el: HTMLDivElement,
@@ -205,15 +220,12 @@ function detectTrigger(
   if (node.nodeType !== Node.TEXT_NODE) return null
   const text = node.textContent ?? ""
   const cursorOffset = range.startOffset
-
-  // Walk backwards from cursor to find a trigger character
   const textBefore = text.slice(0, cursorOffset)
 
   for (const trigger of triggers) {
     const lastTriggerIdx = textBefore.lastIndexOf(trigger)
     if (lastTriggerIdx === -1) continue
 
-    // Trigger must be at start of text or preceded by whitespace
     if (
       lastTriggerIdx > 0 &&
       !/\s/.test(textBefore[lastTriggerIdx - 1])
@@ -221,13 +233,9 @@ function detectTrigger(
       continue
     }
 
-    // Query is everything between trigger and cursor
     const query = textBefore.slice(lastTriggerIdx + trigger.length)
-
-    // No spaces allowed in query (for now, simple matching)
     if (/\s/.test(query)) continue
 
-    // Get position of the trigger character for popup placement
     const triggerRange = document.createRange()
     triggerRange.setStart(node, lastTriggerIdx)
     triggerRange.setEnd(node, lastTriggerIdx + trigger.length)
@@ -239,7 +247,6 @@ function detectTrigger(
   return null
 }
 
-/** Place cursor after a given node inside the contenteditable. */
 function placeCursorAfter(node: Node) {
   const selection = window.getSelection()
   if (!selection) return
@@ -254,20 +261,33 @@ function placeCursorAfter(node: Node) {
 // InlineReference (Root)
 // ---------------------------------------------------------------------------
 
+export type InlineReferenceHandle = {
+  updateImpeccablePill(pillEl: HTMLElement, command: string): void
+}
+
 type InlineReferenceProps = {
   children: React.ReactNode
   value?: Segment[]
   onValueChange?: (segments: Segment[]) => void
+  onSelectItem?: (trigger: string, item: InlineReferenceItemData) => OnSelectItemResult
+  onImpeccableCommandCleared?: (pillEl: HTMLElement) => void
+  onSkillPillPendingDelete?: (pillEl: HTMLElement) => void
   className?: string
 }
 
-function InlineReference({
+const InlineReference = React.forwardRef<
+  InlineReferenceHandle,
+  InlineReferenceProps & Omit<React.ComponentProps<"div">, "value">
+>(function InlineReference({
   children,
   value,
   onValueChange,
+  onSelectItem,
+  onImpeccableCommandCleared,
+  onSkillPillPendingDelete,
   className,
   ...props
-}: InlineReferenceProps & Omit<React.ComponentProps<"div">, "value">) {
+}, ref) {
   const [internalSegments, setInternalSegments] = React.useState<Segment[]>(
     value ?? []
   )
@@ -297,6 +317,10 @@ function InlineReference({
 
   const selectItem = React.useCallback(
     (trigger: string, item: InlineReferenceItemData) => {
+      const result = onSelectItem?.(trigger, item)
+      if (result?.preventDefault) return
+      const effectiveItem = result?.overrideItem ?? item
+
       const el = inputRef.current
       if (!el || !triggerState) return
 
@@ -312,19 +336,17 @@ function InlineReference({
       const triggerIdx = textBefore.lastIndexOf(trigger)
       if (triggerIdx === -1) return
 
-      // Split the text node: before trigger, and after cursor
       const beforeText = text.slice(0, triggerIdx)
       const afterText = text.slice(cursorOffset)
 
       const segment: ReferenceSegment = {
         type: "reference",
         trigger,
-        value: item.id,
-        label: item.label,
-        data: { ...item },
+        value: effectiveItem.id,
+        label: effectiveItem.label,
+        data: { ...effectiveItem },
       }
 
-      // Replace in DOM
       const parent = node.parentNode!
       const frag = document.createDocumentFragment()
 
@@ -334,30 +356,25 @@ function InlineReference({
 
       const deletePill = () => {
         pill.remove()
-        // Sync segments
         setSegments(readSegmentsFromDOM(el))
         el.focus()
       }
       const pill = createPillElement(segment, deletePill)
       frag.appendChild(pill)
 
-      // Add zero-width space after pill for cursor placement
       const afterNode = document.createTextNode(
         afterText ? afterText : ZERO_WIDTH_SPACE
       )
       frag.appendChild(afterNode)
 
       parent.replaceChild(frag, node)
-
-      // Place cursor after the pill
       placeCursorAfter(pill)
 
-      // Sync
       setTriggerState(null)
       setActiveIndex(0)
       setSegments(readSegmentsFromDOM(el))
     },
-    [triggerState, setSegments]
+    [triggerState, setSegments, onSelectItem]
   )
 
   const registerTrigger = React.useCallback(
@@ -374,6 +391,16 @@ function InlineReference({
     [registeredTriggers]
   )
 
+  const updateImpeccablePill = React.useCallback(
+    (pillEl: HTMLElement, command: string) => {
+      const el = inputRef.current
+      if (!el) return
+      const next = updateImpeccablePillElement(pillEl, command, el)
+      setSegments(next)
+    },
+    [setSegments]
+  )
+
   const contextValue = React.useMemo<InlineReferenceContextValue>(
     () => ({
       segments,
@@ -388,6 +415,8 @@ function InlineReference({
       registerTrigger,
       unregisterTrigger,
       listId,
+      onImpeccableCommandCleared,
+      onSkillPillPendingDelete,
     }),
     [
       segments,
@@ -399,8 +428,14 @@ function InlineReference({
       registerTrigger,
       unregisterTrigger,
       listId,
+      onImpeccableCommandCleared,
+      onSkillPillPendingDelete,
     ]
   )
+
+  React.useImperativeHandle(ref, () => ({
+    updateImpeccablePill,
+  }), [updateImpeccablePill])
 
   return (
     <InlineReferenceContext.Provider value={contextValue}>
@@ -413,7 +448,7 @@ function InlineReference({
       </div>
     </InlineReferenceContext.Provider>
   )
-}
+})
 
 // ---------------------------------------------------------------------------
 // InlineReferenceInput
@@ -439,28 +474,27 @@ function InlineReferenceInput({
     selectItem,
     registeredTriggers,
     listId,
+    onImpeccableCommandCleared,
+    onSkillPillPendingDelete,
   } = useInlineReferenceContext()
 
   const isComposing = React.useRef(false)
   const [isEmpty, setIsEmpty] = React.useState(true)
-  /** Skill pill currently marked as pending-delete (first backspace). */
   const pendingDeletePillRef = React.useRef<HTMLElement | null>(null)
 
   const clearPendingDelete = React.useCallback(() => {
     const el = pendingDeletePillRef.current
     if (el) {
       el.removeAttribute("data-pending-delete")
+      el.removeAttribute(PILL_IMPECCABLE_CLEARED_ATTR)
       pendingDeletePillRef.current = null
     }
   }, [])
 
-  // Expose a way for InlineReferenceContent to register its filtered items
-  // We use a global map on the context
   const itemsMapRef = React.useRef<
     Map<string, InlineReferenceItemData[]>
   >(new Map())
 
-  // Expose this ref on the window for InlineReferenceContent to access
   React.useEffect(() => {
     const el = inputRef.current
     if (el) {
@@ -474,7 +508,22 @@ function InlineReferenceInput({
     const text = el.textContent ?? ""
     const hasOnlyZWS = text.replace(new RegExp(ZERO_WIDTH_SPACE, "g"), "").trim() === ""
     const hasPills = el.querySelector(`[${PILL_ATTR}]`) !== null
-    setIsEmpty(hasOnlyZWS && !hasPills)
+    const empty = hasOnlyZWS && !hasPills
+    setIsEmpty(empty)
+
+    // After clearing all text, normalize the DOM so the caret sits at the
+    // start (aligned with the ::before placeholder), not after stale nodes.
+    if (empty && el.childNodes.length > 0) {
+      el.textContent = ""
+      const selection = window.getSelection()
+      if (selection) {
+        const range = document.createRange()
+        range.setStart(el, 0)
+        range.collapse(true)
+        selection.removeAllRanges()
+        selection.addRange(range)
+      }
+    }
   }, [inputRef])
 
   const handleInput = React.useCallback(() => {
@@ -485,16 +534,14 @@ function InlineReferenceInput({
     clearPendingDelete()
     checkEmpty()
 
-    // Detect trigger
     const state = detectTrigger(el, registeredTriggers)
     setTriggerState(state)
     if (state) {
       setActiveIndex(0)
     }
 
-    // Sync segments
     setSegments(readSegmentsFromDOM(el))
-  }, [inputRef, registeredTriggers, setTriggerState, setActiveIndex, setSegments, checkEmpty])
+  }, [inputRef, registeredTriggers, setTriggerState, setActiveIndex, setSegments, checkEmpty, clearPendingDelete])
 
   const handleKeyDown = React.useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -537,7 +584,6 @@ function InlineReferenceInput({
         }
       }
 
-      // Handle backspace into pill
       if (e.key === "Backspace") {
         const selection = window.getSelection()
         if (!selection || selection.rangeCount === 0) return
@@ -548,14 +594,12 @@ function InlineReferenceInput({
         const cursorOffset = range.startOffset
 
         const getPillBefore = (): HTMLElement | null => {
-          // Cursor in a text node right after a pill (offset 0 or 1 for ZWS)
           if (node.nodeType === Node.TEXT_NODE && cursorOffset <= 1) {
             const prev = node.previousSibling
             if (prev && (prev as HTMLElement).hasAttribute?.(PILL_ATTR)) {
               return prev as HTMLElement
             }
           }
-          // Cursor at element level right after a pill
           if (node === el && cursorOffset > 0) {
             const prev = el.childNodes[cursorOffset - 1]
             if (prev && (prev as HTMLElement).hasAttribute?.(PILL_ATTR)) {
@@ -569,25 +613,47 @@ function InlineReferenceInput({
         if (pill) {
           e.preventDefault()
           const isSkillPill = pill.getAttribute(PILL_TRIGGER_ATTR) === "/"
-          if (isSkillPill && !pill.hasAttribute("data-pending-delete")) {
-            // First backspace on a skill pill — select (highlight) it
-            clearPendingDelete()
-            pill.setAttribute("data-pending-delete", "")
-            pendingDeletePillRef.current = pill
-          } else {
-            // Second backspace, or non-skill pill — delete immediately
+          const hasImpeccableCmd = pill.hasAttribute(PILL_IMPECCABLE_CMD_ATTR)
+          const isCmdCleared = pill.hasAttribute(PILL_IMPECCABLE_CLEARED_ATTR)
+          const isPendingDelete = pill.hasAttribute("data-pending-delete")
+
+          if (isPendingDelete) {
+            // Final stage — delete (check before impeccable stages so a
+            // highlighted pill always deletes on the next backspace)
             clearPendingDelete()
             pill.remove()
             setSegments(readSegmentsFromDOM(el))
             checkEmpty()
+          } else if (hasImpeccableCmd && !isCmdCleared) {
+            // Stage 1 (impeccable): clear the command, show yellow + picker
+            clearPendingDelete()
+            pill.setAttribute(PILL_IMPECCABLE_CLEARED_ATTR, "")
+            const labelEl = pill.querySelector(".inline-reference-pill__label")
+            if (labelEl) labelEl.textContent = "/impeccable"
+            pill.setAttribute(PILL_LABEL_ATTR, "impeccable")
+            const dataStr = pill.getAttribute(PILL_DATA_ATTR)
+            if (dataStr) {
+              try {
+                const data = JSON.parse(dataStr) as Record<string, unknown>
+                delete data.impeccableCommand
+                pill.setAttribute(PILL_DATA_ATTR, JSON.stringify(data))
+              } catch { /* ignore */ }
+            }
+            pendingDeletePillRef.current = pill
+            setSegments(readSegmentsFromDOM(el))
+            onImpeccableCommandCleared?.(pill)
+          } else if (isSkillPill) {
+            // Stage 2: highlight for delete (impeccable yellow or any skill)
+            clearPendingDelete()
+            pill.setAttribute("data-pending-delete", "")
+            pendingDeletePillRef.current = pill
+            onSkillPillPendingDelete?.(pill)
           }
           return
         }
 
-        // Cursor is not adjacent to a pill — clear any pending state
         clearPendingDelete()
       } else if (e.key !== "Shift" && e.key !== "Meta" && e.key !== "Alt" && e.key !== "Control") {
-        // Any printable or navigating key clears the pending-delete highlight
         clearPendingDelete()
       }
     },
@@ -601,6 +667,8 @@ function InlineReferenceInput({
       setSegments,
       checkEmpty,
       clearPendingDelete,
+      onImpeccableCommandCleared,
+      onSkillPillPendingDelete,
     ]
   )
 
@@ -626,7 +694,6 @@ function InlineReferenceInput({
     setTriggerState(null)
   }, [setTriggerState])
 
-  // Set up initial content if needed
   React.useEffect(() => {
     checkEmpty()
   }, [checkEmpty])
@@ -673,6 +740,9 @@ type InlineReferenceContentProps = {
   filterFn?: (item: InlineReferenceItemData, query: string) => boolean
   children: React.ReactNode
   className?: string
+  /** When true, show the dropdown even without an active trigger (e.g. impeccable demote). */
+  forceOpen?: boolean
+  forcePosition?: React.CSSProperties | null
 }
 
 function InlineReferenceContent({
@@ -681,6 +751,8 @@ function InlineReferenceContent({
   filterFn,
   children,
   className,
+  forceOpen = false,
+  forcePosition = null,
 }: InlineReferenceContentProps) {
   const {
     triggerState,
@@ -688,18 +760,18 @@ function InlineReferenceContent({
     unregisterTrigger,
     inputRef,
     listId,
+    activeIndex,
+    setActiveIndex,
   } = useInlineReferenceContext()
 
-  // Register this trigger
   React.useEffect(() => {
     registerTrigger(trigger)
     return () => unregisterTrigger(trigger)
   }, [trigger, registerTrigger, unregisterTrigger])
 
-  const isActive = triggerState?.trigger === trigger
-  const query = triggerState?.query ?? ""
+  const isActive = forceOpen || triggerState?.trigger === trigger
+  const query = triggerState?.trigger === trigger ? (triggerState?.query ?? "") : ""
 
-  // Filter items
   const defaultFilter = React.useCallback(
     (item: InlineReferenceItemData, q: string) =>
       item.label.toLowerCase().includes(q.toLowerCase()),
@@ -711,7 +783,6 @@ function InlineReferenceContent({
     [items, query, filter]
   )
 
-  // Register filtered items on the input element for keyboard nav
   React.useEffect(() => {
     const el = inputRef.current
     if (!el) return
@@ -729,14 +800,28 @@ function InlineReferenceContent({
       }
     }
   }, [trigger, filteredItems, inputRef])
+
+  React.useEffect(() => {
+    if (forceOpen) {
+      setActiveIndex(0)
+    }
+  }, [forceOpen, setActiveIndex])
+
   const [positionStyle, setPositionStyle] =
     React.useState<React.CSSProperties | null>(null)
 
-  // Position the dropdown relative to the trigger/cursor rect,
-  // but inside the inline-reference container so it inherits any
-  // parent transforms (e.g. React Flow canvas zoom).
   React.useEffect(() => {
-    if (!isActive || !triggerState?.rect) {
+    if (!isActive) {
+      setPositionStyle(null)
+      return
+    }
+
+    if (forceOpen && forcePosition) {
+      setPositionStyle(forcePosition)
+      return
+    }
+
+    if (!triggerState?.rect) {
       setPositionStyle(null)
       return
     }
@@ -751,14 +836,10 @@ function InlineReferenceContent({
     const containerRect = el.getBoundingClientRect()
     const margin = 8
     const estimatedWidth = 280
-
-    // Base position: just under the trigger, relative to the container
     const top = rect.bottom - containerRect.top + 4
     let left = rect.left - containerRect.left
-
     const containerWidth = containerRect.width
 
-    // Keep within container horizontally
     if (left + estimatedWidth + margin > containerWidth) {
       left = Math.max(margin, containerWidth - estimatedWidth - margin)
     } else {
@@ -772,7 +853,7 @@ function InlineReferenceContent({
       maxWidth: estimatedWidth + 40,
       zIndex: 50,
     })
-  }, [isActive, triggerState, inputRef])
+  }, [isActive, triggerState, inputRef, forceOpen, forcePosition])
 
   if (!isActive) return null
 
@@ -798,7 +879,6 @@ function InlineReferenceContent({
   )
 }
 
-// Content-level context to pass filtered items to List
 type InlineReferenceContentContextValue = {
   filteredItems: InlineReferenceItemData[]
   trigger: string
@@ -850,12 +930,14 @@ type InlineReferenceItemProps = {
   value: InlineReferenceItemData
   children: React.ReactNode
   className?: string
+  onSelect?: (item: InlineReferenceItemData) => void
 } & Omit<React.ComponentProps<"div">, "value">
 
 function InlineReferenceItem({
   value,
   children,
   className,
+  onSelect,
   ...props
 }: InlineReferenceItemProps) {
   const { activeIndex, setActiveIndex, selectItem } =
@@ -876,9 +958,13 @@ function InlineReferenceItem({
   const handleMouseDown = React.useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault()
-      selectItem(trigger, value)
+      if (onSelect) {
+        onSelect(value)
+      } else {
+        selectItem(trigger, value)
+      }
     },
-    [trigger, value, selectItem]
+    [trigger, value, selectItem, onSelect]
   )
 
   const handleMouseEnter = React.useCallback(() => {
@@ -963,10 +1049,6 @@ function InlineReferenceGroup({
   )
 }
 
-// ---------------------------------------------------------------------------
-// InlineReferenceSeparator
-// ---------------------------------------------------------------------------
-
 function InlineReferenceSeparator({
   className,
   ...props
@@ -979,10 +1061,6 @@ function InlineReferenceSeparator({
     />
   )
 }
-
-// ---------------------------------------------------------------------------
-// Exports
-// ---------------------------------------------------------------------------
 
 export {
   InlineReference,
