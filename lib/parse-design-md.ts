@@ -307,6 +307,6 @@ export function pickSurfaceColor(ds: ParsedDesignSystem): string {
     ds.colors.background ||
     ds.colors['neutral-100'] ||
     ds.colors.surface ||
-    '#F2EBE5'
+    '#f5f5f5'
   );
 }

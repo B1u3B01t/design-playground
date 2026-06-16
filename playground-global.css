@@ -1,10 +1,39 @@
 /*
- * Playground stylesheet — vanilla CSS only (no Tailwind @import / @theme here).
- * The host `globals.css` compiles Tailwind utilities for the whole app; a second
- * playground import caused @theme merge conflicts. Token-backed shadcn class
- * names under playground routes are scoped in `playground-utility-bridge.css`.
+ * Playground chrome stylesheet — vanilla CSS only (no Tailwind @import / @theme
+ * here; the Tailwind build lives in `playground-tailwind-entry.css`).
+ *
+ * Theming model:
+ *  - The playground's own UI ("chrome": sidebar, header, toolbars, menus) is
+ *    fixed & neutral and reads a PRIVATE token namespace (`--pg-*`) defined on
+ *    :root below. These never reach component previews.
+ *  - Component previews are wrapped in `.app-theme`, which redefines NO color
+ *    tokens — host components inherit the host app's own :root design tokens
+ *    (the host `globals.css` is loaded on every route, so they're already
+ *    present on /playground).
  */
 /* stylelint-disable at-rule-no-unknown, csstools/use-nesting */
+
+/* Private, host-independent chrome tokens. Defined on :root (not on
+   .playground-main-view) so Radix portals — dropdown/tooltip/dialog content
+   rendered at document.body, OUTSIDE the chrome wrapper — can still resolve
+   them. `--pg-*` names never collide with a host's tokens and are never read
+   inside `.app-theme`, so they cannot leak into previews. */
+:root {
+  --pg-background: #ffffff;
+  --pg-foreground: #1c1917;
+  --pg-popover: #ffffff;
+  --pg-popover-foreground: #1c1917;
+  --pg-muted: #f5f5f4;
+  --pg-muted-foreground: #78716c;
+  --pg-accent: #f5f5f4;
+  --pg-accent-foreground: #1c1917;
+  --pg-border: #e7e5e4;
+  --pg-input: #e7e5e4;
+  --pg-ring: #d6d3d1;
+  --pg-destructive: #dc2626;
+  --pg-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --pg-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
 
 .playground-main-view {
     /* Prevent browser back/forward swipe gestures and pull-to-refresh while the
@@ -13,178 +42,45 @@
        PlaygroundCanvas. */
     overscroll-behavior: none;
 
-    --background: #ffffff;
-    --foreground: #1a1a1a;
-    --card: #ffffff;
-    --card-foreground: #1a1a1a;
-    --popover: #ffffff;
-    --popover-foreground: #1a1a1a;
-    --primary: #1a1a1a;
-    --primary-foreground: #fafafa;
-    --secondary: #f5f5f5;
-    --secondary-foreground: #1a1a1a;
-    --muted: #f5f5f5;
-    --muted-foreground: #737373;
-    --accent: #f5f5f5;
-    --accent-foreground: #1a1a1a;
-    --destructive: #676767;
-    --destructive-foreground: #ffffff;
-    --border: #e5e5e5;
-    --input: #e5e5e5;
-    --ring: #a1a1a1;
-    --chart-1: #c9c9c9;
-    --chart-2: #989898;
-    --chart-3: #8a8a8a;
-    --chart-4: #7a7a7a;
-    --chart-5: #666666;
-    --sidebar: #fafafa;
-    --sidebar-foreground: #1a1a1a;
-    --sidebar-primary: #1a1a1a;
-    --sidebar-primary-foreground: #fafafa;
-    --sidebar-accent: #f5f5f5;
-    --sidebar-accent-foreground: #1a1a1a;
-    --sidebar-border: #e5e5e5;
-    --sidebar-ring: #a1a1a1;
-    --radius: 0rem;
-    --shadow-2xs: 0 0px 0px 0px hsl(0 0% 0% / 0.00);
-    --shadow-xs: 0 0px 0px 0px hsl(0 0% 0% / 0.00);
-    --shadow-sm: 0 0px 0px 0px hsl(0 0% 0% / 0.00), 0 1px 2px -1px hsl(0 0% 0% / 0.00);
-    --shadow: 0 0px 0px 0px hsl(0 0% 0% / 0.00), 0 1px 2px -1px hsl(0 0% 0% / 0.00);
-    --shadow-md: 0 0px 0px 0px hsl(0 0% 0% / 0.00), 0 2px 4px -1px hsl(0 0% 0% / 0.00);
-    --shadow-lg: 0 0px 0px 0px hsl(0 0% 0% / 0.00), 0 4px 6px -1px hsl(0 0% 0% / 0.00);
-    --shadow-xl: 0 0px 0px 0px hsl(0 0% 0% / 0.00), 0 8px 10px -1px hsl(0 0% 0% / 0.00);
-    --shadow-2xl: 0 0px 0px 0px hsl(0 0% 0% / 0.00);
-    --tracking-normal: 0em;
+    /* Compact spacing scale for the chrome, reset to the Tailwind default on
+       `.app-theme` (below) so previews use the host's own geometry. */
     --spacing: 0.2rem;
-    --font-sans: var(--font-geist-sans), ui-sans-serif, sans-serif;
-    --font-serif: var(--font-geist-sans), ui-sans-serif, sans-serif;
-    --font-mono: var(--font-geist-sans), ui-sans-serif, sans-serif;
+    font-family: var(--pg-font-sans);
   }
 
-  /*
-   * Product preview theme for canvas nodes. Components are wrapped in
-   * `.app-theme` so they render with aiverse tokens. Values are inlined here
-   * so hosts are not required to load `src/app/globals.css`.
-   */
-  body:has(.playground-main-view),
-  body:has(.playground-iteration-view),
-  :is(.playground-main-view, .playground-iteration-view) .app-theme {
-    --font-sans: var(--font-geist-sans);
-    --font-serif: var(--font-geist-sans), ui-serif, Georgia, serif;
-    --font-mono: var(--font-geist-mono);
-    --radius: 0.5rem;
-    --background: hsl(24, 100%, 98%);
-    --foreground: hsl(0 0% 0%);
-    --card: #F2EBE5;
-    --card-foreground: hsl(0 0% 0%);
-    --popover: hsl(36 50% 98%);
-    --popover-foreground: hsl(0 0% 0%);
-    --primary: hsl(0 0% 8%);
-    --primary-foreground: hsl(0 0% 100%);
-    --secondary: hsl(32 43% 91%);
-    --secondary-foreground: hsl(0 0% 0%);
-    --muted: hsl(32 43% 91%);
-    --muted-foreground: hsl(22 15% 46%);
-    --accent: hsl(30 40% 88%);
-    --accent-foreground: hsl(0 0% 0%);
-    --destructive: hsl(0 84.2% 60.2%);
-    --border: hsl(30 25% 85%);
-    --input: hsl(30 25% 85%);
-    --ring: hsl(0 0% 0%);
-    --chart-1: hsl(232 48% 54%);
-    --chart-2: hsl(197 36% 60%);
-    --chart-3: hsl(225 18% 50%);
-    --chart-4: hsl(88 53% 75%);
-    --chart-5: hsl(77 54% 70%);
-    --sidebar: hsl(0 0% 98%);
-    --sidebar-foreground: hsl(0 0% 8%);
-    --sidebar-primary: hsl(0 0% 8%);
-    --sidebar-primary-foreground: hsl(0 0% 100%);
-    --sidebar-accent: hsl(30 40% 88%);
-    --sidebar-accent-foreground: hsl(0 0% 8%);
-    --sidebar-border: hsl(30 25% 85%);
-    --sidebar-ring: hsl(0 0% 0%);
-    --search-bg: hsl(30 40% 88%);
-    --text-brown: hsl(22 15% 46%);
-    --text-brown-dark: hsl(24 16% 41%);
-    --text-brown-light: hsl(30 12% 62%);
-    --text-brown-lighter: hsl(30 12% 72%);
-    --text-brown-darker: hsl(26 19% 32%);
-    --card-brown-darker: #85786D;
-    --accent-orange: #CB5F1C;
-    --grey: #7f7f7f;
-  }
-
-  .playground-main-view.dark {
-    --background: #1a1a1a;
-    --foreground: #fafafa;
-    --card: #1a1a1a;
-    --card-foreground: #fafafa;
-    --popover: #262626;
-    --popover-foreground: #fafafa;
-    --primary: #e5e5e5;
-    --primary-foreground: #1a1a1a;
-    --secondary: #262626;
-    --secondary-foreground: #fafafa;
-    --muted: #262626;
-    --muted-foreground: #a1a1a1;
-    --accent: #404040;
-    --accent-foreground: #fafafa;
-    --destructive: #b2b2b2;
-    --destructive-foreground: #fafafa;
-    --border: #282828;
-    --input: #343434;
-    --ring: #737373;
-    --chart-1: #c9c9c9;
-    --chart-2: #989898;
-    --chart-3: #8a8a8a;
-    --chart-4: #7a7a7a;
-    --chart-5: #666666;
-    --sidebar: #1a1a1a;
-    --sidebar-foreground: #fafafa;
-    --sidebar-primary: #7d7d7d;
-    --sidebar-primary-foreground: #fafafa;
-    --sidebar-accent: #262626;
-    --sidebar-accent-foreground: #fafafa;
-    --sidebar-border: #282828;
-    --sidebar-ring: #525252;
-    --radius: 0rem;
-    --shadow-2xs: 0 0px 0px 0px hsl(0 0% 0% / 0.00);
-    --shadow-xs: 0 0px 0px 0px hsl(0 0% 0% / 0.00);
-    --shadow-sm: 0 0px 0px 0px hsl(0 0% 0% / 0.00), 0 1px 2px -1px hsl(0 0% 0% / 0.00);
-    --shadow: 0 0px 0px 0px hsl(0 0% 0% / 0.00), 0 1px 2px -1px hsl(0 0% 0% / 0.00);
-    --shadow-md: 0 0px 0px 0px hsl(0 0% 0% / 0.00), 0 2px 4px -1px hsl(0 0% 0% / 0.00);
-    --shadow-lg: 0 0px 0px 0px hsl(0 0% 0% / 0.00), 0 4px 6px -1px hsl(0 0% 0% / 0.00);
-    --shadow-xl: 0 0px 0px 0px hsl(0 0% 0% / 0.00), 0 8px 10px -1px hsl(0 0% 0% / 0.00);
-    --shadow-2xl: 0 0px 0px 0px hsl(0 0% 0% / 0.00);
-  }
-
-:is(.playground-main-view, .playground-iteration-view) *,
-:is(.playground-main-view, .playground-iteration-view) ::before,
-:is(.playground-main-view, .playground-iteration-view) ::after {
-  border-color: var(--border);
-  outline-color: color-mix(in oklch, var(--ring) 50%, transparent);
+/*
+ * Preview boundary. `.app-theme` defines NO color tokens, so host components
+ * inherit the host app's own :root tokens (colors, radius, shadows). We only
+ * (a) reset the chrome's compact --spacing back to the Tailwind default so
+ * preview geometry matches the host, and (b) re-assert the host font so
+ * previews use the host typeface rather than the chrome's pinned
+ * --pg-font-sans (inherited from .playground-main-view). The runtime dark-mode
+ * override appends a `.dark`/`.light` class to this element.
+ */
+.app-theme {
+  --spacing: 0.25rem;
+  font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
 }
 
 body:has(.playground-main-view),
 body:has(.playground-iteration-view) {
-  background-color: hsl(24, 100%, 98%);
-  color: hsl(0 0% 0%);
   scrollbar-gutter: stable;
 }
 
-.playground-main-view button {
+/* Chrome buttons only — the :not(.app-theme button) guard prevents this from
+   repainting host buttons rendered inside `.app-theme` previews. */
+.playground-main-view button:not(.app-theme button) {
   cursor: pointer;
   font-weight: 500;
   font-size: 0.875rem;
   line-height: 1.25rem;
   border-radius: 0.5rem;
-  color: #78716c;
+  color: var(--pg-muted-foreground);
 }
 
-.playground-main-view button:hover {
-  color: #292524;
-  background-color: #f5f5f4;
+.playground-main-view button:not(.app-theme button):hover {
+  color: var(--pg-foreground);
+  background-color: var(--pg-muted);
 }
 
 /* Canvas right-click menu — override global button colors for dark surface */
@@ -208,28 +104,9 @@ body:has(.playground-iteration-view) {
   color: rgb(245, 245, 244);
 }
 
-:is(.playground-main-view, .playground-iteration-view) .font-louize { font-family: var(--font-louize), "Louize", serif; letter-spacing: -0.025em; }
-:is(.playground-main-view, .playground-iteration-view) .font-pixelify { font-family: var(--font-pixelify), monospace; }
-:is(.playground-main-view, .playground-iteration-view) .font-bricolage { font-family: var(--font-bricolage), sans-serif; }
-:is(.playground-main-view, .playground-iteration-view) .theme-products-dark {
-  --background: hsl(0 0% 0%);
-  --foreground: hsl(0 0% 100%);
-  --card: hsl(0 0% 12%);
-  --card-foreground: hsl(0 0% 100%);
-  --popover: hsl(0 0% 10%);
-  --popover-foreground: hsl(0 0% 100%);
-  --primary: hsl(0 0% 100%);
-  --primary-foreground: hsl(0 0% 0%);
-  --secondary: hsl(0 0% 14%);
-  --secondary-foreground: hsl(0 0% 100%);
-  --muted: hsl(0 0% 16%);
-  --muted-foreground: hsl(0 0% 70%);
-  --accent: hsl(0 0% 18%);
-  --accent-foreground: hsl(0 0% 100%);
-  --border: hsl(0 0% 18%);
-  --input: hsl(0 0% 18%);
-  --ring: hsl(0 0% 100%);
-}
+/* aiverse-specific font classes (.font-louize/.font-pixelify/.font-bricolage)
+   and the .theme-products-dark example theme were removed — hosts theme their
+   own previews from their globals.css, and demo content carries literal CSS. */
 
 :where(.playground-main-view, .playground-iteration-view) .prose blockquote {
   border-left-width: 4px;
@@ -296,7 +173,7 @@ body:has(.playground-iteration-view) {
 
 :is(.playground-main-view, .playground-iteration-view) .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: var(--text-brown-darker) transparent;
+  scrollbar-color: #a8a29e transparent;
 }
 
 :is(.playground-main-view, .playground-iteration-view) .custom-scrollbar::-webkit-scrollbar {
@@ -308,13 +185,13 @@ body:has(.playground-iteration-view) {
 }
 
 :is(.playground-main-view, .playground-iteration-view) .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: var(--text-brown-darker);
+  background-color: #a8a29e;
   border-radius: 3px;
   border: none;
 }
 
 :is(.playground-main-view, .playground-iteration-view) .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: var(--text-brown-dark);
+  background-color: #78716c;
 }
 
 :is(.playground-main-view, .playground-iteration-view) .custom-scrollbar::-webkit-scrollbar-corner {
@@ -750,7 +627,7 @@ body.cursor-chat-cursor-mode .playground-main-view .react-flow__nodesselection-r
    sits inside the contentEditable's padding box. No JS sync needed. */
 .inline-reference-input[data-empty]::before {
   content: attr(data-placeholder);
-  color: var(--muted-foreground);
+  color: var(--pg-muted-foreground);
   pointer-events: none;
   user-select: none;
 }

@@ -56,8 +56,8 @@ function PlanCard({
 }) {
 	const selectedClasses =
 		variant === "pro"
-			? "shadow-lg border-accent-orange/50 ring-2 ring-accent-orange/20"
-			: "shadow-md border-foreground/40 ring-2 ring-foreground/10";
+			? "shadow-lg border-orange-600/50 ring-2 ring-orange-600/20"
+			: "shadow-md border-stone-900/40 ring-2 ring-stone-900/10";
 
 	return (
 		<div
@@ -70,17 +70,17 @@ function PlanCard({
 					onClick();
 				}
 			}}
-			className={`w-full text-left bg-card rounded-2xl p-5 border transition-all duration-150 cursor-pointer hover:-translate-y-0.5 hover:scale-[1.015] active:scale-[0.98] ${selected ? selectedClasses : "shadow-sm hover:shadow-lg border-border/40 hover:border-border"}`}
+			className={`w-full text-left bg-white rounded-2xl p-5 border transition-all duration-150 cursor-pointer hover:-translate-y-0.5 hover:scale-[1.015] active:scale-[0.98] ${selected ? selectedClasses : "shadow-sm hover:shadow-lg border-stone-200/40 hover:border-stone-200"}`}
 		>
 			<div className="flex items-center justify-between mb-1">
-				<h3 className="text-lg font-semibold text-foreground">{title}</h3>
+				<h3 className="text-lg font-semibold text-stone-900">{title}</h3>
 				{price}
 			</div>
-			<p className="text-xs text-muted-foreground mb-3">{description}</p>
+			<p className="text-xs text-stone-500 mb-3">{description}</p>
 			<ul className="space-y-2">
 				{features.map((f) => (
-					<li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
-						<Check className="w-3.5 h-3.5 text-foreground mt-0.5 shrink-0" />
+					<li key={f} className="flex items-start gap-2 text-sm text-stone-500">
+						<Check className="w-3.5 h-3.5 text-stone-900 mt-0.5 shrink-0" />
 						<span>{f}</span>
 					</li>
 				))}
@@ -101,8 +101,8 @@ function BillingToggle({
 			className="flex items-center gap-1.5"
 			onClick={(e) => e.stopPropagation()}
 		>
-			<span className="text-[10px] text-muted-foreground">billed</span>
-			<div className="flex items-center p-0.5 bg-muted rounded-full">
+			<span className="text-[10px] text-stone-500">billed</span>
+			<div className="flex items-center p-0.5 bg-stone-100 rounded-full">
 				<button
 					type="button"
 					onClick={(e) => {
@@ -111,13 +111,13 @@ function BillingToggle({
 					}}
 					className={`relative px-2 py-1 text-[10px] font-medium rounded-full transition-all ${
 						billingCycle === "annual"
-							? "bg-background text-foreground shadow-sm"
-							: "text-muted-foreground hover:text-foreground"
+							? "bg-stone-50 text-stone-900 shadow-sm"
+							: "text-stone-500 hover:text-stone-900"
 					}`}
 				>
 					Annually
 					{billingCycle === "quarterly" && (
-						<span className="ml-0.5 text-[9px] text-accent-orange font-semibold">-30%</span>
+						<span className="ml-0.5 text-[9px] text-orange-600 font-semibold">-30%</span>
 					)}
 				</button>
 				<button
@@ -128,8 +128,8 @@ function BillingToggle({
 					}}
 					className={`px-2 py-1 text-[10px] font-medium rounded-full transition-all ${
 						billingCycle === "quarterly"
-							? "bg-background text-foreground shadow-sm"
-							: "text-muted-foreground hover:text-foreground"
+							? "bg-stone-50 text-stone-900 shadow-sm"
+							: "text-stone-500 hover:text-stone-900"
 					}`}
 				>
 					Quarterly
@@ -144,7 +144,7 @@ export function PlanCards({ selectedPlan, onSelectPlan, billingCycle, onBillingC
 
 	return (
 		<>
-			<h2 className="text-4xl sm:text-5xl font-louize tracking-tight text-foreground text-center mb-10">
+			<h2 className="text-4xl sm:text-5xl font-serif tracking-tight text-stone-900 text-center mb-10">
 				{firstName ? <>What&rsquo;s right for you, <em>{firstName}</em>?</> : <>Compare <em>Plans</em></>}
 			</h2>
 
@@ -153,7 +153,7 @@ export function PlanCards({ selectedPlan, onSelectPlan, billingCycle, onBillingC
 					selected={selectedPlan === "free"}
 					onClick={() => onSelectPlan("free")}
 					title="Free"
-					price={<span className="text-lg font-semibold text-foreground">$0</span>}
+					price={<span className="text-lg font-semibold text-stone-900">$0</span>}
 					description="For curious designers, students and hobbyists"
 					features={FREE_FEATURES}
 				/>
@@ -165,8 +165,8 @@ export function PlanCards({ selectedPlan, onSelectPlan, billingCycle, onBillingC
 						<div className="flex items-center gap-3">
 							<BillingToggle billingCycle={billingCycle} onChange={onBillingCycleChange} />
 							<div className="text-right">
-								<span className="text-lg font-semibold text-foreground">${proPrice}</span>
-								<span className="text-xs text-muted-foreground">/mo</span>
+								<span className="text-lg font-semibold text-stone-900">${proPrice}</span>
+								<span className="text-xs text-stone-500">/mo</span>
 							</div>
 						</div>
 					}
@@ -174,22 +174,22 @@ export function PlanCards({ selectedPlan, onSelectPlan, billingCycle, onBillingC
 					features={PRO_FEATURES}
 					variant="pro"
 				/>
-				<div className="bg-card rounded-2xl p-5 border border-border/40">
+				<div className="bg-white rounded-2xl p-5 border border-stone-200/40">
 					<div className="flex items-center gap-1 mb-2">
 						{Array.from({ length: 5 }).map((_, i) => (
-							<span key={i} className="text-accent-orange text-sm">★</span>
+							<span key={i} className="text-orange-600 text-sm">★</span>
 						))}
 					</div>
-					<p className="text-foreground text-sm italic leading-relaxed">
+					<p className="text-stone-900 text-sm italic leading-relaxed">
 						&ldquo;Our VP of UX recommended the library to the whole team.&rdquo;
 					</p>
-					<p className="text-muted-foreground text-xs mt-2">— UX Designer at ADP</p>
+					<p className="text-stone-500 text-xs mt-2">— UX Designer at ADP</p>
 				</div>
 				<PlanCard
 					selected={selectedPlan === "team"}
 					onClick={() => onSelectPlan("team")}
 					title="Team"
-					price={<span className="text-sm font-medium text-muted-foreground">Custom</span>}
+					price={<span className="text-sm font-medium text-stone-500">Custom</span>}
 					description="For teams shipping AI at scale"
 					features={TEAM_FEATURES}
 				/>

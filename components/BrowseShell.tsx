@@ -12,15 +12,15 @@ interface BrowseShellProps {
 
 export function BrowseShell({ firstName = "there" }: BrowseShellProps) {
   return (
-    <div className="min-h-[420px] w-full bg-background p-10">
+    <div className="min-h-[420px] w-full bg-stone-50 p-10">
       <div className="max-w-3xl mx-auto">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
+        <p className="text-xs uppercase tracking-wider text-stone-500 mb-2">
           Welcome
         </p>
-        <h1 className="text-4xl font-louize tracking-tight text-foreground mb-3">
+        <h1 className="text-4xl font-serif tracking-tight text-stone-900 mb-3">
           You&rsquo;re in, <em>{firstName}</em>.
         </h1>
-        <p className="text-sm text-muted-foreground mb-8 max-w-md">
+        <p className="text-sm text-stone-500 mb-8 max-w-md">
           Browse 200+ real AI-UX examples, save your favourites into
           collections, and unlock the pattern library.
         </p>
@@ -29,7 +29,7 @@ export function BrowseShell({ firstName = "there" }: BrowseShellProps) {
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
-              className="aspect-[4/3] rounded-2xl bg-accent/50 border border-border/40"
+              className="aspect-[4/3] rounded-2xl bg-stone-200/50 border border-stone-200/40"
             />
           ))}
         </div>

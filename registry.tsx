@@ -45,7 +45,6 @@ export interface RegistryLeafItem {
   propsInterface: string;
   childComponents?: string[]; // Child component names that can be iterated
   size?: ComponentSize; // Display size for the component preview
-  useAppTheme?: boolean; // Render with the main app's CSS variables instead of playground theme
 }
 
 export type RegistryItem = RegistryGroupItem | RegistryLeafItem;

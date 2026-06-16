@@ -16,7 +16,7 @@ export function PlaygroundToaster() {
       className="toaster group z-[1000]"
       toastOptions={{
         style: {
-          fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif',
+          fontFamily: 'var(--pg-font-sans)',
         },
         classNames: {
           toast:

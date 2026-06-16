@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
-import { Eraser, RefreshCw, X, SlidersVertical, Keyboard, ChevronDown, Copy, Wrench } from 'lucide-react';
+import { Eraser, RefreshCw, X, SlidersVertical, Keyboard, ChevronDown, Copy, Wrench, Sun, Moon, Monitor } from 'lucide-react';
 import { useDevModeStore } from './lib/dev-mode-store';
+import { usePreviewColorSchemeStore } from './lib/preview-color-scheme-store';
 import { useFlowMocksStore } from './lib/flow-mocks-store';
 import {
   FLOW_PLAY_EVENT,
@@ -123,6 +124,8 @@ export default function PlaygroundHeader({
   const [devModeMenu, setDevModeMenu] = useState<{ x: number; y: number } | null>(null);
   const devMode = useDevModeStore((s) => s.enabled);
   const toggleDevMode = useDevModeStore((s) => s.toggle);
+  const previewScheme = usePreviewColorSchemeStore((s) => s.scheme);
+  const cyclePreviewScheme = usePreviewColorSchemeStore((s) => s.cycle);
   const flows = useFlowMocksStore((s) => s.flows);
   const flowIds = Object.keys(flows);
   const activeFlowId = flowIds[flowIds.length - 1] ?? null;
@@ -443,6 +446,33 @@ export default function PlaygroundHeader({
         {/* Right: action icons + presence bubbles */}
         <div className="flex items-center gap-0.5">
           {multiplayer.enabled && <PresenceAvatars />}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={cyclePreviewScheme}
+                className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
+                aria-label="Preview color scheme"
+              >
+                {previewScheme === 'dark' ? (
+                  <Moon className="w-[18px] h-[18px]" />
+                ) : previewScheme === 'light' ? (
+                  <Sun className="w-[18px] h-[18px]" />
+                ) : (
+                  <Monitor className="w-[18px] h-[18px]" />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>
+                Preview theme:{' '}
+                {previewScheme === 'auto'
+                  ? 'Auto (match app)'
+                  : previewScheme === 'dark'
+                    ? 'Dark'
+                    : 'Light'}
+              </p>
+            </TooltipContent>
+          </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
               <button

@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation';
 import { flatRegistry } from '../../registry';
 import { getIterationComponent } from '..';
 import type { ComponentSize } from '../../lib/constants';
+import { previewSchemeClass, usePreviewColorSchemeStore } from '../../lib/preview-color-scheme-store';
 
 interface IterationPageProps {
   params: Promise<{
@@ -34,10 +35,11 @@ const isFullPage = (size?: ComponentSize) => size === 'laptop' || size === 'tabl
 
 function ScreenFrame({ children, size }: { children: React.ReactNode; size?: ComponentSize }) {
   const full = isFullPage(size);
+  const schemeClass = previewSchemeClass(usePreviewColorSchemeStore((s) => s.scheme));
 
   return (
     <div className="playground-iteration-view fixed inset-0 bg-gray-100 p-4">
-      <div className="app-theme w-full h-full overflow-auto rounded-2xl border border-gray-300 bg-background shadow-sm">
+      <div className={`app-theme w-full h-full overflow-auto rounded-2xl border border-gray-300 bg-background shadow-sm ${schemeClass}`}>
         <div className={full ? 'min-h-full' : 'grid min-h-full place-items-center p-[5%]'}>
           {children}
         </div>

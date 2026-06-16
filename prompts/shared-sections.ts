@@ -15,7 +15,7 @@ export function getStylingConstraint(mode: StylingMode): string {
   if (mode === 'inline-css') {
     return 'You may use inline style={{}} for any CSS property. Do NOT use Tailwind utility classes for visual styling. Use inline styles for maximum creative expressiveness.';
   }
-  return 'Use only existing Tailwind classes already present in the codebase. Do not use inline style={{}}.';
+  return "Use only existing Tailwind classes already present in the codebase. Prefer the host app's semantic theme tokens (bg-background, text-foreground, bg-primary, text-primary-foreground, bg-card, bg-muted, text-muted-foreground, border-border, etc.) over literal colors so the result inherits the host's theme — including light/dark mode. Do NOT hardcode hex/rgb colors. Do not use inline style={{}}.";
 }
 
 /** Returns the quality checklist line item for styling */
@@ -23,7 +23,7 @@ export function getStylingQualityItem(mode: StylingMode): string {
   if (mode === 'inline-css') {
     return 'Uses inline style={{}} for styling (no Tailwind utility classes)';
   }
-  return 'Uses only allowed Tailwind classes already present in the codebase';
+  return "Uses the host's semantic theme tokens (no hardcoded hex); only allowed Tailwind classes already present in the codebase";
 }
 
 /** Returns the full quality checklist with the appropriate styling line */

@@ -403,7 +403,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
       style={{
         ...(isPreset ? { width: displayDims.width } : {}),
         ...(isFillMode ? { width: '100%', height: '100%' } : {}),
-        fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif',
+        fontFamily: 'var(--pg-font-sans)',
       }}
     >
       {/* Resize handle — bottom-right corner, only when selected */}

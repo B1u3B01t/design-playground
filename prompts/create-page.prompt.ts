@@ -49,7 +49,7 @@ INSTRUCTIONS
    - Top of file: 'use client';
    - Default export: export default function {PascalName}() { ... }
    - Use Tailwind utility classes for layout and spacing.
-   - Use the app's CSS variables (already in src/app/globals.css and exposed via .app-theme) for colors and fonts where possible — e.g., text-foreground, bg-background, border-border, font-sans, font-serif. If you need a specific brand color, prefer existing Tailwind theme tokens over hardcoded hex.
+   - Use the host app's semantic theme tokens (defined in src/app/globals.css; the canvas inherits them through .app-theme) for colors and fonts — e.g., text-foreground, bg-background, bg-primary, text-primary-foreground, border-border, text-muted-foreground, font-sans. ALWAYS prefer these tokens over hardcoded hex/rgb so the page matches the host app in both light and dark mode.
    - The page is a fully standalone landing/route surface. The root layout will add the site navbar and footer around it — DO NOT include a navbar or footer of your own.
    - Make the page substantively reflect the user's description (real content, real layout, real interactions where they make sense). Avoid placeholder text like "Lorem ipsum" — write content that fits the description.
    - Prefer composing with primitives from @/components/ui where they exist; otherwise inline JSX is fine.

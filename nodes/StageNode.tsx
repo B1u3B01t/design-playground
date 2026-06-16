@@ -138,7 +138,7 @@ function StageNode({ data, selected = false }: StageNodeProps) {
       className="flex flex-col"
       style={{
         width: displayDims.width,
-        fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif',
+        fontFamily: 'var(--pg-font-sans)',
       }}
     >
       <Handle type="target" position={Position.Left} style={{ background: '#A855F7' }} />
