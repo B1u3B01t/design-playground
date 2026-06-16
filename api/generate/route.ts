@@ -32,6 +32,10 @@ import {
   CURSOR_AUTH_ERROR_PATTERN,
   CURSOR_AUTH_USER_MESSAGE,
 } from '../../lib/cursor-auth-constants';
+import {
+  resolvePlaygroundDir,
+  resolvePlaygroundDirRelative,
+} from '../../lib/resolve-playground-dir';
 
 /**
  * Playground generation API - Agent CLI Integration
@@ -45,7 +49,7 @@ import {
 
 const TEMP_DIR = path.join(process.cwd(), TEMP_DIR_RELATIVE);
 const LOCKFILE_PATH = path.join(TEMP_DIR, GENERATION_LOCKFILE_FILENAME);
-const ITERATIONS_DIR = path.join(process.cwd(), 'src/app/playground/iterations');
+const ITERATIONS_DIR = path.join(resolvePlaygroundDir(), 'iterations');
 
 // Maximum generation duration (10 minutes)
 const GENERATION_TIMEOUT_MS = 10 * 60 * 1000;
@@ -146,7 +150,7 @@ function startFileWatcher(htmlPageFolder?: string, jsxFile?: string) {
 
   // Watch canvas-components directory for JSX iteration changes
   if (jsxFile) {
-    const canvasDir = path.join(process.cwd(), 'src/app/playground/canvas-components');
+    const canvasDir = path.join(resolvePlaygroundDir(), 'canvas-components');
     let jsxDebounceTimer: NodeJS.Timeout | null = null;
     try {
       jsxFileWatcher = fs.watch(canvasDir, (_eventType, filename) => {
@@ -721,6 +725,19 @@ export async function POST(req: Request) {
     }
 
     let { prompt } = body;
+
+    // Prompts (and client-built file paths embedded in them) hardcode the
+    // conventional `src/app/playground/...` save location. When this host uses
+    // a different layout (e.g. `app/playground`), rewrite those paths to the
+    // real playground directory so generated files land there instead of
+    // spawning a sparse, duplicate `src/app/playground` tree. No-op on the
+    // common `src/app/` layout. This is the single chokepoint that corrects
+    // every prompt path regardless of which builder produced it.
+    const playgroundRelativeDir = resolvePlaygroundDirRelative();
+    if (prompt && playgroundRelativeDir !== 'src/app/playground') {
+      prompt = prompt.split('src/app/playground/').join(`${playgroundRelativeDir}/`);
+    }
+
     const providerId: ProviderId = body.provider ?? 'cursor';
     const model = resolveAgentModel(providerId, body.model);
 

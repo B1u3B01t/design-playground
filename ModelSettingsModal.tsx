@@ -216,7 +216,7 @@ export default function ModelSettingsModal({ open, onOpenChange }: ModelSettings
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Model Settings</DialogTitle>
           <DialogDescription className="flex items-center justify-between">

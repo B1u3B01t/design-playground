@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
+import { resolvePlaygroundDir } from '../../lib/resolve-playground-dir';
 
 const IMAGES_DIR = path.join(
-  process.cwd(),
-  'src/app/playground/iterations/iterations-images',
+  resolvePlaygroundDir(),
+  'iterations/iterations-images',
 );
 
 async function ensureImagesDir() {

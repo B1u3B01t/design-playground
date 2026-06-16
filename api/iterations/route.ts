@@ -7,9 +7,16 @@ import {
   ITERATION_FILENAME_PARSE_PATTERN,
   TREE_MANIFEST_FILENAME,
 } from '../../lib/constants';
-import { resolvePlaygroundDir } from '../../lib/resolve-playground-dir';
+import { resolvePlaygroundDir, listPlaygroundDirs } from '../../lib/resolve-playground-dir';
 
 const ITERATIONS_DIR = path.join(resolvePlaygroundDir(), 'iterations');
+
+/** All existing `iterations/` dirs, canonical first — for defensive scanning. */
+function iterationDirs(): string[] {
+  return listPlaygroundDirs()
+    .map((dir) => path.join(dir, 'iterations'))
+    .filter((dir) => fs.existsSync(dir));
+}
 const INDEX_FILE = path.join(ITERATIONS_DIR, ITERATIONS_INDEX_FILENAME);
 const TREE_FILE = path.join(ITERATIONS_DIR, TREE_MANIFEST_FILENAME);
 
@@ -96,7 +103,7 @@ function findDescendants(manifest: TreeManifest, filename: string): string[] {
 // File parsing
 // ---------------------------------------------------------------------------
 
-function parseIterationFile(filename: string): IterationFile | null {
+function parseIterationFile(filename: string, dir: string = ITERATIONS_DIR): IterationFile | null {
   // Match pattern: ComponentName.iteration-N.tsx
   const match = filename.match(ITERATION_FILENAME_PARSE_PATTERN);
   if (!match) return null;
@@ -109,7 +116,7 @@ function parseIterationFile(filename: string): IterationFile | null {
   let sourceIteration: string | null = null;
 
   try {
-    const filePath = path.join(ITERATIONS_DIR, filename);
+    const filePath = path.join(dir, filename);
     const content = fs.readFileSync(filePath, 'utf-8');
 
     const descMatch = content.match(/@description\s+(.+)/);
@@ -243,20 +250,29 @@ function regenerateIndex(): void {
 
 export async function GET() {
   try {
-    if (!fs.existsSync(ITERATIONS_DIR)) {
+    // Scan every existing playground `iterations/` dir (canonical first) so
+    // files stranded in a sparse directory from a prior layout-mismatch run
+    // still surface. Dedupe by filename — the canonical dir wins.
+    const dirs = iterationDirs();
+    if (dirs.length === 0) {
       return NextResponse.json({ iterations: [] });
     }
 
-    const files = fs.readdirSync(ITERATIONS_DIR);
     const iterations: IterationFile[] = [];
+    const seen = new Set<string>();
 
-    for (const file of files) {
-      if (file === 'index.ts' || file === TREE_MANIFEST_FILENAME) continue;
+    for (const dir of dirs) {
+      const files = fs.readdirSync(dir);
+      for (const file of files) {
+        if (file === 'index.ts' || file === TREE_MANIFEST_FILENAME) continue;
+        if (seen.has(file)) continue;
 
-      if (file.endsWith('.tsx')) {
-        const parsed = parseIterationFile(file);
-        if (parsed) {
-          iterations.push(parsed);
+        if (file.endsWith('.tsx')) {
+          const parsed = parseIterationFile(file, dir);
+          if (parsed) {
+            seen.add(file);
+            iterations.push(parsed);
+          }
         }
       }
     }

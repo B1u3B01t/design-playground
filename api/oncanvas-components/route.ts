@@ -9,10 +9,32 @@ import {
   type JsxComponentInfo,
   type JsxIterationInfo,
 } from '../../lib/constants';
-import { resolvePlaygroundDir } from '../../lib/resolve-playground-dir';
+import { resolvePlaygroundDir, listPlaygroundDirs } from '../../lib/resolve-playground-dir';
 
 const CANVAS_COMPONENTS_DIR = path.join(resolvePlaygroundDir(), 'canvas-components');
 const INDEX_FILE = path.join(CANVAS_COMPONENTS_DIR, 'index.ts');
+
+/**
+ * All existing `canvas-components/` dirs, canonical first — for defensive
+ * scanning so files stranded in a sparse directory still surface. Writes
+ * (index regeneration, PUT, DELETE) always target CANVAS_COMPONENTS_DIR.
+ */
+function canvasComponentDirs(): string[] {
+  return listPlaygroundDirs()
+    .map((dir) => path.join(dir, 'canvas-components'))
+    .filter((dir) => fs.existsSync(dir));
+}
+
+/** Read filenames across all candidate dirs matching `pattern`, deduped (canonical wins). */
+function readMatchingAcrossDirs(pattern: RegExp): string[] {
+  const seen = new Set<string>();
+  for (const dir of canvasComponentDirs()) {
+    for (const f of fs.readdirSync(dir)) {
+      if (pattern.test(f)) seen.add(f);
+    }
+  }
+  return [...seen];
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -43,9 +65,7 @@ function buildComponentInfo(filename: string, iterations: JsxIterationInfo[]): J
 }
 
 function scanBaseFiles(): string[] {
-  if (!fs.existsSync(CANVAS_COMPONENTS_DIR)) return [];
-  return fs.readdirSync(CANVAS_COMPONENTS_DIR)
-    .filter(f => CANVAS_COMPONENT_FILENAME_PATTERN.test(f))
+  return readMatchingAcrossDirs(CANVAS_COMPONENT_FILENAME_PATTERN)
     .sort((a, b) => {
       const na = parseInt(a.match(/(\d+)/)?.[1] ?? '0', 10);
       const nb = parseInt(b.match(/(\d+)/)?.[1] ?? '0', 10);
@@ -54,9 +74,7 @@ function scanBaseFiles(): string[] {
 }
 
 function scanIterationFiles(): string[] {
-  if (!fs.existsSync(CANVAS_COMPONENTS_DIR)) return [];
-  return fs.readdirSync(CANVAS_COMPONENTS_DIR)
-    .filter(f => CANVAS_ITERATION_FILENAME_PATTERN.test(f))
+  return readMatchingAcrossDirs(CANVAS_ITERATION_FILENAME_PATTERN)
     .sort((a, b) => {
       const parseA = a.match(CANVAS_ITERATION_PARSE_PATTERN);
       const parseB = b.match(CANVAS_ITERATION_PARSE_PATTERN);
