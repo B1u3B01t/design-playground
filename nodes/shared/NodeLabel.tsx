@@ -46,7 +46,7 @@ function NodeLabelInner({ children, color, className, style }: NodeLabelProps) {
     <span
       className={`text-[11px] font-medium select-none leading-none ${className ?? ''}`}
       style={{
-        fontFamily: 'var(--font-geist-sans), sans-serif',
+        fontFamily: 'var(--pg-font-sans)',
         color: effectiveColor,
         display: 'inline-block',
         transform: `scale(${inv})`,

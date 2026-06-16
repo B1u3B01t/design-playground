@@ -34,6 +34,7 @@ import { GenerationPresenceBridge } from './lib/presence';
 import './lib/ngrok-headers';
 import { LiveblocksSetupGuard } from './lib/liveblocks-setup';
 import { requireCursorAuthForProvider } from './lib/require-cursor-auth';
+import { previewSchemeClass, usePreviewColorSchemeStore } from './lib/preview-color-scheme-store';
 
 export interface PendingChild {
   id: string;
@@ -658,11 +659,17 @@ export default function PlaygroundClient({
     }
   }, [notifySidebar, analyzeChildren]);
 
+  // Per-canvas preview color-scheme override. '' = auto (mirror the host); the
+  // `dark`/`light` class sits on the canvas root so the host's own `.dark`
+  // token overrides cascade into every preview while the chrome (which reads
+  // the private --pg-* namespace) is unaffected.
+  const previewSchemeClassName = previewSchemeClass(usePreviewColorSchemeStore((s) => s.scheme));
+
   const body = (
     <ReactFlowProvider>
       <div
-        className="playground-main-view fixed inset-0 flex flex-col overflow-hidden z-50"
-        style={{ fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif', background: '#f5f5f4' }}
+        className={`playground-main-view fixed inset-0 flex flex-col overflow-hidden z-50 ${previewSchemeClassName}`}
+        style={{ fontFamily: 'var(--pg-font-sans)', background: '#f5f5f4' }}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => e.preventDefault()}
       >

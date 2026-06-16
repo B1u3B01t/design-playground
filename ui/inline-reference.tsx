@@ -160,7 +160,7 @@ function createPillElement(
     "inline-reference-pill inline-flex items-center select-all whitespace-nowrap",
     isSkill
       ? "inline-reference-pill--skill"
-      : "gap-0.5 rounded-sm bg-accent/50 border border-accent px-1.5 py-0.5 align-baseline mx-0.5"
+      : "gap-0.5 rounded-sm bg-pg-accent/50 border border-pg-accent px-1.5 py-0.5 align-baseline mx-0.5"
   )
 
   const labelSpan = document.createElement("span")
@@ -176,7 +176,7 @@ function createPillElement(
     deleteBtn.role = "button"
     deleteBtn.tabIndex = -1
     deleteBtn.ariaLabel = `Remove ${segment.label}`
-    deleteBtn.className = "inline-flex items-center justify-center cursor-pointer transition-colors size-3.5 rounded-sm opacity-50 hover:opacity-100 hover:bg-accent ml-0.5"
+    deleteBtn.className = "inline-flex items-center justify-center cursor-pointer transition-colors size-3.5 rounded-sm opacity-50 hover:opacity-100 hover:bg-pg-accent ml-0.5"
     deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`
     deleteBtn.addEventListener("mousedown", (e) => {
       e.preventDefault()
@@ -712,7 +712,7 @@ function InlineReferenceInput({
       aria-controls={isOpen ? listId : undefined}
       aria-haspopup="listbox"
       className={cn(
-        "border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 w-full rounded-md border bg-transparent px-3 py-2 shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50",
+        "border-pg-input placeholder:text-pg-muted-foreground focus-visible:border-pg-ring focus-visible:ring-pg-ring/50 aria-invalid:ring-pg-destructive/20 aria-invalid:border-pg-destructive w-full rounded-md border bg-transparent px-3 py-2 shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50",
         "whitespace-pre-wrap wrap-break-word",
         "inline-reference-input",
         className
@@ -865,7 +865,7 @@ function InlineReferenceContent({
       aria-label={`Suggestions for ${trigger}`}
       style={positionStyle ?? undefined}
       className={cn(
-        "bg-popover text-popover-foreground z-50 min-w-[200px] overflow-hidden rounded-md border shadow-md",
+        "bg-pg-popover text-pg-popover-foreground font-pg-sans z-50 min-w-[200px] overflow-hidden rounded-md border border-pg-border shadow-md",
         "animate-in fade-in-0 zoom-in-95 slide-in-from-top-2",
         className
       )}
@@ -980,7 +980,7 @@ function InlineReferenceItem({
       data-selected={isActive}
       title={description}
       className={cn(
-        "data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "data-[selected=true]:bg-pg-accent data-[selected=true]:text-pg-accent-foreground relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       onMouseDown={handleMouseDown}
@@ -1012,7 +1012,7 @@ function InlineReferenceEmpty({
   return (
     <div
       data-slot="inline-reference-empty"
-      className={cn("py-6 text-center text-sm text-muted-foreground", className)}
+      className={cn("py-6 text-center text-sm text-pg-muted-foreground", className)}
     >
       {children}
     </div>
@@ -1040,7 +1040,7 @@ function InlineReferenceGroup({
       className={cn("overflow-hidden p-1", className)}
     >
       {heading && (
-        <div className="text-muted-foreground px-2 py-1.5 text-xs font-medium">
+        <div className="text-pg-muted-foreground px-2 py-1.5 text-xs font-medium">
           {heading}
         </div>
       )}
@@ -1056,7 +1056,7 @@ function InlineReferenceSeparator({
   return (
     <div
       data-slot="inline-reference-separator"
-      className={cn("bg-border -mx-1 h-px", className)}
+      className={cn("bg-pg-border -mx-1 h-px", className)}
       {...props}
     />
   )

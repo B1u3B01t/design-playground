@@ -96,7 +96,7 @@ export default function ElementHighlight({
                 fontSize: '9px',
                 padding: '2px 6px',
                 borderRadius: '4px',
-                fontFamily: 'var(--font-geist-sans), sans-serif',
+                fontFamily: 'var(--pg-font-sans)',
                 whiteSpace: 'nowrap',
               }}
             >
@@ -143,7 +143,7 @@ export default function ElementHighlight({
                   fontSize: '9px',
                   padding: '2px 6px',
                   borderRadius: '4px',
-                  fontFamily: 'var(--font-geist-sans), sans-serif',
+                  fontFamily: 'var(--pg-font-sans)',
                   whiteSpace: 'nowrap',
                 }}
               >

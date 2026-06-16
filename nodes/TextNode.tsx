@@ -122,7 +122,7 @@ function TextNodeInner({ id, data, selected }: { id: string; data: TextNodeData;
         selected && 'outline outline-2 outline-[#1e9bff]',
       )}
       style={{
-        fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif',
+        fontFamily: 'var(--pg-font-sans)',
       }}
     >
       {selected && (
@@ -145,7 +145,7 @@ function TextNodeInner({ id, data, selected }: { id: string; data: TextNodeData;
           showPlaceholder && 'text-stone-400',
         )}
         style={{
-          fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif',
+          fontFamily: 'var(--pg-font-sans)',
           WebkitUserSelect: isEditing ? 'text' : 'none',
           userSelect: isEditing ? 'text' : 'none',
         }}

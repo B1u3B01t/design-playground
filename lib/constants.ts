@@ -134,6 +134,9 @@ export const KEYBINDINGS_STORAGE_KEY = 'playground-keybindings';
 /** Key for persisting the dev-mode toggle (gates Refresh/Clear in the header) */
 export const DEV_MODE_STORAGE_KEY = 'playground-dev-mode';
 
+/** Key for persisting the preview color-scheme override ('auto' | 'light' | 'dark') */
+export const PREVIEW_COLOR_SCHEME_STORAGE_KEY = 'playground-preview-color-scheme';
+
 /** Sidebar drag id for the generated design-system showcase */
 export const DESIGN_SYSTEM_SHOWCASE_ID = 'design-system:showcase';
 

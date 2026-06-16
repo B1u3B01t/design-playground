@@ -1007,7 +1007,7 @@ export default function IterateDialog({
         {open && (
           <div
             className="absolute left-full top-0 ml-2 z-50 nodrag nowheel nopan"
-            style={{ fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif' }}
+            style={{ fontFamily: 'var(--pg-font-sans)' }}
           >
             <div
               className="w-[410px] rounded-[30px] border border-stone-200/80 bg-[#fbfbfb] p-5 shadow-[0_24px_70px_-35px_rgba(0,0,0,0.4)]"

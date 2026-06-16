@@ -610,7 +610,7 @@ export default function PlaygroundSidebar({ onCollapse, onOpenDiscovery, pending
   const filteredHtmlPages = filteredFrames;
 
   return (
-    <aside className="w-[280px] h-full bg-white rounded-2xl border border-border flex flex-col overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+    <aside className="w-[280px] h-full bg-white rounded-2xl border border-pg-border flex flex-col overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
       {/* Header */}
       <div className="flex items-center justify-between px-3 pt-3 pb-2 flex-shrink-0">
         <div className="flex items-center gap-2">

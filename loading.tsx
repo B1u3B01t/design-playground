@@ -15,7 +15,7 @@ export default function PlaygroundLoading() {
     <div
       className="playground-main-view fixed inset-0 z-50 flex flex-col overflow-hidden"
       style={{
-        fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif',
+        fontFamily: 'var(--pg-font-sans)',
         background: '#f5f5f4',
       }}
     >

@@ -1,10 +1,14 @@
 /*
- * Tailwind compilation entry used only under `app/playground/layout.tsx`.
- * With route groups, `/playground` never imports `globals.css`; this brings in
- * Tailwind + typography + animate for playground TS sources only (@source scoped).
+ * Tailwind compilation entry, imported by `app/playground/layout.tsx`.
+ * Brings in Tailwind + typography + animate for the playground's OWN TS sources
+ * (@source scoped to this dir). The host `globals.css` — loaded by the root
+ * layout on every route, including /playground — compiles the utilities used by
+ * HOST components.
  *
- * Theme mappings mirror host `globals.css` so utilities resolve via the same CSS
- * variable names; actual values inherit from `.playground-main-view` / body rules.
+ * The semantic `--color-*` / `--font-*` mappings mirror the host so preview
+ * utilities (bg-background, font-sans, …) resolve against the HOST's :root
+ * tokens. The private `--color-pg-*` / `--font-pg-*` mappings back the
+ * playground chrome's fixed, host-independent neutral theme.
  */
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
@@ -17,8 +21,10 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+  --font-mono: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  --font-pg-sans: var(--pg-font-sans);
+  --font-pg-mono: var(--pg-font-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -52,12 +58,19 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --color-search-bg: var(--search-bg);
-  --color-text-brown: var(--text-brown);
-  --color-text-brown-dark: var(--text-brown-dark);
-  --color-text-brown-light: var(--text-brown-light);
-  --color-text-brown-darker: var(--text-brown-darker);
-  --color-accent-orange: var(--accent-orange);
-  --color-grey: var(--grey);
+  /* Private chrome namespace — backs the chrome's pg- utilities; never
+     inherited by `.app-theme` previews. */
+  --color-pg-background: var(--pg-background);
+  --color-pg-foreground: var(--pg-foreground);
+  --color-pg-popover: var(--pg-popover);
+  --color-pg-popover-foreground: var(--pg-popover-foreground);
+  --color-pg-muted: var(--pg-muted);
+  --color-pg-muted-foreground: var(--pg-muted-foreground);
+  --color-pg-accent: var(--pg-accent);
+  --color-pg-accent-foreground: var(--pg-accent-foreground);
+  --color-pg-border: var(--pg-border);
+  --color-pg-input: var(--pg-input);
+  --color-pg-ring: var(--pg-ring);
+  --color-pg-destructive: var(--pg-destructive);
 }
 /* stylelint-enable at-rule-no-unknown, csstools/use-nesting */

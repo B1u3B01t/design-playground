@@ -423,7 +423,7 @@ function PdfNodeInner({ id, data, selected }: { id: string; data: PdfNodeData; s
         minHeight: RESIZE_MIN_HEIGHT,
         width: '100%',
         height: '100%',
-        fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif',
+        fontFamily: 'var(--pg-font-sans)',
       }}
     >
       <NodeResizeControl

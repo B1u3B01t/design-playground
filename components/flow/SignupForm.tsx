@@ -66,22 +66,22 @@ export function SignupForm({
 
 			<form onSubmit={handleSubmit} className="relative">
 				<div
-					className="pointer-events-none absolute left-[11px] top-5 bottom-5 w-px bg-border"
+					className="pointer-events-none absolute left-[11px] top-5 bottom-5 w-px bg-stone-200"
 					aria-hidden="true"
 				/>
 
 				<div className="space-y-6">
 					<div className="relative flex items-start gap-4">
-						<div className="relative z-10 mt-5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-background text-[10px] font-semibold tracking-wider text-foreground">
+						<div className="relative z-10 mt-5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-stone-50 text-[10px] font-semibold tracking-wider text-stone-900">
 							01
 						</div>
 						<div className="flex-1 min-w-0">
-							<label className="block text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+							<label className="block text-[11px] font-medium uppercase tracking-[0.14em] text-stone-500">
 								Full name
 							</label>
 							<input
 								type="text"
-								className="mt-1 h-10 w-full border-0 border-b border-border bg-transparent px-0 text-base text-foreground placeholder:text-muted-foreground/50 focus:border-foreground focus:outline-none focus:ring-0 transition-colors"
+								className="mt-1 h-10 w-full border-0 border-b border-stone-200 bg-transparent px-0 text-base text-stone-900 placeholder:text-stone-500/50 focus:border-stone-900 focus:outline-none focus:ring-0 transition-colors"
 								placeholder="Ada Lovelace"
 								value={fullName}
 								onChange={(e) => setFullName(e.target.value)}
@@ -91,16 +91,16 @@ export function SignupForm({
 					</div>
 
 					<div className="relative flex items-start gap-4">
-						<div className="relative z-10 mt-5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-background text-[10px] font-semibold tracking-wider text-foreground">
+						<div className="relative z-10 mt-5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-stone-50 text-[10px] font-semibold tracking-wider text-stone-900">
 							02
 						</div>
 						<div className="flex-1 min-w-0">
-							<label className="block text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+							<label className="block text-[11px] font-medium uppercase tracking-[0.14em] text-stone-500">
 								Email address
 							</label>
 							<input
 								type="email"
-								className="mt-1 h-10 w-full border-0 border-b border-border bg-transparent px-0 text-base text-foreground placeholder:text-muted-foreground/50 focus:border-foreground focus:outline-none focus:ring-0 transition-colors"
+								className="mt-1 h-10 w-full border-0 border-b border-stone-200 bg-transparent px-0 text-base text-stone-900 placeholder:text-stone-500/50 focus:border-stone-900 focus:outline-none focus:ring-0 transition-colors"
 								placeholder="ada@example.com"
 								value={email}
 								onChange={(e) => setEmail(e.target.value)}
@@ -110,22 +110,22 @@ export function SignupForm({
 					</div>
 
 					<div className="relative flex items-start gap-4">
-						<div className="relative z-10 mt-5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-background text-[10px] font-semibold tracking-wider text-foreground">
+						<div className="relative z-10 mt-5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-stone-50 text-[10px] font-semibold tracking-wider text-stone-900">
 							03
 						</div>
 						<div className="flex-1 min-w-0">
-							<label className="block text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+							<label className="block text-[11px] font-medium uppercase tracking-[0.14em] text-stone-500">
 								Create a password
 							</label>
 							<input
 								type="password"
-								className="mt-1 h-10 w-full border-0 border-b border-border bg-transparent px-0 text-base text-foreground placeholder:text-muted-foreground/50 focus:border-foreground focus:outline-none focus:ring-0 transition-colors"
+								className="mt-1 h-10 w-full border-0 border-b border-stone-200 bg-transparent px-0 text-base text-stone-900 placeholder:text-stone-500/50 focus:border-stone-900 focus:outline-none focus:ring-0 transition-colors"
 								placeholder="••••••••"
 								value={password}
 								onChange={(e) => setPassword(e.target.value)}
 								required={!flowMode}
 							/>
-							<p className="mt-2 text-xs text-muted-foreground leading-relaxed">
+							<p className="mt-2 text-xs text-stone-500 leading-relaxed">
 								Min. 8 characters with uppercase/lowercase, a digit, &amp; special character.
 							</p>
 						</div>
@@ -135,7 +135,7 @@ export function SignupForm({
 				<button
 					type="submit"
 					disabled={loading}
-					className="mt-8 inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-primary px-6 font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+					className="mt-8 inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-stone-900 px-6 font-medium text-white transition-colors hover:bg-stone-900/90 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
 				>
 					{loading ? "Creating account…" : (
 						<>
@@ -151,10 +151,10 @@ export function SignupForm({
 
 			<div className="relative my-6">
 				<div className="absolute inset-0 flex items-center" aria-hidden="true">
-					<div className="w-full border-t border-border" />
+					<div className="w-full border-t border-stone-200" />
 				</div>
 				<div className="relative flex justify-center">
-					<span className="bg-background px-3 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+					<span className="bg-stone-50 px-3 text-[10px] font-medium uppercase tracking-[0.18em] text-stone-500">
 						Or sign up in one click
 					</span>
 				</div>
@@ -163,7 +163,7 @@ export function SignupForm({
 			<button
 				onClick={flowMode ? onContinue : onGoogleSignup}
 				disabled={loading}
-				className="flex h-11 w-full items-center justify-center gap-3 rounded-full border border-border bg-white font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+				className="flex h-11 w-full items-center justify-center gap-3 rounded-full border border-stone-200 bg-white font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
 			>
 				{loading ? "Redirecting…" : (
 					<>
@@ -178,11 +178,11 @@ export function SignupForm({
 				)}
 			</button>
 
-			<p className="mt-7 text-center text-sm text-muted-foreground">
+			<p className="mt-7 text-center text-sm text-stone-500">
 				Already have an account?{" "}
 				<Link
 					href={`/login?redirect=${encodeURIComponent(callbackUrl)}`}
-					className="font-medium text-foreground underline underline-offset-4 hover:no-underline"
+					className="font-medium text-stone-900 underline underline-offset-4 hover:no-underline"
 				>
 					Log in
 				</Link>

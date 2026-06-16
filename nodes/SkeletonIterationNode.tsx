@@ -24,8 +24,8 @@ function SkeletonIterationNode({ data }: SkeletonIterationNodeProps) {
       className="flex flex-col"
       style={
         hasExplicitSize
-          ? { width: data.width, height: data.height, fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif' }
-          : { minWidth: 280, fontFamily: 'var(--font-geist-sans), Geist, system-ui, sans-serif' }
+          ? { width: data.width, height: data.height, fontFamily: 'var(--pg-font-sans)' }
+          : { minWidth: 280, fontFamily: 'var(--pg-font-sans)' }
       }
     >
       {/* Top bar — mirrors ComponentNode's label bar */}

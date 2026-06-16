@@ -29,7 +29,7 @@ Your project needs these already installed:
 - **React** 18 or 19
 - **Tailwind CSS** v4
 
-The UI uses CSS theme variables (`--background`, `--primary`, `--muted`, etc.). If your project uses [shadcn/ui](https://ui.shadcn.com), these are already set up. If not, you may need to add them to your global stylesheet — see the [shadcn/ui theming docs](https://ui.shadcn.com/docs/theming).
+The playground UI is **self-contained** — it ships its own neutral theme (a private `--pg-*` token namespace) and needs **no color setup**. Your own components, when rendered on the canvas, inherit **your app's** theme tokens automatically (light and dark): if your project uses [shadcn/ui](https://ui.shadcn.com)-style tokens (`--background`, `--primary`, `--muted`, …) in your global stylesheet, previews match your app exactly; if not, previews simply use whatever colors your components specify.
 
 ## How It Works
 
