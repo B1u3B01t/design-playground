@@ -44,7 +44,8 @@ export type TelemetryEventName =
   | 'code_adopted'
   | 'feature_used'
   | 'error_occurred'
-  | 'telemetry_opt_out';
+  | 'telemetry_opt_out'
+  | 'docked_chat_submit';
 
 /** How a generation was initiated (additive `source` field on /api/generate). */
 export type GenerationSource =

@@ -73,6 +73,14 @@ export const DRAG_ITERATE_EVENT = 'playground:drag-iterate';
 /** Fired to programmatically open cursor chat on a target node */
 export const CURSOR_CHAT_OPEN_EVENT = 'playground:cursor-chat-open';
 
+/** Fired when the cursor chat activates/deactivates, so other surfaces (the
+ *  bottom DockedChatBar) can defer while it's in use — they do the same thing. */
+export const CURSOR_CHAT_ACTIVE_EVENT = 'playground:cursor-chat-active';
+
+export interface CursorChatActivePayload {
+  active: boolean;
+}
+
 /** Fired to decompose a component/iteration node into per-stage StageNodes */
 export const FLOW_DECOMPOSE_EVENT = 'playground:flow-decompose';
 

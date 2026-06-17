@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef, useMemo, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   InlineReference,
   InlineReferenceInput,
@@ -11,12 +11,14 @@ import {
 import type { PlaygroundSkill } from './skills';
 import { ImpeccableSkillPicker } from './ui/impeccable-skill-picker';
 import { ImpeccableDemoteMenu } from './ui/impeccable-demote-menu';
+import { BracketIcon, FrameIcon, EditIcon, ExploreIcon, PillLeadingRemoveSlot, IterationCountDragger } from './ui/chat-bits';
 import { useImpeccableSkillPicker } from './hooks/useImpeccableSkillPicker';
+import { useSkills } from './hooks/useSkills';
 import { impeccablePromptFromSegment } from './lib/impeccable-skill';
 import { useAvailableModels } from './nodes/shared/IterateDialogParts';
 import { useCursorChat } from './hooks/useCursorChat';
 import { getModelIconConfig } from './lib/model-icons';
-import { ITERATION_COUNT_OPTIONS, CURSOR_CHAT_DEFAULT_COUNT, CURSOR_CHAT_OPEN_EVENT, type CursorChatSubmitPayload, type CursorChatOpenPayload } from './lib/constants';
+import { CURSOR_CHAT_DEFAULT_COUNT, CURSOR_CHAT_OPEN_EVENT, type CursorChatSubmitPayload, type CursorChatOpenPayload } from './lib/constants';
 import { matchesAction, formatKeyCombo, getCombo } from './lib/keybindings';
 import type { SelectedElement } from './lib/element-context';
 import { useModelSettingsStore } from './lib/model-settings-store';
@@ -37,140 +39,9 @@ interface CursorChatProps {
   onClearNodes?: () => void;
 }
 
-// ---------------------------------------------------------------------------
-// Bracket SVG for element chip
-// ---------------------------------------------------------------------------
-
-function BracketIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="flex-shrink-0">
-      <path d="M3.5 2L1.5 6L3.5 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M8.5 2L10.5 6L8.5 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function FrameIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
-  );
-}
-
-// Edit / Explore icons — sourced from src/app/playground/assets/{edit,explore}-icon.svg.
-// Inlined so they pick up `currentColor` from the active toggle segment.
-function EditIcon({ className }: { className?: string }) {
-  return (
-    <svg width="12" height="12" viewBox="0 0 10 10" fill="none" className={className} aria-hidden>
-      <path
-        d="M7.21853 0.821105C7.42413 0.615505 7.70299 0.5 7.99375 0.5C8.28451 0.5 8.56337 0.615505 8.76897 0.821105C8.97457 1.0267 9.09007 1.30556 9.09007 1.59632C9.09007 1.88708 8.97457 2.16594 8.76897 2.37154L2.56724 8.57326L0.5 9.09007L1.01681 7.02283L7.21853 0.821105Z"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ExploreIcon({ className }: { className?: string }) {
-  return (
-    <svg width="13" height="14" viewBox="0 0 11 13" fill="currentColor" className={className} aria-hidden>
-      <circle cx="1.04653" cy="8.34829" r="1.04653" />
-      <circle cx="1.04653" cy="3.93227" r="1.04653" />
-      <circle cx="5.30825" cy="1.04653" r="1.04653" />
-      <circle cx="9.70083" cy="3.93227" r="1.04653" />
-      <circle cx="5.3102" cy="6.02553" r="1.04653" />
-      <circle cx="9.70083" cy="8.34829" r="1.04653" />
-      <circle cx="5.3102" cy="11.0045" r="1.04653" />
-    </svg>
-  );
-}
-
-/** Leading pill icon that swaps to a remove control on row hover (`group` on parent). */
-function PillLeadingRemoveSlot({
-  icon,
-  onRemove,
-  slotClassName = 'h-3 w-3',
-}: {
-  icon: ReactNode;
-  onRemove?: () => void;
-  slotClassName?: string;
-}) {
-  if (!onRemove) {
-    return (
-      <span className={`inline-flex flex-shrink-0 items-center justify-center ${slotClassName}`}>
-        {icon}
-      </span>
-    );
-  }
-  return (
-    <span className={`relative inline-flex flex-shrink-0 items-center justify-center ${slotClassName}`}>
-      <span className="flex items-center justify-center group-hover:invisible">{icon}</span>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          onRemove();
-        }}
-        className="absolute inset-0 hidden items-center justify-center rounded-full text-current hover:bg-black/10 group-hover:flex"
-        aria-label="Remove reference"
-      >
-        <span className="text-[14px] leading-none font-light">×</span>
-      </button>
-    </span>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Iteration Count Dragger
-// ---------------------------------------------------------------------------
-
-const DRAG_STEP_PX = 24; // pixels of vertical drag per ±1 count
-const MIN_COUNT = ITERATION_COUNT_OPTIONS[0];
-const MAX_COUNT = ITERATION_COUNT_OPTIONS[ITERATION_COUNT_OPTIONS.length - 1];
-
-function IterationCountDragger({ count, onChange }: { count: number; onChange: (n: number) => void }) {
-  const dragStartY = useRef(0);
-  const dragStartCount = useRef(count);
-
-  const onPointerDown = useCallback((e: ReactPointerEvent<HTMLButtonElement>) => {
-    e.preventDefault();
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    dragStartY.current = e.clientY;
-    dragStartCount.current = count;
-  }, [count]);
-
-  const onPointerMove = useCallback((e: ReactPointerEvent<HTMLButtonElement>) => {
-    if (!(e.target as HTMLElement).hasPointerCapture(e.pointerId)) return;
-    const delta = dragStartY.current - e.clientY; // up = positive
-    const steps = Math.round(delta / DRAG_STEP_PX);
-    const next = Math.min(MAX_COUNT, Math.max(MIN_COUNT, dragStartCount.current + steps));
-    onChange(next);
-  }, [onChange]);
-
-  const onPointerUp = useCallback((e: ReactPointerEvent<HTMLButtonElement>) => {
-    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-  }, []);
-
-  return (
-    <button
-      type="button"
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      className="inline-flex items-center justify-center py-1 pl-1.5 pr-2 gap-1 rounded-full text-[9px] font-medium transition-transform duration-150 ease-out select-none bg-stone-50 text-stone-500 border border-stone-100 hover:text-stone-700 hover:scale-[1.05] active:scale-[0.95]"
-      style={{ cursor: 'ns-resize', touchAction: 'none' }}
-    >
-      <span className="cursor-ns-resize flex items-center">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 20 20">
-          <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" d="M15.6 3.396H4.25c-.314 0-.568.283-.568.633v12.665c0 .35.254.633.568.633H15.6c.314 0 .568-.284.568-.633V4.029c0-.35-.254-.633-.567-.633ZM6.8 10.361h6.25M9.925 7.236v6.25" />
-          <path stroke="currentColor" strokeLinecap="round" d="M17.747 5.02v10.682M19.312 6.019v8.685" />
-        </svg>
-      </span>
-      <span className="text-nowrap">{count}x</span>
-    </button>
-  );
-}
+// Presentational bits (BracketIcon, FrameIcon, EditIcon, ExploreIcon,
+// PillLeadingRemoveSlot, IterationCountDragger) now live in ./ui/chat-bits and
+// are shared with the bottom-docked composer (DockedChatBar).
 
 // ---------------------------------------------------------------------------
 // CursorChat Component
@@ -178,7 +49,7 @@ function IterationCountDragger({ count, onChange }: { count: number; onChange: (
 
 export default function CursorChat({ isGenerating: _isGenerating, onSubmit, selectedElements, onRemoveElement, onClearElements, selectedNodes, onRemoveNode, onClearNodes }: CursorChatProps) {
   const [segments, setSegments] = useState<Segment[]>([]);
-  const [skills, setSkills] = useState<PlaygroundSkill[]>([]);
+  const skills = useSkills();
   const [iterationCount, setIterationCount] = useState(CURSOR_CHAT_DEFAULT_COUNT);
   const [chatMode, setChatMode] = useState<'explore' | 'edit'>('edit');
   const inlineRefContainerRef = useRef<HTMLDivElement | null>(null);
@@ -215,25 +86,6 @@ export default function CursorChat({ isGenerating: _isGenerating, onSubmit, sele
     nextModel,
     getMousePos,
   } = useCursorChat(models);
-
-  // Fetch skills once
-  useEffect(() => {
-    let cancelled = false;
-    const fetchSkills = async () => {
-      try {
-        const response = await fetch('/playground/api/skills');
-        if (!response.ok) return;
-        const data = (await response.json()) as { skills?: PlaygroundSkill[] };
-        if (!cancelled && Array.isArray(data.skills)) {
-          setSkills(data.skills);
-        }
-      } catch {
-        // ignore
-      }
-    };
-    fetchSkills();
-    return () => { cancelled = true; };
-  }, []);
 
   // Build skills lookup
   const skillsById = useMemo(() => {
@@ -275,32 +127,10 @@ export default function CursorChat({ isGenerating: _isGenerating, onSubmit, sele
     place(x, y, hitNode);
   }, [segments, modeRef, getMousePos, hitTestNode, place]);
 
-  // Auto-open cursor chat when elements are selected while chat is inactive
-  const prevElementCountRef = useRef(0);
-  useEffect(() => {
-    const prevCount = prevElementCountRef.current;
-    const curCount = selectedElements?.length ?? 0;
-    prevElementCountRef.current = curCount;
-
-    // Only trigger when going from 0 to >0 elements
-    if (prevCount === 0 && curCount > 0 && modeRef.current === 'inactive') {
-      // Place the chat near the first selected element
-      const firstEl = selectedElements![0].element;
-      const rect = firstEl.getBoundingClientRect();
-      const clickX = rect.right + 8;
-      const clickY = rect.top;
-
-      // Resolve the hit node from the element
-      const hitNode = hitTestNode(rect.left + rect.width / 2, rect.top + rect.height / 2);
-
-      // Activate then immediately place
-      activate();
-      // Use rAF to ensure activate's state update has flushed
-      requestAnimationFrame(() => {
-        place(clickX, clickY, hitNode);
-      });
-    }
-  }, [selectedElements, modeRef, activate, place, hitTestNode]);
+  // Note: auto-opening the cursor chat on element selection has been moved to
+  // the bottom-docked composer (DockedChatBar), which now owns "react to
+  // selection" so both surfaces don't pop open at once. CursorChat is still
+  // summoned manually via Cmd+/ or the toolbar button.
 
   // Programmatic open via custom event (e.g. after HTML page creation)
   useEffect(() => {
@@ -484,7 +314,9 @@ export default function CursorChat({ isGenerating: _isGenerating, onSubmit, sele
     const handleMouseDown = (e: MouseEvent) => {
       if (e.button !== 0) return;
       const target = e.target as HTMLElement;
-      if (target.closest('[data-cursor-chat]')) return;
+      // Ignore clicks on the cursor chat itself, and on the always-on bottom
+      // dock — clicking the dock should never place the peeking cursor chat.
+      if (target.closest('[data-cursor-chat]') || target.closest('[data-docked-chat]')) return;
 
       e.stopPropagation();
       e.preventDefault();

@@ -743,6 +743,10 @@ type InlineReferenceContentProps = {
   /** When true, show the dropdown even without an active trigger (e.g. impeccable demote). */
   forceOpen?: boolean
   forcePosition?: React.CSSProperties | null
+  /** Open the dropdown above the trigger ('top') instead of below ('bottom', default).
+   *  Used by bottom-docked consumers (e.g. the bottom chat bar) so the `/` picker
+   *  opens upward into available space. */
+  placement?: "top" | "bottom"
 }
 
 function InlineReferenceContent({
@@ -753,6 +757,7 @@ function InlineReferenceContent({
   className,
   forceOpen = false,
   forcePosition = null,
+  placement = "bottom",
 }: InlineReferenceContentProps) {
   const {
     triggerState,
@@ -836,7 +841,6 @@ function InlineReferenceContent({
     const containerRect = el.getBoundingClientRect()
     const margin = 8
     const estimatedWidth = 280
-    const top = rect.bottom - containerRect.top + 4
     let left = rect.left - containerRect.left
     const containerWidth = containerRect.width
 
@@ -846,14 +850,28 @@ function InlineReferenceContent({
       left = Math.max(margin, left)
     }
 
-    setPositionStyle({
+    const next: React.CSSProperties = {
       position: "absolute",
-      top,
       left,
       maxWidth: estimatedWidth + 40,
       zIndex: 50,
-    })
-  }, [isActive, triggerState, inputRef, forceOpen, forcePosition])
+    }
+    // Open upward (bottom-docked consumers) or downward (default). For the
+    // upward case we anchor the dropdown's bottom edge to the top of the input
+    // via calc(100% + …) so it sits above the field regardless of which
+    // positioned ancestor turns out to be the offset parent — a fixed-pixel
+    // bottom can land low when an ancestor is taller than the input.
+    if (placement === "top") {
+      next.bottom = "calc(100% + 4px)"
+      // Don't let the upward dropdown run off the top of the viewport: cap its
+      // height to the space above the trigger and scroll internally.
+      next.maxHeight = Math.min(rect.top - margin, 360)
+      next.overflowY = "auto"
+    } else {
+      next.top = rect.bottom - containerRect.top + 4
+    }
+    setPositionStyle(next)
+  }, [isActive, triggerState, inputRef, forceOpen, forcePosition, placement])
 
   if (!isActive) return null
 
@@ -866,7 +884,8 @@ function InlineReferenceContent({
       style={positionStyle ?? undefined}
       className={cn(
         "bg-pg-popover text-pg-popover-foreground font-pg-sans z-50 min-w-[200px] overflow-hidden rounded-md border border-pg-border shadow-md",
-        "animate-in fade-in-0 zoom-in-95 slide-in-from-top-2",
+        "animate-in fade-in-0 zoom-in-95",
+        placement === "top" ? "slide-in-from-bottom-2" : "slide-in-from-top-2",
         className
       )}
     >

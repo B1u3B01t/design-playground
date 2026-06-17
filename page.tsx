@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
 import PlaygroundClient from './PlaygroundClient';
-import { initTelemetryNotice } from './lib/telemetry/server';
+import { getFeatureFlag, initTelemetryNotice } from './lib/telemetry/server';
 
 // Read from the filesystem (process.cwd) per request so the project id is always
 // derived from the actual project this server is running in.
@@ -21,5 +21,15 @@ export default async function PlaygroundPage({
   // otherwise share canvas state; this id keeps each project's canvas separate.
   const cwd = process.cwd();
   const projectId = `${basename(cwd)}-${createHash('sha1').update(cwd).digest('hex').slice(0, 8)}`;
-  return <PlaygroundClient projectId={projectId} roomId={room} isHost={host === '1'} />;
+  // Gate the bottom dock behind a PostHog flag (defaults off; flip it live from
+  // the PostHog UI without a redeploy). See lib/telemetry/server#getFeatureFlag.
+  const dockedChatBarEnabled = await getFeatureFlag('playground-docked-chat-bar', false);
+  return (
+    <PlaygroundClient
+      projectId={projectId}
+      roomId={room}
+      isHost={host === '1'}
+      dockedChatBarEnabled={dockedChatBarEnabled}
+    />
+  );
 }
