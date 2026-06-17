@@ -123,6 +123,8 @@ const EFFORT_VALUES = ['low', 'medium', 'high', 'max', 'xhigh', 'default'] as co
 
 const RENDER_MODES = ['react', 'html', 'jsx'] as const;
 
+const CHAT_MODES = ['edit', 'explore', 'raw'] as const;
+
 const FEATURES = [
   'pdf_import',
   'draw',
@@ -244,6 +246,15 @@ export const EVENT_SCHEMA: Record<TelemetryEventName, Record<string, PropSpec>> 
   telemetry_opt_out: {
     method: { kind: 'enum', values: ['ui'] },
   },
+  // Bottom-dock composer submit (adoption metric for the gated feature).
+  docked_chat_submit: {
+    provider: { kind: 'enum', values: PROVIDERS },
+    model: { kind: 'enum', values: MODEL_VALUES },
+    mode: { kind: 'enum', values: CHAT_MODES },
+    has_target: { kind: 'boolean' },
+    iteration_count: { kind: 'number', min: 0, max: 8, integer: true },
+    skills: { kind: 'enum-array', values: SKILL_VALUES, maxLen: 5 },
+  },
 };
 
 /**
@@ -256,6 +267,7 @@ export const CLIENT_ALLOWED_EVENTS: readonly TelemetryEventName[] = [
   'time_summary',
   'feature_used',
   'error_occurred',
+  'docked_chat_submit',
 ];
 
 // ---------------------------------------------------------------------------

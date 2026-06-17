@@ -175,6 +175,7 @@ import {
 } from './lib/constants';
 import type { PlaygroundSkill } from './skills';
 import CursorChat from './CursorChat';
+import DockedChatBar from './DockedChatBar';
 import ElementHighlight from './ElementHighlight';
 import { useElementSelection } from './hooks/useElementSelection';
 import { useNodeSelection } from './hooks/useNodeSelection';
@@ -332,6 +333,8 @@ interface PlaygroundCanvasProps {
   onHideSidebar: () => void;
   /** Stable per-project id used to scope persisted canvas state to this project. */
   projectId?: string;
+  /** PostHog-gated: render the always-on bottom dock composer. */
+  dockedChatBarEnabled?: boolean;
 }
 
 export default function PlaygroundCanvas({
@@ -340,6 +343,7 @@ export default function PlaygroundCanvas({
   onShowSidebar,
   onHideSidebar,
   projectId,
+  dockedChatBarEnabled = false,
 }: PlaygroundCanvasProps) {
   const dynamicBg = useDynamicBackground();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
@@ -5215,6 +5219,21 @@ export default function PlaygroundCanvas({
         onRemoveNode={nodeSelection.removeNode}
         onClearNodes={nodeSelection.clearNodeSelection}
       />
+
+      {/* Always-on bottom-center composer — coexists with CursorChat.
+          Gated behind the PostHog `playground-docked-chat-bar` flag. */}
+      {dockedChatBarEnabled && (
+        <DockedChatBar
+          isGenerating={isGenerating}
+          onSubmit={handleCursorChatSubmit}
+          selectedElements={elementSelection.selectedElements}
+          onRemoveElement={(idx) => elementSelection.removeElement(idx)}
+          onClearElements={elementSelection.clearSelection}
+          selectedNodes={nodeSelection.selectedNodes}
+          onRemoveNode={nodeSelection.removeNode}
+          onClearNodes={nodeSelection.clearNodeSelection}
+        />
+      )}
 
       {/* Clear canvas confirmation dialog */}
       <AlertDialog open={showClearDialog} onOpenChange={setShowClearDialog}>

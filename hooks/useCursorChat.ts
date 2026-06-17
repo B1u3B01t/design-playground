@@ -9,6 +9,7 @@ import type { ProviderId } from '../lib/providers/types';
 import type { ModelOption } from '../nodes/shared/IterateDialogParts';
 import { flatRegistry } from '../registry';
 import { matchesAction } from '../lib/keybindings';
+import { CURSOR_CHAT_ACTIVE_EVENT } from '../lib/constants';
 
 const CURSOR_CHAT_CURSOR_CLASS = 'cursor-chat-cursor-mode';
 
@@ -74,6 +75,14 @@ export function useCursorChat(models: ModelOption[]) {
   // Keep mode ref in sync
   useEffect(() => {
     modeRef.current = mode;
+  }, [mode]);
+
+  // Broadcast active/inactive so other surfaces (the bottom DockedChatBar) can
+  // defer while the cursor chat is in use — they do the same thing.
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent(CURSOR_CHAT_ACTIVE_EVENT, { detail: { active: mode !== 'inactive' } }),
+    );
   }, [mode]);
 
   // RAF-based cursor tracking for peek mode
