@@ -1,34 +1,4 @@
 {
-  "description": "Required npm packages for the Playground UI components. Run: node src/app/playground/setup.mjs",
-  "dependencies": {
-    "@xyflow/react": "latest",
-    "lucide-react": "latest",
-    "@radix-ui/react-accordion": "latest",
-    "@radix-ui/react-alert-dialog": "latest",
-    "@radix-ui/react-dialog": "latest",
-    "@radix-ui/react-dropdown-menu": "latest",
-    "@radix-ui/react-tooltip": "latest",
-    "@radix-ui/react-slot": "latest",
-    "class-variance-authority": "latest",
-    "clsx": "latest",
-    "tailwind-merge": "latest",
-    "sonner": "latest",
-    "@tailwindcss/typography": "latest",
-    "tw-animate-css": "latest",
-    "html-to-image": "latest",
-    "pdfjs-dist": "5.4.296",
-    "@ngrok/ngrok": "latest",
-    "zustand": "latest",
-    "@liveblocks/client": "latest",
-    "@liveblocks/node": "latest",
-    "@liveblocks/react": "latest",
-    "@liveblocks/react-flow": "latest",
-    "@liveblocks/react-ui": "latest"
-  },
-  "requires": [
-    "next",
-    "react",
-    "react-dom",
-    "tailwindcss"
-  ]
+  "description": "Deprecated pointer. The playground's dependencies now live in ./package.json and are installed NESTED under ./node_modules by setup.mjs (never into the host package.json). Edit package.json to add or update dependencies.",
+  "movedTo": "./package.json"
 }

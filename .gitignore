@@ -5,6 +5,15 @@
 # GENERATED FILES (project-specific, not tracked)
 # ============================================================================
 
+# Nested dependency install — created locally by setup.mjs (local-dev only).
+# Keeps deps out of the host repo even if this folder itself is tracked.
+/node_modules/
+# Lockfiles from the nested install — intentionally not committed (local-dev only).
+/package-lock.json
+/pnpm-lock.yaml
+/yarn.lock
+/bun.lockb
+
 # Generated iteration files - AI creates these when iterating on components
 iterations/*.iteration-*.tsx
 iterations/iterations-images/*
