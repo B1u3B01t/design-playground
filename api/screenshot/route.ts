@@ -6,7 +6,8 @@ import { resolvePlaygroundDir } from '../../lib/resolve-playground-dir';
 
 const IMAGES_DIR = path.join(
   resolvePlaygroundDir(),
-  'iterations/iterations-images',
+  'iterations',
+  'iterations-images',
 );
 
 async function ensureImagesDir() {

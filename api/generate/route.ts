@@ -33,8 +33,9 @@ import {
   CURSOR_AUTH_USER_MESSAGE,
 } from '../../lib/cursor-auth-constants';
 import {
-  resolvePlaygroundDir,
   resolvePlaygroundDirRelative,
+  resolveCanvasComponentsDir,
+  resolveIterationsDirs,
 } from '../../lib/resolve-playground-dir';
 
 /**
@@ -49,7 +50,6 @@ import {
 
 const TEMP_DIR = path.join(process.cwd(), TEMP_DIR_RELATIVE);
 const LOCKFILE_PATH = path.join(TEMP_DIR, GENERATION_LOCKFILE_FILENAME);
-const ITERATIONS_DIR = path.join(resolvePlaygroundDir(), 'iterations');
 
 // Maximum generation duration (10 minutes)
 const GENERATION_TIMEOUT_MS = 10 * 60 * 1000;
@@ -75,7 +75,7 @@ const currentIterationFiles = new Set<string>();
 // When the cursor agent writes tree.json (the last step per iteration),
 // a debounced event is emitted so SSE clients can trigger a scan immediately.
 const generationEvents = new EventEmitter();
-let fileWatcher: fs.FSWatcher | null = null;
+const fileWatchers: fs.FSWatcher[] = [];
 let htmlFileWatcher: fs.FSWatcher | null = null;
 let htmlTreeWatcher: fs.FSWatcher | null = null;
 let jsxFileWatcher: fs.FSWatcher | null = null;
@@ -83,24 +83,30 @@ let jsxFileWatcher: fs.FSWatcher | null = null;
 function startFileWatcher(htmlPageFolder?: string, jsxFile?: string) {
   stopFileWatcher();
   let debounceTimer: NodeJS.Timeout | null = null;
-  try {
-    fileWatcher = fs.watch(ITERATIONS_DIR, (eventType, filename) => {
-      if (filename === 'tree.json' || (filename && filename.endsWith('.tsx'))) {
-        if (filename && filename.endsWith('.tsx')) {
-          currentIterationFiles.add(path.join(ITERATIONS_DIR, filename));
+  const emitIterationAdded = () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      generationEvents.emit('iteration-added');
+    }, 500);
+  };
+
+  for (const iterationsDir of resolveIterationsDirs()) {
+    try {
+      const watcher = fs.watch(iterationsDir, (_eventType, filename) => {
+        if (filename === 'tree.json' || (filename && filename.endsWith('.tsx'))) {
+          if (filename && filename.endsWith('.tsx')) {
+            currentIterationFiles.add(path.join(iterationsDir, filename));
+          }
+          emitIterationAdded();
         }
-        // Debounce: the OS may fire multiple events for a single write
-        if (debounceTimer) clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-          generationEvents.emit('iteration-added');
-        }, 500);
-      }
-    });
-    fileWatcher.on('error', () => {
-      // iterations dir might not exist yet — ignore
-    });
-  } catch {
-    // iterations dir might not exist yet
+      });
+      watcher.on('error', () => {
+        // iterations dir might not exist yet — ignore
+      });
+      fileWatchers.push(watcher);
+    } catch {
+      // iterations dir might not exist yet
+    }
   }
 
   // Watch HTML page directory for iteration changes
@@ -150,7 +156,7 @@ function startFileWatcher(htmlPageFolder?: string, jsxFile?: string) {
 
   // Watch canvas-components directory for JSX iteration changes
   if (jsxFile) {
-    const canvasDir = path.join(resolvePlaygroundDir(), 'canvas-components');
+    const canvasDir = resolveCanvasComponentsDir();
     let jsxDebounceTimer: NodeJS.Timeout | null = null;
     try {
       jsxFileWatcher = fs.watch(canvasDir, (_eventType, filename) => {
@@ -172,10 +178,10 @@ function startFileWatcher(htmlPageFolder?: string, jsxFile?: string) {
 }
 
 function stopFileWatcher() {
-  if (fileWatcher) {
-    fileWatcher.close();
-    fileWatcher = null;
+  for (const watcher of fileWatchers) {
+    watcher.close();
   }
+  fileWatchers.length = 0;
   if (htmlFileWatcher) {
     htmlFileWatcher.close();
     htmlFileWatcher = null;

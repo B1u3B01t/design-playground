@@ -3366,14 +3366,14 @@ export default function PlaygroundCanvas({
 
       setNodes((nds) => nds.concat(newNode));
 
-      // After dropping a frame, also bring any of its iterations that are not
-      // already on the canvas, attached to this newly placed parent.
-      if (isHtml || isJsxFrame) {
+      // After dropping a frame or registry component, also bring any of its
+      // iterations that are not already on the canvas, attached to this newly placed parent.
+      if (isHtml || isJsxFrame || !isDesignSystem) {
         (async () => {
           try {
             const currentNodes = nodesRef.current;
             const parentW = DEFAULT_COMPONENT_NODE_WIDTH;
-            const stepW = (isHtml ? DEFAULT_COMPONENT_NODE_WIDTH : DEFAULT_ITERATION_NODE_WIDTH) + ARRANGE_HORIZONTAL_GAP;
+            const stepW = ((isHtml || isJsxFrame) ? (isHtml ? DEFAULT_COMPONENT_NODE_WIDTH : DEFAULT_ITERATION_NODE_WIDTH) : DEFAULT_ITERATION_NODE_WIDTH) + ARRANGE_HORIZONTAL_GAP;
             const baseX = position.x + parentW + ARRANGE_HORIZONTAL_GAP;
             const newNodes: Node[] = [];
             const newEdges: Edge[] = [];
@@ -3422,7 +3422,7 @@ export default function PlaygroundCanvas({
                 });
                 newKnownFilenames.push(`${htmlFolder}/${iter.folder}`);
               });
-            } else {
+            } else if (isJsxFrame) {
               const baseFilename = `${componentId.slice(JSX_ID_PREFIX.length)}.tsx`;
               const res = await fetch('/playground/api/oncanvas-components');
               if (!res.ok) return;
@@ -3450,6 +3450,44 @@ export default function PlaygroundCanvas({
                     parentNodeId,
                     renderMode: 'jsx',
                     jsxFile: it.filename,
+                    onDelete: handleIterationDelete,
+                    onAdopt: handleIterationAdopt,
+                  },
+                });
+                newEdges.push({
+                  id: `edge_${parentNodeId}_${nodeId}`,
+                  source: parentNodeId,
+                  target: nodeId,
+                  type: 'smoothstep',
+                  animated: false,
+                  style: ITERATION_EDGE_STYLE,
+                });
+                newKnownFilenames.push(it.filename);
+              });
+            } else {
+              const res = await fetch('/playground/api/iterations');
+              if (!res.ok) return;
+              const { iterations } = await res.json() as { iterations: IterationFile[] };
+
+              const existingKeys = getIterationKeysOnCanvas(currentNodes);
+              const missing = iterations
+                .filter((it) => it.parentId === componentId)
+                .filter((it) => !existingKeys.has(it.filename))
+                .sort((a, b) => a.iterationNumber - b.iterationNumber);
+
+              missing.forEach((it, idx) => {
+                const nodeId = getNodeId();
+                newNodes.push({
+                  id: nodeId,
+                  type: 'iteration',
+                  position: { x: baseX + idx * stepW, y: position.y },
+                  data: {
+                    componentName: it.componentName,
+                    iterationNumber: it.iterationNumber,
+                    filename: it.filename,
+                    description: it.description,
+                    parentNodeId,
+                    registryId: componentId,
                     onDelete: handleIterationDelete,
                     onAdopt: handleIterationAdopt,
                   },

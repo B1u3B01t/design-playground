@@ -27,22 +27,25 @@ function hasAppShell(dir: string): boolean {
  * `app/playground` Next.js layouts.
  *
  * Prefers the candidate that actually contains the playground app shell (so a
- * sparse, generated-artifacts-only directory never wins over the real one),
- * then falls back to the first existing candidate, then to the first candidate.
+ * sparse, generated-artifacts-only directory never wins over the real one).
+ * When both candidates contain the shell, prefers `app/playground` over
+ * `src/app/playground` so the non-src layout wins on tie.
  */
 export function resolvePlaygroundDir(): string {
   const root = process.cwd();
   const candidates = CANDIDATE_RELATIVE_DIRS.map((d) => path.join(root, d));
 
-  // 1. Prefer a candidate that contains the real playground app shell.
-  for (const dir of candidates) {
-    if (fs.existsSync(dir) && hasAppShell(dir)) return dir;
+  const withShell = candidates.filter((dir) => fs.existsSync(dir) && hasAppShell(dir));
+  if (withShell.length === 1) return withShell[0];
+  if (withShell.length > 1) {
+    const appDir = path.join(root, 'app', 'playground');
+    if (withShell.includes(appDir)) return appDir;
+    return withShell[0];
   }
-  // 2. Otherwise the first candidate that exists at all.
-  for (const dir of candidates) {
-    if (fs.existsSync(dir)) return dir;
-  }
-  // 3. Otherwise the conventional default.
+
+  const existing = candidates.filter((dir) => fs.existsSync(dir));
+  if (existing.length > 0) return existing[0];
+
   return candidates[0];
 }
 
@@ -70,6 +73,25 @@ export function listPlaygroundDirs(): string[] {
   const existing = CANDIDATE_RELATIVE_DIRS.map((d) => path.join(root, d)).filter((dir) =>
     fs.existsSync(dir),
   );
-  // Resolved dir first, then the rest, deduped.
   return [resolved, ...existing.filter((dir) => dir !== resolved)];
+}
+
+/** All playground roots that exist on disk (both layouts). */
+export function resolveAllPlaygroundDirs(): string[] {
+  const root = process.cwd();
+  return CANDIDATE_RELATIVE_DIRS.map((d) => path.join(root, d)).filter((dir) =>
+    fs.existsSync(dir),
+  );
+}
+
+/** Every iterations/ folder under existing playground roots, canonical first. */
+export function resolveIterationsDirs(): string[] {
+  return listPlaygroundDirs()
+    .map((dir) => path.join(dir, 'iterations'))
+    .filter((dir) => fs.existsSync(dir));
+}
+
+/** Primary canvas-components directory for the resolved playground root. */
+export function resolveCanvasComponentsDir(): string {
+  return path.join(resolvePlaygroundDir(), 'canvas-components');
 }

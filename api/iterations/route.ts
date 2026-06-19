@@ -7,16 +7,9 @@ import {
   ITERATION_FILENAME_PARSE_PATTERN,
   TREE_MANIFEST_FILENAME,
 } from '../../lib/constants';
-import { resolvePlaygroundDir, listPlaygroundDirs } from '../../lib/resolve-playground-dir';
+import { resolvePlaygroundDir, resolveIterationsDirs } from '../../lib/resolve-playground-dir';
 
 const ITERATIONS_DIR = path.join(resolvePlaygroundDir(), 'iterations');
-
-/** All existing `iterations/` dirs, canonical first — for defensive scanning. */
-function iterationDirs(): string[] {
-  return listPlaygroundDirs()
-    .map((dir) => path.join(dir, 'iterations'))
-    .filter((dir) => fs.existsSync(dir));
-}
 const INDEX_FILE = path.join(ITERATIONS_DIR, ITERATIONS_INDEX_FILENAME);
 const TREE_FILE = path.join(ITERATIONS_DIR, TREE_MANIFEST_FILENAME);
 
@@ -103,7 +96,7 @@ function findDescendants(manifest: TreeManifest, filename: string): string[] {
 // File parsing
 // ---------------------------------------------------------------------------
 
-function parseIterationFile(filename: string, dir: string = ITERATIONS_DIR): IterationFile | null {
+function parseIterationFile(filename: string, iterationsDir = ITERATIONS_DIR): IterationFile | null {
   // Match pattern: ComponentName.iteration-N.tsx
   const match = filename.match(ITERATION_FILENAME_PARSE_PATTERN);
   if (!match) return null;
@@ -116,7 +109,7 @@ function parseIterationFile(filename: string, dir: string = ITERATIONS_DIR): Ite
   let sourceIteration: string | null = null;
 
   try {
-    const filePath = path.join(dir, filename);
+    const filePath = path.join(iterationsDir, filename);
     const content = fs.readFileSync(filePath, 'utf-8');
 
     const descMatch = content.match(/@description\s+(.+)/);
@@ -244,37 +237,48 @@ function regenerateIndex(): void {
   fs.writeFileSync(INDEX_FILE, indexContent, 'utf-8');
 }
 
+function orderedIterationsDirs(): string[] {
+  const dirs = resolveIterationsDirs();
+  return [ITERATIONS_DIR, ...dirs.filter((dir) => dir !== ITERATIONS_DIR)];
+}
+
+function scanAllIterationFiles(): IterationFile[] {
+  const byFilename = new Map<string, IterationFile>();
+
+  for (const dir of orderedIterationsDirs()) {
+    if (!fs.existsSync(dir)) continue;
+
+    for (const file of fs.readdirSync(dir)) {
+      if (file === 'index.ts' || file === TREE_MANIFEST_FILENAME) continue;
+      if (!file.endsWith('.tsx')) continue;
+
+      const parsed = parseIterationFile(file, dir);
+      if (parsed && !byFilename.has(parsed.filename)) {
+        byFilename.set(parsed.filename, parsed);
+      }
+    }
+  }
+
+  return Array.from(byFilename.values());
+}
+
+function findIterationFilePath(filename: string): string | null {
+  for (const dir of orderedIterationsDirs()) {
+    const filePath = path.join(dir, filename);
+    if (fs.existsSync(filePath)) return filePath;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // GET - Scan iterations folder
 // ---------------------------------------------------------------------------
 
 export async function GET() {
   try {
-    // Scan every existing playground `iterations/` dir (canonical first) so
-    // files stranded in a sparse directory from a prior layout-mismatch run
-    // still surface. Dedupe by filename — the canonical dir wins.
-    const dirs = iterationDirs();
-    if (dirs.length === 0) {
+    const iterations = scanAllIterationFiles();
+    if (iterations.length === 0) {
       return NextResponse.json({ iterations: [] });
-    }
-
-    const iterations: IterationFile[] = [];
-    const seen = new Set<string>();
-
-    for (const dir of dirs) {
-      const files = fs.readdirSync(dir);
-      for (const file of files) {
-        if (file === 'index.ts' || file === TREE_MANIFEST_FILENAME) continue;
-        if (seen.has(file)) continue;
-
-        if (file.endsWith('.tsx')) {
-          const parsed = parseIterationFile(file, dir);
-          if (parsed) {
-            seen.add(file);
-            iterations.push(parsed);
-          }
-        }
-      }
     }
 
     // Merge with tree manifest for any sourceIteration data not in file metadata
@@ -321,9 +325,9 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Invalid filename' }, { status: 400 });
     }
 
-    const filePath = path.join(ITERATIONS_DIR, filename);
+    const filePath = findIterationFilePath(filename);
 
-    if (!fs.existsSync(filePath)) {
+    if (!filePath) {
       return NextResponse.json({ error: 'File not found' }, { status: 404 });
     }
 
@@ -334,8 +338,8 @@ export async function DELETE(request: Request) {
       // Find and delete all descendants
       const descendants = findDescendants(manifest, filename);
       for (const desc of descendants) {
-        const descPath = path.join(ITERATIONS_DIR, desc);
-        if (fs.existsSync(descPath)) {
+        const descPath = findIterationFilePath(desc);
+        if (descPath) {
           fs.unlinkSync(descPath);
           deletedFiles.push(desc);
         }
