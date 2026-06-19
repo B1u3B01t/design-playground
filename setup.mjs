@@ -3,9 +3,10 @@
 /**
  * Playground Setup Script
  *
- * Installs required dependencies for the Playground feature.
- * Detects your package manager and only installs what's missing.
- * Configures the host .gitignore so playground files stay out of git.
+ * Installs the playground's dependencies NESTED under src/app/playground/node_modules
+ * (declared in this folder's own package.json), so the host project's package.json and
+ * lockfile are never touched. Detects your package manager and only installs what's
+ * missing. Configures the host .gitignore so playground files stay out of git.
  *
  * Usage:
  *   node src/app/playground/setup.mjs
@@ -154,23 +155,23 @@ function printTelemetryNote() {
   console.log('');
 }
 
-function configureGitignore(root, allDeps) {
+function configureGitignore(hostRoot, includePdfWorker) {
   const untrack = process.argv.includes('--untrack');
-  const includePdfWorker = Boolean(allDeps['pdfjs-dist']);
 
   try {
-    const result = ensureHostGitignore(root, { untrack, includePdfWorker });
+    const result = ensureHostGitignore(hostRoot, { untrack, includePdfWorker });
     console.log('');
     console.log(bold('  Git:'));
     console.log(`    ${green('+')} Updated .gitignore (playground + artifacts)`);
     if (result.untracked) {
       console.log(`    ${green('+')} Removed previously tracked playground files from git index`);
     } else if (result.trackedWarning) {
-      const relSetup = relative(root, join(__dirname, 'setup.mjs')).split('\\').join('/');
+      const relSetup = relative(hostRoot, join(__dirname, 'setup.mjs')).split('\\').join('/');
       console.log(`    ${dim('!')} Some playground files are still tracked by git.`);
       console.log(dim(`      Run: node ${relSetup} --untrack`));
     }
-    console.log(dim('  Note: package.json dependency changes remain tracked (required to build).'));
+    console.log(dim('  Note: setup makes no changes to your host package.json or lockfile —'));
+    console.log(dim('  dependencies install nested under src/app/playground/node_modules/ (gitignored).'));
   } catch (err) {
     console.log('');
     console.log(bold('  Git:'));
@@ -178,8 +179,8 @@ function configureGitignore(root, allDeps) {
   }
 }
 
-async function finishSetup(root, allDeps) {
-  configureGitignore(root, allDeps);
+async function finishSetup(hostRoot, includePdfWorker) {
+  configureGitignore(hostRoot, includePdfWorker);
   console.log('');
   console.log(green('  Done! Start your dev server and visit /playground'));
   console.log('');
@@ -193,30 +194,34 @@ async function main() {
   console.log(bold('  Playground Setup'));
   console.log(dim('  ─────────────────────────────────'));
 
-  // 1. Load deps manifest
-  const depsPath = join(__dirname, 'playground.deps.json');
-  if (!existsSync(depsPath)) {
-    console.log(red('  Error: playground.deps.json not found.'));
+  // 1. The playground folder owns its deps — read THIS folder's package.json.
+  //    Dependencies install nested here; the host package.json is never touched.
+  const installDir = __dirname;
+  const manifestPath = join(installDir, 'package.json');
+  if (!existsSync(manifestPath)) {
+    console.log(red('  Error: src/app/playground/package.json not found.'));
+    console.log(dim('  The playground ships its own package.json so its deps install nested.'));
     process.exit(1);
   }
 
-  const manifest = JSON.parse(readFileSync(depsPath, 'utf-8'));
-  const required = Object.keys(manifest.dependencies);
-  const assumed  = manifest.requires || [];
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+  const required = Object.keys(manifest.dependencies || {});
+  const assumed  = Object.keys(manifest.peerDependencies || {});
+  const includePdfWorker = Boolean((manifest.dependencies || {})['pdfjs-dist']);
 
-  // 2. Find project root
-  const root = findProjectRoot(__dirname);
-  if (!root) {
-    console.log(red('  Error: Could not find package.json in any parent directory.'));
+  // 2. Find the HOST root (first package.json ABOVE the playground folder).
+  //    Used only for prerequisite checks + .gitignore — never written to.
+  const hostRoot = findProjectRoot(dirname(installDir));
+  if (!hostRoot) {
+    console.log(red('  Error: Could not find the host project root above the playground.'));
     process.exit(1);
   }
 
-  // 3. Read project's package.json
-  const pkgPath = join(root, 'package.json');
-  const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
-  const allDeps = {
-    ...pkg.dependencies,
-    ...pkg.devDependencies,
+  // 3. Read the HOST package.json (to confirm prerequisites like react/next/tailwind).
+  const hostPkg = JSON.parse(readFileSync(join(hostRoot, 'package.json'), 'utf-8'));
+  const hostDeps = {
+    ...hostPkg.dependencies,
+    ...hostPkg.devDependencies,
   };
 
   // 4. Check assumed prerequisites
@@ -224,7 +229,7 @@ async function main() {
   console.log(bold('  Prerequisites:'));
   let prerequisitesMet = true;
   for (const dep of assumed) {
-    if (allDeps[dep]) {
+    if (hostDeps[dep]) {
       console.log(`    ${green('+')} ${dep}`);
     } else {
       console.log(`    ${red('x')} ${dep} ${red('(not found — please install it first)')}`);
@@ -275,22 +280,34 @@ async function main() {
     console.log('');
   }
 
-  // 5. Find missing dependencies
-  const missing = required.filter((dep) => !allDeps[dep]);
+  // 5. Find missing dependencies — check the NESTED node_modules, not host deps.
+  const isInstalledNested = (dep) =>
+    existsSync(join(installDir, 'node_modules', dep, 'package.json'));
+  const missing = required.filter((dep) => !isInstalledNested(dep));
 
   if (missing.length === 0) {
     console.log('');
     console.log(bold('  Dependencies:'));
-    console.log(`    ${green('+')} All ${required.length} packages already installed.`);
-    await finishSetup(root, allDeps);
+    console.log(`    ${green('+')} All ${required.length} packages already installed (nested).`);
+    await finishSetup(hostRoot, includePdfWorker);
     process.exit(0);
   }
 
-  // 6. Detect package manager & install
-  const pm = detectPackageManager(root);
-  const installCmd = pm === 'yarn'
-    ? `yarn add ${missing.join(' ')}`
-    : `${pm} install ${missing.join(' ')}`;
+  // 6. Detect the host's package manager; install NESTED into the playground folder.
+  //    The peer flag keeps react/react-dom out of the nested tree (npm 7+ would
+  //    otherwise auto-install them as transitive peers), so they resolve up to the
+  //    host's single copy. A bare install reads this folder's package.json.
+  const pm = detectPackageManager(hostRoot);
+  const peerFlag = {
+    npm: '--legacy-peer-deps',
+    pnpm: '--config.auto-install-peers=false',
+    yarn: '',
+    bun: '',
+  }[pm] || '';
+  const installCmd = [pm === 'yarn' ? 'yarn install' : `${pm} install`, peerFlag]
+    .filter(Boolean)
+    .join(' ');
+  const relInstall = relative(hostRoot, installDir).split('\\').join('/');
 
   console.log('');
   console.log(bold('  Dependencies:'));
@@ -303,22 +320,19 @@ async function main() {
   }
 
   console.log('');
-  console.log(dim(`  Running: ${installCmd}`));
+  console.log(dim(`  Running: ${installCmd}  (in ${relInstall}/)`));
   console.log('');
 
   try {
-    execSync(installCmd, { cwd: root, stdio: 'inherit' });
+    execSync(installCmd, { cwd: installDir, stdio: 'inherit' });
   } catch {
     console.log('');
     console.log(red('  Installation failed. Try running manually:'));
-    console.log(`    ${installCmd}`);
+    console.log(`    cd ${relInstall} && ${installCmd}`);
     process.exit(1);
   }
 
-  await finishSetup(root, {
-    ...allDeps,
-    ...Object.fromEntries(missing.map((dep) => [dep, 'installed'])),
-  });
+  await finishSetup(hostRoot, includePdfWorker);
 }
 
 main();

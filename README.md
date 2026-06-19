@@ -25,9 +25,9 @@ npm run dev
 
 ## What Gets Installed
 
-The playground lives entirely in `app/playground/` — no global config changes, no wrappers. To uninstall, delete that folder and remove its dependencies from your `package.json`.
+The playground lives entirely in `app/playground/` — no global config changes, no wrappers. To uninstall, just delete that folder: its dependencies live nested inside it and are removed with it. Your `package.json` is never touched.
 
-The setup script checks your project, detects your package manager, installs only what's missing, and **configures `.gitignore`** so the playground and generated artifacts (iterations, HTML frames, temp files) are not committed. Run `node src/app/playground/setup.mjs --untrack` if playground files were already tracked. See [SETUP.md](SETUP.md) for details.
+The setup script checks your project, detects your package manager, and installs the playground's dependencies **nested** under `app/playground/node_modules/` (so your host `package.json` and lockfile stay clean). It also **configures `.gitignore`** so the playground and generated artifacts (iterations, HTML frames, temp files) are not committed. Run `node src/app/playground/setup.mjs --untrack` if playground files were already tracked. See [SETUP.md](SETUP.md) for details.
 
 ---
 

@@ -13,13 +13,18 @@
 
 ## Manual Install
 
-If you prefer to skip the script, run this single command from your project root:
+If you prefer to skip the script, install the playground's dependencies **nested** —
+from inside the playground folder, so nothing lands in your host `package.json`:
 
 ```
-npm install @xyflow/react lucide-react @radix-ui/react-accordion @radix-ui/react-alert-dialog @radix-ui/react-dialog @radix-ui/react-dropdown-menu @radix-ui/react-tooltip @radix-ui/react-slot class-variance-authority clsx tailwind-merge sonner @tailwindcss/typography tw-animate-css html-to-image zustand
+cd src/app/playground
+npm install --legacy-peer-deps
 ```
 
-Replace `npm install` with `pnpm install`, `yarn add`, or `bun install` depending on your package manager.
+Use your project's package manager if different: `pnpm install --config.auto-install-peers=false`,
+`yarn install`, or `bun install`. The `--legacy-peer-deps` / `auto-install-peers=false` flag keeps
+React out of the nested `node_modules` so it resolves to your app's single copy (no "invalid hook
+call"). An `.npmrc` in the folder already sets this for npm, so a bare `npm install` there works too.
 
 ## Prerequisites
 
@@ -60,7 +65,7 @@ Setup updates your project's `.gitignore` so playground files stay out of versio
 - HTML design frames under `public/{slug}/` (including iterations)
 - Skills installed by the playground (`skills-lock.json`, `.claude/skills/`)
 
-**What stays tracked:** `package.json` / lockfile dependency changes from setup (required to build).
+**Your host `package.json` and lockfile are untouched.** The playground's dependencies install nested under `src/app/playground/node_modules/` (gitignored), so setup produces no dependency diff for your project to commit.
 
 **Create Page routes** (`src/app/{slug}/page.tsx` created from the playground) are host-app pages and remain tracked unless you ignore them yourself.
 
@@ -74,8 +79,4 @@ New HTML frames are added to `.gitignore` automatically when created or after ge
 
 ## Removing the Playground
 
-Delete the `src/app/playground/` folder. Then optionally uninstall packages you no longer need:
-
-```
-npm uninstall @xyflow/react lucide-react @radix-ui/react-accordion @radix-ui/react-alert-dialog @radix-ui/react-dialog @radix-ui/react-dropdown-menu @radix-ui/react-tooltip @radix-ui/react-slot class-variance-authority clsx tailwind-merge sonner @tailwindcss/typography tw-animate-css html-to-image zustand
-```
+Delete the `src/app/playground/` folder. Its nested `node_modules/` (and everything the playground installed) goes with it — there is **nothing to uninstall** from your host project, because the playground never added anything to your `package.json`.
