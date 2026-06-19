@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { HTML_TREE_DIR, HTML_TREE_FILENAME } from '../../lib/constants';
 import type { HtmlPageInfo } from '../../lib/constants';
+import { syncPublicFrameGitignoreSafe } from '../../lib/sync-host-gitignore';
 
 const PUBLIC_DIR = path.join(process.cwd(), 'public');
 const TREE_DIR = path.join(PUBLIC_DIR, HTML_TREE_DIR);
@@ -178,6 +179,8 @@ export async function PUT(req: Request) {
     const htmlContent = body.content || template;
     fs.writeFileSync(indexPath, htmlContent, 'utf-8');
 
+    syncPublicFrameGitignoreSafe();
+
     return NextResponse.json({
       success: true,
       page: {
@@ -234,6 +237,7 @@ export async function POST() {
     }
 
     writeTreeManifest({ version: 1, entries });
+    syncPublicFrameGitignoreSafe();
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[html-pages] POST error:', error);
@@ -335,6 +339,8 @@ export async function PATCH(req: Request) {
     }
     writeTreeManifest({ version: manifest.version ?? 1, entries: nextEntries });
 
+    syncPublicFrameGitignoreSafe();
+
     const pages = scanHtmlPages();
     const page = pages.find((p) => p.folder === newFolder);
     return NextResponse.json({
@@ -432,6 +438,8 @@ export async function DELETE(req: Request) {
       }
       writeTreeManifest(manifest);
     }
+
+    syncPublicFrameGitignoreSafe();
 
     return NextResponse.json({ success: true });
   } catch (error) {

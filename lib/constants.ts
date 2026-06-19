@@ -540,6 +540,22 @@ export const HTML_TREE_DIR = '.playground';
 /** Filename for the HTML iteration tree manifest */
 export const HTML_TREE_FILENAME = 'html-tree.json';
 
+// ---------------------------------------------------------------------------
+// Host .gitignore markers (managed by lib/host-gitignore.mjs + setup.mjs)
+// ---------------------------------------------------------------------------
+
+/** Start marker for the static playground block in the host .gitignore */
+export const GITIGNORE_STATIC_START = '# BEGIN design-playground';
+
+/** End marker for the static playground block in the host .gitignore */
+export const GITIGNORE_STATIC_END = '# END design-playground';
+
+/** Start marker for the dynamic public HTML frames block in the host .gitignore */
+export const GITIGNORE_FRAMES_START = '# BEGIN design-playground-public-frames';
+
+/** End marker for the dynamic public HTML frames block in the host .gitignore */
+export const GITIGNORE_FRAMES_END = '# END design-playground-public-frames';
+
 /** Info about a static HTML page discovered in /public */
 export interface HtmlPageInfo {
   id: string;           // "html:landing"

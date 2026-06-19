@@ -37,6 +37,7 @@ import {
   resolveCanvasComponentsDir,
   resolveIterationsDirs,
 } from '../../lib/resolve-playground-dir';
+import { syncPublicFrameGitignoreSafe } from '../../lib/sync-host-gitignore';
 
 /**
  * Playground generation API - Agent CLI Integration
@@ -194,6 +195,7 @@ function stopFileWatcher() {
     jsxFileWatcher.close();
     jsxFileWatcher = null;
   }
+  syncPublicFrameGitignoreSafe();
 }
 
 // Ensure temp directory exists

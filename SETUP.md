@@ -51,6 +51,27 @@ Switch providers in the Model Settings dialog (gear icon in the header). Codex r
 
 The setup script (`node src/app/playground/setup.mjs`) checks for installed providers and will tell you what's missing. Without one, everything else works — you just won't be able to generate new variations from the UI.
 
+## Git
+
+Setup updates your project's `.gitignore` so playground files stay out of version control:
+
+- The full `src/app/playground/` (or `app/playground/`) folder
+- Runtime artifacts: `.playground-temp/`, `public/.playground/`, uploaded images/PDFs
+- HTML design frames under `public/{slug}/` (including iterations)
+- Skills installed by the playground (`skills-lock.json`, `.claude/skills/`)
+
+**What stays tracked:** `package.json` / lockfile dependency changes from setup (required to build).
+
+**Create Page routes** (`src/app/{slug}/page.tsx` created from the playground) are host-app pages and remain tracked unless you ignore them yourself.
+
+If you previously committed playground files, stop tracking them (files stay on disk):
+
+```
+node src/app/playground/setup.mjs --untrack
+```
+
+New HTML frames are added to `.gitignore` automatically when created or after generation.
+
 ## Removing the Playground
 
 Delete the `src/app/playground/` folder. Then optionally uninstall packages you no longer need:

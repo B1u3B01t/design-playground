@@ -5,16 +5,22 @@
  *
  * Installs required dependencies for the Playground feature.
  * Detects your package manager and only installs what's missing.
+ * Configures the host .gitignore so playground files stay out of git.
  *
- * Usage:  node src/app/playground/setup.mjs
+ * Usage:
+ *   node src/app/playground/setup.mjs
+ *   node src/app/playground/setup.mjs --untrack   # stop tracking already-committed playground files
  */
 
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { execSync } from 'child_process';
-import { join, dirname } from 'path';
+import { join, dirname, relative } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
+import {
+  ensureHostGitignore,
+} from './lib/host-gitignore.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -148,6 +154,39 @@ function printTelemetryNote() {
   console.log('');
 }
 
+function configureGitignore(root, allDeps) {
+  const untrack = process.argv.includes('--untrack');
+  const includePdfWorker = Boolean(allDeps['pdfjs-dist']);
+
+  try {
+    const result = ensureHostGitignore(root, { untrack, includePdfWorker });
+    console.log('');
+    console.log(bold('  Git:'));
+    console.log(`    ${green('+')} Updated .gitignore (playground + artifacts)`);
+    if (result.untracked) {
+      console.log(`    ${green('+')} Removed previously tracked playground files from git index`);
+    } else if (result.trackedWarning) {
+      const relSetup = relative(root, join(__dirname, 'setup.mjs')).split('\\').join('/');
+      console.log(`    ${dim('!')} Some playground files are still tracked by git.`);
+      console.log(dim(`      Run: node ${relSetup} --untrack`));
+    }
+    console.log(dim('  Note: package.json dependency changes remain tracked (required to build).'));
+  } catch (err) {
+    console.log('');
+    console.log(bold('  Git:'));
+    console.log(`    ${red('x')} Could not update .gitignore: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+async function finishSetup(root, allDeps) {
+  configureGitignore(root, allDeps);
+  console.log('');
+  console.log(green('  Done! Start your dev server and visit /playground'));
+  console.log('');
+  printTelemetryNote();
+  await sendSetupTelemetry();
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────
 async function main() {
   console.log('');
@@ -243,11 +282,7 @@ async function main() {
     console.log('');
     console.log(bold('  Dependencies:'));
     console.log(`    ${green('+')} All ${required.length} packages already installed.`);
-    console.log('');
-    console.log(green('  Done! Start your dev server and visit /playground'));
-    console.log('');
-    printTelemetryNote();
-    await sendSetupTelemetry();
+    await finishSetup(root, allDeps);
     process.exit(0);
   }
 
@@ -280,11 +315,10 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('');
-  console.log(green('  Done! Start your dev server and visit /playground'));
-  console.log('');
-  printTelemetryNote();
-  await sendSetupTelemetry();
+  await finishSetup(root, {
+    ...allDeps,
+    ...Object.fromEntries(missing.map((dep) => [dep, 'installed'])),
+  });
 }
 
 main();
