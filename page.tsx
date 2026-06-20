@@ -24,11 +24,16 @@ export default async function PlaygroundPage({
   // Gate the bottom dock behind a PostHog flag (defaults off; flip it live from
   // the PostHog UI without a redeploy). See lib/telemetry/server#getFeatureFlag.
   const dockedChatBarEnabled = await getFeatureFlag('playground-docked-chat-bar', false);
+  // Gate multiplayer (Liveblocks presence/cursors/comments) behind a PostHog flag
+  // as an opt-in rollout — defaults off, so we drop the room param unless the flag
+  // is enabled. PlaygroundClient mounts no Liveblocks providers without a roomId.
+  const multiplayerEnabled = await getFeatureFlag('playground-multiplayer-session', false);
   return (
     <PlaygroundClient
       projectId={projectId}
-      roomId={room}
-      isHost={host === '1'}
+      multiplayerAvailable={multiplayerEnabled}
+      roomId={multiplayerEnabled ? room : undefined}
+      isHost={multiplayerEnabled ? host === '1' : false}
       dockedChatBarEnabled={dockedChatBarEnabled}
     />
   );

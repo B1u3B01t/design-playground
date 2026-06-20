@@ -59,11 +59,13 @@ function loadSidebarVisibility(storageKey: string) {
 
 export default function PlaygroundClient({
   projectId,
+  multiplayerAvailable = false,
   roomId,
   isHost = false,
   dockedChatBarEnabled = false,
 }: {
   projectId?: string;
+  multiplayerAvailable?: boolean;
   roomId?: string;
   isHost?: boolean;
   dockedChatBarEnabled?: boolean;
@@ -736,6 +738,9 @@ export default function PlaygroundClient({
   );
 
   const multiplayer: MultiplayerState = {
+    // Feature on (flag) — true whenever a room is active, since page.tsx only
+    // forwards a roomId when the flag is enabled.
+    available: multiplayerAvailable || !!roomId,
     enabled: !!roomId,
     isHost,
     roomId: roomId ?? null,

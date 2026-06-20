@@ -16,6 +16,7 @@ import { type ModelOption } from './lib/constants';
 import type { ProviderId, ClaudeCodeOptions, CodexOptions } from './lib/providers/types';
 import { getAllProviders, getProvider } from './lib/providers/registry';
 import { getDisplayName, setDisplayName } from './liveblocks.config';
+import { useMultiplayer } from './lib/multiplayer-context';
 import { partitionCursorModels, partitionClaudeModels } from './lib/model-catalog';
 import ConnectCursorPanel from './ConnectCursorPanel';
 import { useCursorAuth } from './hooks/useCursorAuth';
@@ -79,6 +80,10 @@ export default function ModelSettingsModal({ open, onOpenChange }: ModelSettings
   } = useModelSettingsStore();
 
   const { authenticated: cursorAuthenticated, refresh: refreshCursorAuth } = useCursorAuth();
+
+  // Only surface the shared-session identity field when multiplayer is enabled
+  // for this user (the playground-multiplayer-session flag). Otherwise it's dead UI.
+  const { available: multiplayerAvailable } = useMultiplayer();
 
   // Read enabledModels from the store's provider state directly
   const enabledModels = useModelSettingsStore(
@@ -232,23 +237,26 @@ export default function ModelSettingsModal({ open, onOpenChange }: ModelSettings
           </DialogDescription>
         </DialogHeader>
 
-        {/* Display name — your identity in shared (multiplayer) sessions */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-stone-700">Your name</label>
-          <input
-            type="text"
-            value={displayName}
-            onChange={(e) => {
-              setDisplayNameState(e.target.value);
-              setDisplayName(e.target.value);
-            }}
-            placeholder="Set a name for shared sessions"
-            className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-[13px] text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-400/40"
-          />
-          <p className="text-[11px] text-stone-400">
-            Shown to others in shared sessions. Applies the next time you join a session.
-          </p>
-        </div>
+        {/* Display name — your identity in shared (multiplayer) sessions.
+            Hidden when multiplayer is flagged off, since it's then dead UI. */}
+        {multiplayerAvailable && (
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-stone-700">Your name</label>
+            <input
+              type="text"
+              value={displayName}
+              onChange={(e) => {
+                setDisplayNameState(e.target.value);
+                setDisplayName(e.target.value);
+              }}
+              placeholder="Set a name for shared sessions"
+              className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-[13px] text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-400/40"
+            />
+            <p className="text-[11px] text-stone-400">
+              Shown to others in shared sessions. Applies the next time you join a session.
+            </p>
+          </div>
+        )}
 
         {activeProvider === 'cursor' && cursorAuthenticated !== true && (
           <ConnectCursorPanel active={open} />
