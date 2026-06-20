@@ -18,7 +18,14 @@ import { impeccablePromptFromSegment } from './lib/impeccable-skill';
 import { useAvailableModels } from './nodes/shared/IterateDialogParts';
 import { useCursorChat } from './hooks/useCursorChat';
 import { getModelIconConfig } from './lib/model-icons';
-import { CURSOR_CHAT_DEFAULT_COUNT, CURSOR_CHAT_OPEN_EVENT, type CursorChatSubmitPayload, type CursorChatOpenPayload } from './lib/constants';
+import {
+  CURSOR_CHAT_DEFAULT_COUNT,
+  CURSOR_CHAT_OPEN_EVENT,
+  ENABLE_FREEFORM_CHAT,
+  canSubmitReferenceOnlyChat,
+  type CursorChatSubmitPayload,
+  type CursorChatOpenPayload,
+} from './lib/constants';
 import { matchesAction, formatKeyCombo, getCombo } from './lib/keybindings';
 import type { SelectedElement } from './lib/element-context';
 import { useModelSettingsStore } from './lib/model-settings-store';
@@ -187,10 +194,24 @@ export default function CursorChat({ isGenerating: _isGenerating, onSubmit, sele
     const effectiveTarget = targetNode;
     const referenceOnly = selectedNodes;
 
+    if (
+      !effectiveTarget &&
+      !ENABLE_FREEFORM_CHAT &&
+      !canSubmitReferenceOnlyChat({
+        hasEditTarget: false,
+        referenceNodeCount: referenceOnly?.length ?? 0,
+        skillPromptCount: skillPrompts.length,
+        text,
+      })
+    ) {
+      return;
+    }
+
     // Auto-collapse to 'raw' when there's nothing to edit/explore against.
     const hasSelection = !!effectiveTarget
       || (selectedElements?.length ?? 0) > 0
       || (selectedNodes?.length ?? 0) > 0;
+
     const effectiveChatMode: 'edit' | 'explore' | 'raw' =
       hasSelection ? chatMode : 'raw';
 
@@ -365,8 +386,9 @@ export default function CursorChat({ isGenerating: _isGenerating, onSubmit, sele
   const hasSelection = !!targetNode
     || (selectedElements?.length ?? 0) > 0
     || (selectedNodes?.length ?? 0) > 0;
+  const isFreeformMode = !hasSelection && ENABLE_FREEFORM_CHAT;
   const effectiveChatMode: 'edit' | 'explore' | 'raw' =
-    isPlaced && hasSelection ? chatMode : 'raw';
+    isPlaced && hasSelection ? chatMode : (isFreeformMode ? 'raw' : 'explore');
   const showModeToggle = isPlaced && hasSelection;
 
   return (
@@ -531,7 +553,7 @@ export default function CursorChat({ isGenerating: _isGenerating, onSubmit, sele
 
         {/* Select to edit / explore chip — shown whenever the chat has no
             selection (peek, or placed without a target/elements/nodes). */}
-        {effectiveChatMode === 'raw' && (
+        {!hasSelection && (
           <div className="mb-4">
             <div
               className="inline-flex items-center gap-1.5 px-2.5 py-2 select-none"
@@ -555,7 +577,7 @@ export default function CursorChat({ isGenerating: _isGenerating, onSubmit, sele
             to: [input  send] with no separate footer. */}
         <div
           ref={inlineRefContainerRef}
-          className={`flex gap-2 ${effectiveChatMode === 'raw' ? 'items-end' : 'items-start'}`}
+          className={`flex gap-2 ${isFreeformMode ? 'items-end' : 'items-start'}`}
         >
           <InlineReference
             ref={inlineRefHandle}
@@ -570,11 +592,13 @@ export default function CursorChat({ isGenerating: _isGenerating, onSubmit, sele
           >
             <InlineReferenceInput
               placeholder={
-                effectiveChatMode === 'raw'
+                isFreeformMode
                   ? 'How can I help?'
-                  : effectiveChatMode === 'edit'
-                    ? 'Describe edits...'
-                    : (targetNode ? 'Describe variations...' : `Explore, using ${shortModelName}`)
+                  : !hasSelection
+                    ? 'Select a frame to edit or explore'
+                    : effectiveChatMode === 'edit'
+                      ? 'Describe edits...'
+                      : (targetNode ? 'Describe variations...' : `Explore, using ${shortModelName}`)
               }
               className="outline-none w-full border-none shadow-none ring-0 focus-visible:ring-0 focus-visible:border-none rounded-none px-0 py-0 text-left leading-[1.4]"
               style={{
@@ -615,7 +639,7 @@ export default function CursorChat({ isGenerating: _isGenerating, onSubmit, sele
               In placed mode we render the active dark style (same as the
               footer send) so it's clearly clickable; in peek the lighter
               "follows-cursor" style is preserved. */}
-          {effectiveChatMode === 'raw' && (
+          {isFreeformMode && (
             <button
               type="button"
               // Prevent the input's contentEditable from blurring & swallowing

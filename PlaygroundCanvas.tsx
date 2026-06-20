@@ -91,6 +91,7 @@ import {
 } from './prompts/shared-sections';
 import { freeformReferencePrompt } from './prompts/freeform-reference.prompt';
 import { editPrompt } from './prompts/edit.prompt';
+import { pickPlanFrameName } from './lib/plan-frame-name';
 import { createPagePrompt, RESERVED_TOP_LEVEL_SLUGS } from './prompts/create-page.prompt';
 import { generateHtmlIterationPrompt, generateHtmlIterationFromIterationPrompt } from './lib/html-prompts';
 import { generateJsxIterationPrompt, generateJsxIterationFromIterationPrompt } from './lib/jsx-prompts';
@@ -160,6 +161,8 @@ import {
   CURSOR_CHAT_DEFAULT_COUNT,
   CURSOR_CHAT_DEFAULT_DEPTH,
   CURSOR_CHAT_OPEN_EVENT,
+  ENABLE_FREEFORM_CHAT,
+  canSubmitReferenceOnlyChat,
   FLOW_DECOMPOSE_EVENT,
   type FlowDecomposePayload,
   type StylingMode,
@@ -2319,7 +2322,27 @@ export default function PlaygroundCanvas({
       return;
     }
 
-    if (isRawMode && !rawPrompt) return;
+    const hasFreeformContext =
+      payload.skillPrompts.length > 0 || (payload.referenceNodes?.length ?? 0) > 0;
+    if (isRawMode && !rawPrompt && !hasFreeformContext) return;
+
+    const hasTarget =
+      payload.targetNodeId &&
+      payload.targetComponentId &&
+      payload.targetComponentName &&
+      payload.targetType;
+    if (
+      !hasTarget &&
+      !ENABLE_FREEFORM_CHAT &&
+      !canSubmitReferenceOnlyChat({
+        hasEditTarget: false,
+        referenceNodeCount: payload.referenceNodes?.length ?? 0,
+        skillPromptCount: payload.skillPrompts.length,
+        text: payload.text,
+      })
+    ) {
+      return;
+    }
 
     if (!(await requireCursorAuthIfNeeded())) return;
 
@@ -2486,13 +2509,11 @@ export default function PlaygroundCanvas({
     const genProvider = (canvasGenPfEarly.provider ?? 'cursor') as ProviderId;
     const resolvedModel = resolveAgentModel(genProvider, payloadModel);
 
-    // Combine skill prompts (raw mode bypasses all prompt composition)
+    // Combine skill prompts — explicit skills always apply (including raw / text-only refs)
     let combinedSkillPrompt: string | undefined;
-    if (isRawMode) {
-      combinedSkillPrompt = undefined;
-    } else if (skillPrompts.length > 0) {
+    if (skillPrompts.length > 0) {
       combinedSkillPrompt = skillPrompts.join('\n\n');
-    } else if (!text) {
+    } else if (!isRawMode && !text) {
       // Use default skills only when no explicit skills selected and text is empty
       const defaultPrompt = await loadDefaultSkillPrompt();
       combinedSkillPrompt = defaultPrompt || undefined;
@@ -2505,9 +2526,9 @@ export default function PlaygroundCanvas({
     const stylingMode: StylingMode = payload.skillIds?.includes('no-bound-explore')
       ? 'inline-css' : DEFAULT_STYLING_MODE;
 
-    // Build reference nodes section from shift-drag selection (skipped in raw mode)
+    // Build reference nodes section from canvas selection (text/image/component refs)
     let referenceNodesSection = '';
-    if (!isRawMode && payload.referenceNodes && payload.referenceNodes.length > 0) {
+    if (payload.referenceNodes && payload.referenceNodes.length > 0) {
       // Filter out the target node from references (no need to reference itself)
       const refNodes = payload.referenceNodes.filter((n) => n.nodeId !== targetNodeId);
 
@@ -2798,6 +2819,130 @@ export default function PlaygroundCanvas({
           }),
         );
       }
+    } else if (payload.skillIds?.includes('visualise-plan')) {
+      // --- VISUALISE PLAN: create HTML frame on canvas, then edit in place ---
+      let planText = text || rawPrompt;
+      if (payload.referenceNodes?.length) {
+        for (const ref of payload.referenceNodes) {
+          if (ref.type !== 'text') continue;
+          const textNode = nodesRef.current.find((n) => n.id === ref.nodeId);
+          const noteText = (textNode?.data as Record<string, unknown>)?.text;
+          if (typeof noteText === 'string' && noteText.trim()) {
+            planText = noteText;
+            break;
+          }
+        }
+      }
+
+      const frameName = await pickPlanFrameName(planText);
+      const position = payload.canvasPosition ?? { x: 0, y: 0 };
+
+      let pageId: string;
+      let folder: string;
+      try {
+        const createRes = await fetch('/playground/api/html-pages', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: frameName }),
+        });
+        const createData = await createRes.json().catch(() => ({}));
+        if (!createRes.ok) {
+          toast.error(createData?.error || 'Failed to create HTML frame', { duration: 6000 });
+          return;
+        }
+        pageId = createData.page.id as string;
+        folder = createData.page.folder as string;
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to create HTML frame', { duration: 6000 });
+        return;
+      }
+
+      const newNodeId = getNodeId();
+      setNodes((nds) =>
+        nds.concat({
+          id: newNodeId,
+          type: 'component',
+          position,
+          data: {
+            componentId: pageId,
+            renderMode: 'html' as const,
+            htmlFolder: folder,
+          },
+        }),
+      );
+      window.dispatchEvent(new CustomEvent('playground:html-pages-updated'));
+
+      const editSkillPrompt = combinedSkillPrompt;
+      const visualiseInstructions =
+        text ||
+        rawPrompt ||
+        'Visualise the referenced plan as interactive HTML per the skill instructions. Replace the placeholder page content entirely.';
+      const prompt = editPrompt({
+        filePath: `public/${folder}/index.html`,
+        customInstructions: visualiseInstructions,
+        skillPrompt: editSkillPrompt,
+        referenceNodesSection: referenceNodesSection || undefined,
+      });
+
+      window.dispatchEvent(
+        new CustomEvent<GenerationStartPayload>(GENERATION_START_EVENT, {
+          detail: {
+            componentId: pageId,
+            componentName: folder,
+            parentNodeId: newNodeId,
+            iterationCount: 0,
+            model: resolvedModel,
+            provider: canvasGenPf.provider as GenerationStartPayload['provider'],
+            flowPosition: payload.canvasPosition ?? undefined,
+            targetNodeId: newNodeId,
+            editMode: true,
+            renderMode: 'html' as const,
+            htmlFolder: folder,
+          },
+        }),
+      );
+
+      try {
+        const response = await fetch('/playground/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt,
+            componentId: pageId,
+            model: resolvedModel,
+            source: 'visualise_plan',
+            skillIds: payload.skillIds,
+            htmlFolder: folder,
+            ...canvasGenPf,
+          }),
+        });
+        const data = await response.json().catch(() => ({ success: false }));
+        if (!response.ok || !data.success) {
+          console.error('[VisualisePlan] Generation failed:', data?.error);
+          toast.error(data?.error || 'Plan visualisation failed', { duration: 6000 });
+          window.dispatchEvent(
+            new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+              detail: { componentId: pageId, parentNodeId: newNodeId, error: data?.error || 'Generation failed' },
+            }),
+          );
+        } else {
+          window.dispatchEvent(new CustomEvent(EDIT_COMPLETE_EVENT, { detail: { nodeId: newNodeId } }));
+          window.dispatchEvent(
+            new CustomEvent<GenerationCompletePayload>(GENERATION_COMPLETE_EVENT, {
+              detail: { componentId: pageId, parentNodeId: newNodeId, output: '' },
+            }),
+          );
+        }
+      } catch (err) {
+        console.error('[VisualisePlan] Generation error:', err);
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        toast.error(msg, { duration: 6000 });
+        window.dispatchEvent(
+          new CustomEvent<GenerationErrorPayload>(GENERATION_ERROR_EVENT, {
+            detail: { componentId: pageId, parentNodeId: newNodeId, error: msg },
+          }),
+        );
+      }
     } else {
       // --- FREEFORM (no target) ---
       const freeformComponentId = 'cursor-chat-freeform';
@@ -2817,10 +2962,21 @@ export default function PlaygroundCanvas({
         }),
       );
 
-      // Build prompt — use freeform-reference template if reference nodes exist
+      // Build prompt — freeform-reference template or raw text
       let freeformPrompt: string;
       if (isRawMode) {
-        freeformPrompt = rawPrompt;
+        if (referenceNodesSection || combinedSkillPrompt) {
+          freeformPrompt = freeformReferencePrompt({
+            skillSection: combinedSkillPrompt ? formatSkillSection(combinedSkillPrompt) : '',
+            referenceNodesSection: referenceNodesSection || '',
+            customInstructionsSection: formatCustomInstructionsSection(
+              rawPrompt || customInstructions,
+            ),
+            stylingConstraint: getStylingConstraint(stylingMode),
+          });
+        } else {
+          freeformPrompt = rawPrompt;
+        }
       } else if (referenceNodesSection) {
         freeformPrompt = freeformReferencePrompt({
           skillSection: combinedSkillPrompt ? formatSkillSection(combinedSkillPrompt) : '',

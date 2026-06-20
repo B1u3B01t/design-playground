@@ -23,6 +23,8 @@ import { getModelIconConfig } from './lib/model-icons';
 import {
   CURSOR_CHAT_ACTIVE_EVENT,
   CURSOR_CHAT_DEFAULT_COUNT,
+  ENABLE_FREEFORM_CHAT,
+  canSubmitReferenceOnlyChat,
   type CursorChatActivePayload,
   type CursorChatSubmitPayload,
 } from './lib/constants';
@@ -192,8 +194,20 @@ export default function DockedChatBar({
   // selection; a selection of only embed/image/text nodes runs as raw (with the
   // nodes attached as references), so the toggle is hidden in that case.
   const canEditOrExplore = !!editTarget || (selectedElements?.length ?? 0) > 0;
-  const effectiveChatMode: 'edit' | 'explore' | 'raw' = canEditOrExplore ? chatMode : 'raw';
+  const isFreeformMode = !hasSelection && ENABLE_FREEFORM_CHAT;
+  const effectiveChatMode: 'edit' | 'explore' | 'raw' =
+    canEditOrExplore ? chatMode : (isFreeformMode ? 'raw' : 'explore');
   const showModeToggle = shouldExpand && canEditOrExplore;
+  const canReferenceOnlySubmit =
+    !editTarget &&
+    referenceNodes.length > 0 &&
+    segments.some((s) => s.type === 'reference' && s.trigger === '/');
+  const canSubmit =
+    hasContent &&
+    (editTarget != null ||
+      canEditOrExplore ||
+      (ENABLE_FREEFORM_CHAT && !editTarget && !canEditOrExplore) ||
+      canReferenceOnlySubmit);
   const hasAnyPill =
     !!editTarget || (selectedElements?.length ?? 0) > 0 || referenceNodes.length > 0;
   const showPillsRow = shouldExpand && hasAnyPill;
@@ -367,6 +381,19 @@ export default function DockedChatBar({
     const { text, skillPrompts, skillIds } = extractPayload();
     if (!text && skillPrompts.length === 0) return;
 
+    if (
+      !editTarget &&
+      !ENABLE_FREEFORM_CHAT &&
+      !canSubmitReferenceOnlyChat({
+        hasEditTarget: false,
+        referenceNodeCount: referenceNodes.length,
+        skillPromptCount: skillPrompts.length,
+        text,
+      })
+    ) {
+      return;
+    }
+
     const mode: 'edit' | 'explore' | 'raw' = canEditOrExplore ? chatMode : 'raw';
 
     // Adoption metric (dev-only, content-free) — schema in lib/telemetry/schema.
@@ -529,13 +556,17 @@ export default function DockedChatBar({
   const nextConfig = nextModel ? getModelIconConfig(nextModel, activeProvider) : currentConfig;
 
   const placeholder =
-    effectiveChatMode === 'raw'
+    isFreeformMode
       ? 'Ask anything, or / for skills…'
-      : effectiveChatMode === 'edit'
-        ? 'Describe edits…'
-        : editTarget
-          ? 'Describe variations…'
-          : `Explore, using ${shortModelName}`;
+      : !hasSelection
+        ? 'Select a frame to edit or explore'
+        : !editTarget && referenceNodes.length > 0
+          ? 'Type /visualise-plan or another skill…'
+          : effectiveChatMode === 'edit'
+            ? 'Describe edits…'
+            : editTarget
+              ? 'Describe variations…'
+              : `Explore, using ${shortModelName}`;
 
   // -------------------------------------------------------------------------
   // Render
@@ -817,7 +848,7 @@ export default function DockedChatBar({
               {/* Send button */}
               <button
                 type="button"
-                disabled={!hasContent}
+                disabled={!canSubmit}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => {
                   e.preventDefault();
@@ -831,7 +862,7 @@ export default function DockedChatBar({
                   borderRadius: '50%',
                   background: 'rgb(41, 37, 36)',
                   color: 'white',
-                  opacity: hasContent ? 1 : 0.4,
+                  opacity: canSubmit ? 1 : 0.4,
                 }}
                 aria-label="Send"
               >
