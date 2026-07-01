@@ -23,6 +23,7 @@ import { getModelIconConfig } from './lib/model-icons';
 import {
   CURSOR_CHAT_ACTIVE_EVENT,
   CURSOR_CHAT_DEFAULT_COUNT,
+  DOCKED_CHAT_BAR_MODE,
   ENABLE_FREEFORM_CHAT,
   canSubmitReferenceOnlyChat,
   type CursorChatActivePayload,
@@ -188,7 +189,10 @@ export default function DockedChatBar({
 
   // Visible-expanded state: proximity drives `expanded`; typing or a selection
   // also keeps the bar open. Render uses this so it never minimises mid-use.
-  const shouldExpand = expanded || hasContent || hasSelection;
+  // In 'always-on' mode the composer is kept expanded/active at all times
+  // (proximity reveal is bypassed — see DOCKED_CHAT_BAR_MODE).
+  const alwaysOn = DOCKED_CHAT_BAR_MODE === 'always-on';
+  const shouldExpand = alwaysOn || expanded || hasContent || hasSelection;
 
   // Edit/Explore only make sense against an editable target or an element
   // selection; a selection of only embed/image/text nodes runs as raw (with the
@@ -274,6 +278,10 @@ export default function DockedChatBar({
   // stays minimised until the cursor leaves the halo, then re-arms. Text /
   // selection keep it open independently via `shouldExpand`.
   useEffect(() => {
+    // Always-on mode keeps the bar expanded via `shouldExpand`; the proximity
+    // reveal machinery is unnecessary, so don't attach the global mousemove
+    // listener at all.
+    if (alwaysOn) return;
     const process = () => {
       rafRef.current = null;
       const pt = lastPointRef.current;
@@ -328,7 +336,7 @@ export default function DockedChatBar({
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
       clearDwell();
     };
-  }, [clearDwell]);
+  }, [clearDwell, alwaysOn]);
 
   const pickerOpen = useCallback(
     () =>

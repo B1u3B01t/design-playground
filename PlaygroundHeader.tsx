@@ -446,33 +446,35 @@ export default function PlaygroundHeader({
         {/* Right: action icons + presence bubbles */}
         <div className="flex items-center gap-0.5">
           {multiplayer.enabled && <PresenceAvatars />}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={cyclePreviewScheme}
-                className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
-                aria-label="Preview color scheme"
-              >
-                {previewScheme === 'dark' ? (
-                  <Moon className="w-[18px] h-[18px]" />
-                ) : previewScheme === 'light' ? (
-                  <Sun className="w-[18px] h-[18px]" />
-                ) : (
-                  <Monitor className="w-[18px] h-[18px]" />
-                )}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p>
-                Preview theme:{' '}
-                {previewScheme === 'auto'
-                  ? 'Auto (match app)'
-                  : previewScheme === 'dark'
-                    ? 'Dark'
-                    : 'Light'}
-              </p>
-            </TooltipContent>
-          </Tooltip>
+          {devMode && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={cyclePreviewScheme}
+                  className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors"
+                  aria-label="Preview color scheme"
+                >
+                  {previewScheme === 'dark' ? (
+                    <Moon className="w-[18px] h-[18px]" />
+                  ) : previewScheme === 'light' ? (
+                    <Sun className="w-[18px] h-[18px]" />
+                  ) : (
+                    <Monitor className="w-[18px] h-[18px]" />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>
+                  Preview theme:{' '}
+                  {previewScheme === 'auto'
+                    ? 'Auto (match app)'
+                    : previewScheme === 'dark'
+                      ? 'Dark'
+                      : 'Light'}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          )}
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -527,7 +529,7 @@ export default function PlaygroundHeader({
             </TooltipContent>
           </Tooltip>
 
-          {activeFlowId && (
+          {devMode && activeFlowId && (
             <>
               <div className="w-px h-5 bg-stone-200 mx-1" />
 

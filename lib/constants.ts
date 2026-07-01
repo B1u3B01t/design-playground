@@ -691,6 +691,16 @@ export const TREE_COLUMN_WIDTH = 500;
  */
 export const ENABLE_FREEFORM_CHAT = false;
 
+/**
+ * Activation mode for the bottom docked chat bar:
+ *   - 'always-on': the composer stays expanded/active at all times (default).
+ *   - 'dynamic':   the bar rests as a minimized bubble and expands on cursor
+ *                  proximity, focus, typing, or a canvas selection.
+ * Flip to 'dynamic' to restore the proximity-reveal behavior.
+ */
+export type DockedChatBarMode = 'always-on' | 'dynamic';
+export const DOCKED_CHAT_BAR_MODE: DockedChatBarMode = 'always-on';
+
 /** Submit without an edit target when reference nodes (e.g. text notes) carry the context. */
 export function canSubmitReferenceOnlyChat(input: {
   hasEditTarget: boolean;

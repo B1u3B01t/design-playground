@@ -1,5 +1,6 @@
 import { ComponentType } from 'react';
 import dynamic from 'next/dynamic';
+import { demoRegistryItems } from './examples/welcome/demo-registry';
 import type { ComponentSize, CursorChatSubmitPayload, StylingMode } from './lib/constants';
 import { DEFAULT_STYLING_MODE } from './lib/constants';
 import { iterationPrompt } from './prompts/iteration.prompt';
@@ -126,9 +127,12 @@ export function preloadAllComponents(): void {
 /**
  * Resolve a component by ID from the flat registry.
  * All components — examples and discovered — live in the registry tree above.
+ * Falls back to the built-in onboarding demo components, which are kept out of
+ * the registry tree (and sidebar) but must still resolve for the seeded first-run
+ * demo nodes. See examples/welcome/demo-registry.tsx.
  */
 export function resolveRegistryItem(componentId: string): RegistryLeafItem | null {
-  return flatRegistry[componentId] ?? null;
+  return flatRegistry[componentId] ?? demoRegistryItems[componentId] ?? null;
 }
 
 /**

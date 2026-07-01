@@ -17,6 +17,7 @@ import { useAsyncProps, useScrollCapture, useHtmlContent } from '../hooks/useNod
 import { useTunnelShare } from '../hooks/useTunnelShare';
 import ComponentErrorBoundary from './ComponentErrorBoundary';
 import { useInteractiveNodeStore, useIsInteractiveNode } from '../lib/interactive-node-store';
+import { useDevModeStore } from '../lib/dev-mode-store';
 import { useFrameHoverHint } from './shared/FrameHoverHint';
 import {
   COMPONENT_SIZE_CHANGE_EVENT,
@@ -122,6 +123,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
 
   const nodeId = useNodeId();
   const { updateNodeData, setNodes, getNode } = useReactFlow();
+  const devMode = useDevModeStore((s) => s.enabled);
   const flowDescriptor = !isHtml && !isJsx && !isEmbed && !isDesignSystem
     ? findFlowDescriptorForComponent(componentId)
     : null;
@@ -653,7 +655,7 @@ function ComponentNode({ data, selected = false }: ComponentNodeProps) {
                   />
                 ) : null}
 
-                {flowDescriptor && (
+                {devMode && flowDescriptor && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button

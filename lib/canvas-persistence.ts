@@ -7,6 +7,7 @@
 import type { Node, Edge } from '@xyflow/react';
 import { STORAGE_KEY } from './constants';
 import type { DrawStroke } from './draw-types';
+import { createOnboardingCanvasState } from './onboarding-seed';
 
 /** Track generation info for status display + resuming after a page reload. */
 export interface GenerationInfo {
@@ -91,6 +92,14 @@ export function loadCanvasState(storageKey: string = STORAGE_KEY): CanvasState |
         localStorage.removeItem(STORAGE_KEY);
         stored = legacy;
       }
+    }
+    if (!stored) {
+      // First run on this canvas (no persisted state): seed the onboarding demo
+      // scene so users can try the core loop immediately without waiting for repo
+      // discovery. Once these nodes render they get persisted like any other state
+      // (saveCanvasState runs on mount in solo mode), so it never re-seeds — and if
+      // the user deletes the demo nodes, that deletion persists too.
+      return createOnboardingCanvasState();
     }
     if (stored) {
       const state = JSON.parse(stored) as CanvasState;
